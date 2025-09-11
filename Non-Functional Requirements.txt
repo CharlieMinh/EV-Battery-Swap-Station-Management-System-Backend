@@ -1,0 +1,40 @@
+NON-FUNCTIONAL REQUIREMENTS
+1 Usability
+
+The system shall support Vietnamese UI (English optional).
+
+The UI shall be responsive for desktop, tablet, and mobile.
+
+Common tasks (Find Station → Book → Pay) shall be completable in ≤ 3 clicks from the home screen for an authenticated Driver.
+
+Error messages shall be clear and actionable (no raw stack traces).
+
+2 Reliability
+
+Data entered into the system shall be saved persistently, even in the event of a sudden shutdown or network failure.
+
+Booking and payment operations shall be atomic and idempotent (retries must not double-book or double-charge).
+
+Temporary integration failures (e.g., payment) shall be retried and reconciled automatically within a configurable window.
+
+Service availability shall be ≥ 99.5% monthly, excluding planned maintenance.
+
+3 Performance
+
+Response time for loading the station list with availability shall be ≤ 2 seconds (P95) under normal network conditions.
+
+Response time for confirming a booking shall be ≤ 3 seconds (P95).
+
+Response time for loading a user profile/history shall be ≤ 2 seconds (P95).
+
+Generating standard reports (daily revenue, swap count for last 30 days) shall be ≤ 5 seconds.
+
+4 Supportability
+
+The system shall follow a modular, layered architecture to support future enhancements (e.g., adding new functions/entities).
+
+Business rules (pricing, booking hold timeout, cancellation/no-show windows) shall be configuration-driven without code changes.
+
+Public APIs shall be versioned (e.g., /v1) to ease evolution and integration.
+
+Centralized logging and error tracking shall be provided to support troubleshooting and maintenance.
