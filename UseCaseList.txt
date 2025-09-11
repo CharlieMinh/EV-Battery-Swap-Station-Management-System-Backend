@@ -1,0 +1,42 @@
+Actors
+1.	Guest – người chưa đăng nhập
+2.	EV Driver – tài xế sử dụng dịch vụ đổi pin
+3.	BSS Staff – nhân viên trạm đổi pin
+4.	Admin – quản trị hệ thống
+Use cases theo actor
+Chung (dùng chung cho các vai trò có tài khoản)
+•	UC-01 Đăng ký tài khoản
+•	UC-02 Đăng nhập / Đăng xuất
+•	UC-03 Quên / Đổi mật khẩu
+Guest
+•	UC-04 Duyệt thông tin trạm (danh sách, giờ làm, dịch vụ cơ bản)
+•	UC-05 Tìm trạm gần tôi (extend UC-G01)
+•	UC-06 Xem bảng giá & gói dịch vụ
+•	UC-07 Đăng ký tài khoản (include UC-A01)
+EV Driver
+•	UC-08 Liên kết phương tiện (VIN, loại pin, biển số)
+•	UC-09 Tìm trạm & xem tình trạng pin sẵn có
+•	UC-10 Đặt lịch đổi pin (giữ chỗ pin đầy)
+•	UC-11 Check-in tại trạm (quét mã/biển số/VIN, xác minh booking)
+•	UC-12 Thanh toán (theo lượt hoặc theo gói thuê)
+•	UC-13 Lịch sử giao dịch & Hóa đơn (kèm số lần đổi, chi phí)
+•	UC-14 Gửi yêu cầu hỗ trợ / báo sự cố
+•	UC-15 Đánh giá dịch vụ trạm đổi pin
+BSS Staff
+•	UC-16 Check-in & xác thực khách/xe
+•	UC-17 Thực hiện quy trình đổi pin (ghi nhận chỉ số, cập nhật kho)
+•	UC-18 Quản lý tồn kho pin (đầy/đang sạc/bảo dưỡng; phân loại theo dung lượng/model/tình trạng)
+•	UC-19 Quản lý hàng chờ / slot đổi pin
+•	UC-20 Thanh toán tại quầy
+•	UC-21 Kiểm tra & ghi nhận tình trạng pin trả về
+Admin
+•	UC-22 Quản lý người dùng & phân quyền (bao gồm phân quyền nhân viên trạm)
+•	UC-23 Quản lý cấu hình trạm (địa điểm, giờ hoạt động, năng lực phục vụ)
+•	UC-24 Quản lý khách hàng
+•	UC-25 Quản lý gói thuê pin
+•	UC-26 Xử lý khiếu nại & đổi pin lỗi
+•	UC-27 Báo cáo & thống kê (doanh thu, số lượt đổi, tần suất, giờ cao điểm)
+•	UC-28 Dự báo nhu cầu (AI) (gợi ý nâng cấp hạ tầng)
+•	UC-29 Điều phối pin giữa các trạm
+•	UC-30 Giám sát sức khỏe pin (SoH)
+
