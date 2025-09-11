@@ -1,0 +1,54 @@
+Functional Requirements (FR)
+1) Common (all roles)
+
+FE-01.1 The system shall allow users to sign in.
+FE-01.2 The system shall allow users to sign out.
+FE-01.3 The system shall support password reset (forgot password).
+FE-01.4 The system shall allow users to update their profile.
+
+2) EV Driver
+
+FE-02.1 The system shall allow customers to register for the battery-swap service (email/phone/social acceptable).
+FE-02.2 The system shall allow linking a vehicle to the account (VIN, vehicle type, compatible battery model).
+FE-02.3 The system shall allow searching for nearby swap stations by location.
+FE-02.4 The system shall display battery availability at stations (e.g., Full / Charging / Maintenance).
+FE-02.5 The system shall allow placing a reservation (hold) to guarantee a full battery at a chosen station.
+FE-02.6 The system shall support check-in at the station and confirmation of the swap transaction.
+FE-02.7 The system shall support pay-per-swap payments (cashless/mocked gateway acceptable).
+FE-02.8 The system shall allow subscribing to battery rental plans (monthly/annual).
+FE-02.9 The system shall allow viewing invoices and transaction history.
+FE-02.10 The system shall display the number of swaps and total cost to date.
+FE-02.11 The system shall allow submitting support requests (battery or station issues).
+FE-02.12 The system shall allow rating and reviewing station services.
+FE-02.13 The system shall allow canceling or rescheduling a reservation within policy windows.
+
+3) BSS Staff (Station)
+
+FE-03.1 The system shall allow viewing/managing battery inventory by type/capacity/status.
+FE-03.2 The system shall allow updating battery status (Full / Charging / Maintenance / Faulty, etc.).
+FE-03.3 The system shall allow confirming a swap transaction (battery returned → battery issued).
+FE-03.4 The system shall allow recording over-the-counter payments (cash/QR; mocked).
+FE-03.5 The system shall support inspection of returned batteries and logging detected faults.
+FE-03.6 The system shall generate a daily swap report for station managers.
+FE-03.7 The system shall allow managing the queue and swap time slots (assign, reorder, mark no-show).
+
+4) Admin
+
+FE-04.1 The system shall allow managing stations (create/update/disable).
+FE-04.2 The system shall monitor battery utilization and health (SoH).
+FE-04.3 The system shall support coordinating/transferring batteries between stations.
+FE-04.4 The system shall support handling complaints and compensation for faulty batteries.
+FE-04.5 The system shall allow managing users (Drivers, Staff).
+FE-04.6 The system shall allow assigning/revoking station-staff roles.
+FE-04.7 The system shall allow creating and configuring battery rental plans.
+FE-04.8 The system shall allow setting pricing tables and service policies.
+FE-04.9 The system shall display reports (revenue, swap counts, peak hours).
+FE-04.10 The system should provide usage analytics and demand forecasting (optional).
+FE-04.11 The system shall allow configuring operational policies (booking hold timeout, cancellation/no-show windows).
+
+5) Guest
+
+FE-05.1 The system shall allow browsing station information (list, address, opening hours, basic services).
+FE-05.2 The system shall allow finding nearby stations based on the user’s location.
+FE-05.3 The system shall display pricing and available rental plans.
+FE-05.4 The system shall allow creating an account.
