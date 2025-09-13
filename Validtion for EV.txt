@@ -1,0 +1,66 @@
+Validtion for EV:
+
+-----------------------------------------------------
+- Ký tự 1–3 (WMI – World Manufacturer Identifier)
+	→ Hãng + quốc gia sản xuất
+
+	VinFast: RLG
+	BYD: LNB
+
+- Ký tự 4–8 (Vehicle Descriptor Section – VDS)
+	→ Mô tả chi tiết về dòng xe, loại thân xe, loại pin, hệ thống an toàn, cấu hình động cơ.
+	 Với xe điện (EV), ký tự 8 thường là E để chỉ xe điện.
+
+- Ký tự 9 (Check Digit)
+	→ Dùng thuật toán ISO 3779 để kiểm tra VIN hợp lệ (mình đã viết code ở trên).
+
+- Ký tự 10 (Model Year)
+	→ Mã năm sản xuất (ví dụ: M = 2021, N = 2022, P = 2023, R = 2024 …).
+
+- Ký tự 11 (Plant Code)
+	→ Nhà máy sản xuất (ví dụ: VinFast – Hải Phòng, BYD – Thâm Quyến).
+
+- Ký tự 12–17 (Serial Number)
+	→ Số seri duy nhất của xe trong năm đó, được hãng tự tăng dần.
+
+Mẫu Vehicle ID:
+
+Thông tin VIN: RLGABCEE0N1234567
+1. WMI (hãng + quốc gia): VinFast (Việt Nam)
+2. VDS (dòng xe / mô tả): ABCEE
+3. Check digit (ký tự 9): M
+4. Năm sản xuất (ký tự 10): 2022
+5. Nhà máy (ký tự 11): N
+6. Số seri (12–17): 1234567
+⚡ Đây là xe điện (EV)
+----------------------------------------------------------------------------------------
+
+Loại pin: chọn từ danh mục hệ thống hỗ trợ
+
+----------------------------------------------------------------------------------------
+
+Ngày/ giờ đặt lịch: > thời gian hiện tại, không quá xa nên rào trong tầm 30 ngày
+
+----------------------------------------------------------------------------------------
+
+Vị trí (GPS) : Latitude -90 → 90, Longitude -180 → 180
+
+----------------------------------------------------------------------------------------
+
+ID trạm: tồn tại trong database
+
+----------------------------------------------------------------------------------------
+
+Phương thức thanh toán: Chỉ chọn từ danh sách hợp lệ (mã qr chuyển khoản, tiền mặt)
+
+----------------------------------------------------------------------------------------
+
+Số tiền: > 0 
+
+----------------------------------------------------------------------------------------
+
+Phản hồi, dịch vụ: Không chứa script/code, độ dài ≤ 500 ký tự
+
+----------------------------------------------------------------------------------------
+
+Rating: giá trị từ 1 tới 5

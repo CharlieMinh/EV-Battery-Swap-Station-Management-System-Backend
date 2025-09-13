@@ -1,0 +1,5 @@
+Validation for login/register:
+
+email =  "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$" && not null
+----------------------------------------------
+password = ( password >= 6 && matches(".*[A-Z].*") && matches(".*[a-z].*") && matches(".*[0-9].*") ) && not null
