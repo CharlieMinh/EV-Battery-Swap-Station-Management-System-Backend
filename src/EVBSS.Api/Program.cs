@@ -1,54 +1,88 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using EVBSS.Api.Data;
+using Microsoft.OpenApi.Models; 
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Swagger (Cách B bạn đã cài)
+// Swagger (đơn giản)
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-// CORS (để React gọi được)
-builder.Services.AddCors(opt => {
-  opt.AddPolicy("frontend", p => p
-    .WithOrigins("http://localhost:3000", "http://localhost:5173")
-    .AllowAnyHeader()
-    .AllowAnyMethod());
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "EVBSS API", Version = "v1" });
+    var scheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Nhập: Bearer {token}"
+    };
+    c.AddSecurityDefinition("Bearer", scheme);
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [ new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } } ] = new string[] {}
+    });
 });
 
-// EF Core (đã làm 4.5)
+// CORS cho React
+builder.Services.AddCors(opt =>
+{
+    opt.AddPolicy("frontend", p => p
+        .WithOrigins("http://localhost:3000", "http://localhost:5173")
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
+// EF Core DbContext
 var conn = builder.Configuration.GetConnectionString("Default")
            ?? throw new InvalidOperationException("Missing ConnectionStrings:Default");
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
 
-// 🔹 QUAN TRỌNG: bật Controllers
+// JWT (đủ dùng)
+var jwt = builder.Configuration.GetSection("Jwt");
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]
+                   ?? throw new InvalidOperationException("Missing Jwt:Key")));
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(o =>
+    {
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwt["Issuer"],
+            ValidAudience = jwt["Audience"],
+            IssuerSigningKey = signingKey
+        };
+    });
+builder.Services.AddAuthorization();
+
+// Controllers
 builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// (Dev) auto-migrate + seed nếu bạn đã thêm
-using (var scope = app.Services.CreateScope()) {
-  var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-  db.Database.Migrate();
-  if (!db.Stations.Any()) {
-    db.Stations.AddRange(
-      new EVBSS.Api.Models.Station { Name="BSS District 1", Address="123 Le Loi", City="HCM", Lat=10.776, Lng=106.700 },
-      new EVBSS.Api.Models.Station { Name="BSS Thu Duc", Address="456 Vo Van Ngan", City="HCM", Lat=10.849, Lng=106.769 }
-    );
-    db.SaveChanges();
-  }
+// (Dev) auto-migrate nếu cần
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
 }
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// app.UseHttpsRedirection(); // đang chạy HTTP 8080 thì tắt tạm
+// app.UseHttpsRedirection(); // đang chạy HTTP 8080 nên tắt tạm
 app.UseCors("frontend");
 
-// 🔹 QUAN TRỌNG: map Controllers
-app.MapControllers();
+app.UseAuthentication();
+app.UseAuthorization();
 
-// ⛔ Tạm comment các Minimal API cũ để tránh trùng route
-// app.MapGet("/stations", ...);
-// app.MapGet("/ping", ...);
+app.MapControllers();
 
 app.Run();
