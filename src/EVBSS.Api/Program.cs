@@ -1,76 +1,54 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using EVBSS.Api.Data; // nơi bạn đã tạo AppDbContext ở bước 4.3
-using Microsoft.EntityFrameworkCore;
 using EVBSS.Api.Data;
-using EVBSS.Api.Models;
-
-
 
 var builder = WebApplication.CreateBuilder(args);
 
-var conn = builder.Configuration.GetConnectionString("Default")
-           ?? throw new InvalidOperationException("Missing ConnectionStrings:Default");
-
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseSqlServer(conn));
-
-
-
-
-// 🔽 CORS
-builder.Services.AddCors(opt =>
-{
-   opt.AddPolicy("frontend", p => p
-       .WithOrigins("http://localhost:3000", "http://localhost:5173")
-       .AllowAnyHeader()
-       .AllowAnyMethod());
-});
-
-builder.Services.AddOpenApi();
-
-// Thêm hai dòng này cho Swagger
+// Swagger (Cách B bạn đã cài)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// CORS (để React gọi được)
+builder.Services.AddCors(opt => {
+  opt.AddPolicy("frontend", p => p
+    .WithOrigins("http://localhost:3000", "http://localhost:5173")
+    .AllowAnyHeader()
+    .AllowAnyMethod());
+});
+
+// EF Core (đã làm 4.5)
+var conn = builder.Configuration.GetConnectionString("Default")
+           ?? throw new InvalidOperationException("Missing ConnectionStrings:Default");
+builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
+
+// 🔹 QUAN TRỌNG: bật Controllers
+builder.Services.AddControllers();
+
 var app = builder.Build();
 
-// Auto-migrate & seed dev data
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate(); // đảm bảo schema luôn khớp
-
-    if (!db.Stations.Any())
-    {
-        db.Stations.AddRange(
-            new Station { Name = "BSS District 1", Address = "123 Le Loi", City = "HCM", Lat = 10.776, Lng = 106.700, IsActive = true },
-            new Station { Name = "BSS Thu Duc",   Address = "456 Vo Van Ngan", City = "HCM", Lat = 10.849, Lng = 106.769, IsActive = true }
-        );
-        db.SaveChanges();
-    }
+// (Dev) auto-migrate + seed nếu bạn đã thêm
+using (var scope = app.Services.CreateScope()) {
+  var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+  db.Database.Migrate();
+  if (!db.Stations.Any()) {
+    db.Stations.AddRange(
+      new EVBSS.Api.Models.Station { Name="BSS District 1", Address="123 Le Loi", City="HCM", Lat=10.776, Lng=106.700 },
+      new EVBSS.Api.Models.Station { Name="BSS Thu Duc", Address="456 Vo Van Ngan", City="HCM", Lat=10.849, Lng=106.769 }
+    );
+    db.SaveChanges();
+  }
 }
 
+app.UseSwagger();
+app.UseSwaggerUI();
 
+// app.UseHttpsRedirection(); // đang chạy HTTP 8080 thì tắt tạm
 app.UseCors("frontend");
 
-// Bật Swagger ở mọi env (hoặc bọc trong if Dev tùy bạn)
-app.UseSwagger();
-app.UseSwaggerUI();  // UI tại /swagger
+// 🔹 QUAN TRỌNG: map Controllers
+app.MapControllers();
 
-// app.UseHttpsRedirection(); // tắt tạm khi chạy HTTP:8080
-
-app.MapGet("/weatherforecast", () => { /* như bạn đang có */ })
-   .WithName("GetWeatherForecast")
-   .WithOpenApi(); // để có trong doc
-
-app.MapGet("/ping", () => Results.Ok(new { message = "pong", time = DateTime.UtcNow }))
-   .WithOpenApi();
-
-app.MapGet("/_db-check", (AppDbContext db) => Results.Ok(new { dbRegistered = db is not null }));
-
-app.MapGet("/stations", async (AppDbContext db) =>
-    await db.Stations.AsNoTracking().ToListAsync()
-).WithOpenApi();
-
+// ⛔ Tạm comment các Minimal API cũ để tránh trùng route
+// app.MapGet("/stations", ...);
+// app.MapGet("/ping", ...);
 
 app.Run();
