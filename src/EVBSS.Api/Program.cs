@@ -4,6 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using EVBSS.Api.Data;
 using Microsoft.OpenApi.Models; 
+using EVBSS.Api.Models;     // Role, User
+using BCrypt.Net;           // Hash mật khẩu
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -87,6 +90,28 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    if (!db.Users.Any(u => u.Email == "admin@evbss.local"))
+{
+    db.Users.Add(new User {
+        Email = "admin@evbss.local",
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+        Name = "EVBSS Admin",
+        Role = Role.Admin
+    });
+}
+
+if (!db.Users.Any(u => u.Email == "staff@evbss.local"))
+{
+    db.Users.Add(new User {
+        Email = "staff@evbss.local",
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+        Name = "EVBSS Staff",
+        Role = Role.Staff
+    });
+}
+
+db.SaveChanges();
 }
 
 app.UseSwagger();
