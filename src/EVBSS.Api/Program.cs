@@ -34,7 +34,8 @@ builder.Services.AddCors(opt =>
     opt.AddPolicy("frontend", p => p
         .WithOrigins("http://localhost:3000", "http://localhost:5173")
         .AllowAnyHeader()
-        .AllowAnyMethod());
+        .AllowAnyMethod()
+        .AllowCredentials()); // cho phép gửi cookie
 });
 
 // EF Core DbContext
@@ -57,7 +58,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwt["Issuer"],
             ValidAudience = jwt["Audience"],
-            IssuerSigningKey = signingKey
+            IssuerSigningKey = signingKey,
+            ClockSkew = TimeSpan.Zero //tránh lệch giờ server-client
+        };
+
+        // Lấy token từ Cookie "jwt"
+        o.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.Request.Cookies.ContainsKey("jwt"))
+                {
+                    context.Token = context.Request.Cookies["jwt"];
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization();
