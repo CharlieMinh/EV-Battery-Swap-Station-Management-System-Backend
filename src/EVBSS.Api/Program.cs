@@ -28,25 +28,49 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// CORS cho React
+// CORS Configuration for frontend applications
 builder.Services.AddCors(opt =>
 {
-    opt.AddPolicy("frontend", p => p
-        .WithOrigins("http://localhost:3000", "http://localhost:5173")
-        .AllowAnyHeader()
-        .AllowAnyMethod()
-        .AllowCredentials()); // cho phép gửi cookie
+    opt.AddPolicy("frontend", p =>
+    {
+        p.WithOrigins("http://localhost:3000", "http://localhost:5173")
+         .AllowAnyHeader()
+         .AllowAnyMethod()
+         .AllowCredentials(); // Required for cookies
+        
+        // In production, replace with actual frontend domains
+        if (builder.Environment.IsProduction())
+        {
+            // p.WithOrigins("https://yourdomain.com")
+        }
+    });
 });
 
-// EF Core DbContext
+// Database configuration
 var conn = builder.Configuration.GetConnectionString("Default")
            ?? throw new InvalidOperationException("Missing ConnectionStrings:Default");
-builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
 
-// JWT (đủ dùng)
+// Use SQLite for development, SQL Server for production
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(conn));
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
+}
+
+// JWT Configuration with enhanced security
 var jwt = builder.Configuration.GetSection("Jwt");
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]
-                   ?? throw new InvalidOperationException("Missing Jwt:Key")));
+var jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY") ?? jwt["Key"];
+
+if (string.IsNullOrEmpty(jwtKey) || jwtKey.Length < 32)
+{
+    throw new InvalidOperationException("JWT key must be at least 32 characters long. Set JWT_SECRET_KEY environment variable for production.");
+}
+
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -59,10 +83,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwt["Issuer"],
             ValidAudience = jwt["Audience"],
             IssuerSigningKey = signingKey,
-            ClockSkew = TimeSpan.Zero //tránh lệch giờ server-client
+            ClockSkew = TimeSpan.FromMinutes(1) // Allow 1 minute clock skew
         };
 
-        // Lấy token từ Cookie "jwt"
+        // Extract token from Cookie "jwt"
         o.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -92,7 +116,21 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// app.UseHttpsRedirection(); // đang chạy HTTP 8080 nên tắt tạm
+// Security headers for production
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts(); // HTTP Strict Transport Security
+    app.Use(async (context, next) =>
+    {
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        context.Response.Headers["X-Frame-Options"] = "DENY";
+        context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
+        context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        await next();
+    });
+}
+
+// app.UseHttpsRedirection(); // Enable this in production
 app.UseCors("frontend");
 
 app.UseAuthentication();
