@@ -3,6 +3,7 @@ using EVBSS.Api.Dtos.Common;
 using EVBSS.Api.Dtos.Stations;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using EVBSS.Api.Models;
 
 namespace EVBSS.Api.Controllers;
 
@@ -74,4 +75,53 @@ public class StationsController : ControllerBase
         return Math.Round(R * c, 3);
     }
     private static double ToRad(double deg) => deg * Math.PI / 180.0;
+
+    // GET /api/v1/stations/{id}/availability
+    [HttpGet("{id:guid}/availability")]
+    public async Task<ActionResult<AvailabilityDto>> Availability(Guid id)
+    {
+        var exists = await _db.Stations.AnyAsync(s => s.Id == id && s.IsActive);
+        if (!exists)
+            return NotFound(new { error = new { code = "STATION_NOT_FOUND", message = "Station not found" } });
+
+        var agg = await _db.BatteryUnits
+            .Where(b => b.StationId == id)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Full = g.Count(b => b.Status == BatteryStatus.Full),
+                Charging = g.Count(b => b.Status == BatteryStatus.Charging),
+                Maintenance = g.Count(b => b.Status == BatteryStatus.Maintenance),
+                Total = g.Count()
+            })
+            .FirstOrDefaultAsync();
+
+        var a = agg is null ? new AvailabilityDto(0, 0, 0, 0)
+                            : new AvailabilityDto(agg.Full, agg.Charging, agg.Maintenance, agg.Total);
+        return a;
+    }
+
+    // GET /api/v1/stations/{id}/batteries?status=Full|Charging|Maintenance|Issued
+    [HttpGet("{id:guid}/batteries")]
+    public async Task<ActionResult<IReadOnlyList<BatteryUnitDto>>> Batteries(Guid id, [FromQuery] BatteryStatus? status)
+    {
+        var exists = await _db.Stations.AnyAsync(s => s.Id == id && s.IsActive);
+        if (!exists)
+            return NotFound(new { error = new { code = "STATION_NOT_FOUND", message = "Station not found" } });
+
+        var q = _db.BatteryUnits.AsNoTracking()
+            .Where(b => b.StationId == id);
+
+        if (status.HasValue)
+            q = q.Where(b => b.Status == status.Value);
+
+        var list = await q
+            .OrderByDescending(b => b.Status == BatteryStatus.Full)  // Full lên trước
+            .ThenBy(b => b.Serial)
+            .Select(b => new BatteryUnitDto(
+                b.Id, b.Serial, b.BatteryModelId, b.Model.Name, b.Status.ToString(), b.UpdatedAt))
+            .ToListAsync();
+
+        return list;
+    }
 }

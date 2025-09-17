@@ -77,27 +77,69 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 
     if (!db.Users.Any(u => u.Email == "admin@evbss.local"))
-{
-    db.Users.Add(new User {
-        Email = "admin@evbss.local",
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
-        Name = "EVBSS Admin",
-        Role = Role.Admin
-    });
+    {
+        db.Users.Add(new User
+        {
+            Email = "admin@evbss.local",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            Name = "EVBSS Admin",
+            Role = Role.Admin
+        });
+    }
+
+    if (!db.Users.Any(u => u.Email == "staff@evbss.local"))
+    {
+        db.Users.Add(new User
+        {
+            Email = "staff@evbss.local",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            Name = "EVBSS Staff",
+            Role = Role.Staff
+        });
+    }
+
+    // Seed Battery Models
+    if (!db.BatteryModels.Any())
+    {
+        db.BatteryModels.AddRange(
+            new BatteryModel { Name = "BM-48V-30Ah", Voltage = 48, CapacityWh = 1440, Manufacturer = "EVBSS" },
+            new BatteryModel { Name = "BM-72V-40Ah", Voltage = 72, CapacityWh = 2880, Manufacturer = "EVBSS" }
+        );
+        db.SaveChanges();
+    }
+
+    // Seed Battery Units (mỗi station vài viên, các trạng thái khác nhau)
+    if (!db.BatteryUnits.Any())
+    {
+        var models = db.BatteryModels.ToList();
+        var m48 = models.First(x => x.Name == "BM-48V-30Ah");
+        var m72 = models.First(x => x.Name == "BM-72V-40Ah");
+        var stations = db.Stations.ToList();
+        if (stations.Count > 0)
+        {
+            var st1 = stations[0];
+            var st2 = stations.Count > 1 ? stations[1] : stations[0];
+
+            db.BatteryUnits.AddRange(
+                // Station 1
+                new BatteryUnit { Serial = "BM48-0001", BatteryModelId = m48.Id, StationId = st1.Id, Status = BatteryStatus.Full },
+                new BatteryUnit { Serial = "BM48-0002", BatteryModelId = m48.Id, StationId = st1.Id, Status = BatteryStatus.Full },
+                new BatteryUnit { Serial = "BM48-0003", BatteryModelId = m48.Id, StationId = st1.Id, Status = BatteryStatus.Charging },
+                new BatteryUnit { Serial = "BM72-0001", BatteryModelId = m72.Id, StationId = st1.Id, Status = BatteryStatus.Maintenance },
+
+                // Station 2
+                new BatteryUnit { Serial = "BM48-0101", BatteryModelId = m48.Id, StationId = st2.Id, Status = BatteryStatus.Full },
+                new BatteryUnit { Serial = "BM48-0102", BatteryModelId = m48.Id, StationId = st2.Id, Status = BatteryStatus.Charging },
+                new BatteryUnit { Serial = "BM72-0101", BatteryModelId = m72.Id, StationId = st2.Id, Status = BatteryStatus.Full },
+                new BatteryUnit { Serial = "BM72-0102", BatteryModelId = m72.Id, StationId = st2.Id, Status = BatteryStatus.Issued }
+            );
+            db.SaveChanges();
+        }
+    }
 }
 
-if (!db.Users.Any(u => u.Email == "staff@evbss.local"))
-{
-    db.Users.Add(new User {
-        Email = "staff@evbss.local",
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
-        Name = "EVBSS Staff",
-        Role = Role.Staff
-    });
-}
 
-db.SaveChanges();
-}
+
 
 app.UseSwagger();
 app.UseSwaggerUI();
