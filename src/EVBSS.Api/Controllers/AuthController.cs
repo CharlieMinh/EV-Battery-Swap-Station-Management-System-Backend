@@ -1,4 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using EVBSS.Api.Data;
@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-  
-     
+
+
 
 
 namespace EVBSS.Api.Controllers;
@@ -32,8 +32,8 @@ public class AuthController : ControllerBase
     {
         var email = req.Email.Trim().ToLower();
         if (await _db.Users.AnyAsync(u => u.Email == email))
-            return Conflict(new { error = new { code = "EMAIL_EXISTS", message = "Email already registered." }});
-        
+            return Conflict(new { error = new { code = "EMAIL_EXISTS", message = "Email already registered." } });
+
         var user = new User
         {
             Email = email,
@@ -49,38 +49,21 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-[AllowAnonymous]
-[ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
-[Produces("application/json")]
-public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
-{
-    var email = req.Email.Trim().ToLower();
-    var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
-    if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-        return Unauthorized(new { error = new { code="INVALID_CREDENTIALS", message="Invalid email or password." }});
-
-    var token = GenerateJwt(user);
-
-        // set HttpOnly cookie
-        Response.Cookies.Append("jwt", token, new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = true, // chỉ cho https
-            SameSite = SameSiteMode.None, // cho phép FE và BE khác domain
-            Expires = DateTime.UtcNow.AddMinutes(int.Parse(_cfg["Jwt:ExpireMinutes"] ?? "120"))
-        });
-
-        user.LastLogin = DateTime.UtcNow;
-    await _db.SaveChangesAsync();
-
-    return Ok(new AuthResponse { Token = token, Role = user.Role.ToString(), Name = user.Name });
-}
-    [HttpPost("logout")]
-    [Authorize]
-    public IActionResult Logout()
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
     {
-        Response.Cookies.Delete("jwt"); //xóa cookie
-        return Ok(new { message = "Logged out successfully." });
+        var email = req.Email.Trim().ToLower();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+            return Unauthorized(new { error = new { code = "INVALID_CREDENTIALS", message = "Invalid email or password." } });
+
+        var token = GenerateJwt(user);
+        user.LastLogin = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new AuthResponse { Token = token, Role = user.Role.ToString(), Name = user.Name });
     }
 
     [HttpGet("me")]

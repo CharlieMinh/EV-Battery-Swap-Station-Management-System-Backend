@@ -8,11 +8,11 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<Station> Stations => Set<Station>();
-    public DbSet<User>    Users    => Set<User>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Vehicle> Vehicles => Set<Vehicle>();
 
-    // 🔽 mới
     public DbSet<BatteryModel> BatteryModels => Set<BatteryModel>();
-    public DbSet<BatteryUnit>  BatteryUnits  => Set<BatteryUnit>();
+    public DbSet<BatteryUnit> BatteryUnits => Set<BatteryUnit>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -21,7 +21,7 @@ public class AppDbContext : DbContext
         b.Entity<User>().HasIndex(u => u.Email).IsUnique();
         b.Entity<User>().Property(u => u.Email).HasMaxLength(255);
 
-        // 🔽 cấu hình pin
+
         b.Entity<BatteryModel>()
             .Property(m => m.Name).HasMaxLength(200);
         b.Entity<BatteryUnit>()
@@ -32,5 +32,20 @@ public class AppDbContext : DbContext
             .HasOne(u => u.Station).WithMany().HasForeignKey(u => u.StationId);
         b.Entity<BatteryUnit>()
             .HasIndex(u => new { u.StationId, u.Status });
+
+        // Vehicle
+        b.Entity<Vehicle>().Property(v => v.VIN).HasMaxLength(17);
+        b.Entity<Vehicle>().Property(v => v.Plate).HasMaxLength(20);
+
+        b.Entity<Vehicle>().HasIndex(v => new { v.UserId, v.VIN }).IsUnique();
+        b.Entity<Vehicle>().HasIndex(v => new { v.UserId, v.Plate }).IsUnique();
+
+        b.Entity<Vehicle>()
+            .HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId);
+
+        b.Entity<Vehicle>()
+            .HasOne(v => v.CompatibleModel).WithMany().HasForeignKey(v => v.CompatibleBatteryModelId);
+
+        base.OnModelCreating(b);
     }
 }
