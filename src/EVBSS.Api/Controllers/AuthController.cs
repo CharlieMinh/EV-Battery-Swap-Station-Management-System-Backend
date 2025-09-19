@@ -8,8 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-  
-     
+
+
 
 
 namespace EVBSS.Api.Controllers;
@@ -32,7 +32,7 @@ public class AuthController : ControllerBase
     {
         var email = req.Email.Trim().ToLower();
         if (await _db.Users.AnyAsync(u => u.Email == email))
-            return Conflict(new { error = new { code = "EMAIL_EXISTS", message = "Email already registered." }});
+            return Conflict(new { error = new { code = "EMAIL_EXISTS", message = "Email already registered." } });
 
         var user = new User
         {
@@ -49,22 +49,22 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-[AllowAnonymous]
-[ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
-[Produces("application/json")]
-public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
-{
-    var email = req.Email.Trim().ToLower();
-    var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
-    if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-        return Unauthorized(new { error = new { code="INVALID_CREDENTIALS", message="Invalid email or password." }});
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
+    {
+        var email = req.Email.Trim().ToLower();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+            return Unauthorized(new { error = new { code = "INVALID_CREDENTIALS", message = "Invalid email or password." } });
 
-    var token = GenerateJwt(user);
-    user.LastLogin = DateTime.UtcNow;
-    await _db.SaveChangesAsync();
+        var token = GenerateJwt(user);
+        user.LastLogin = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
 
-    return Ok(new AuthResponse { Token = token, Role = user.Role.ToString(), Name = user.Name });
-}
+        return Ok(new AuthResponse { Token = token, Role = user.Role.ToString(), Name = user.Name });
+    }
 
     [HttpGet("me")]
     [Authorize]
