@@ -4948,23 +4948,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\phamv\\.nuget\\packages\\": {},
+    "C:\\Users\\2imtina\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\phamv\\Desktop\\SWP_FA25_docs\\EV-Battery-Swap-Station-Management-System-Backend\\src\\EVBSS.Api\\EVBSS.Api.csproj",
+      "projectUniqueName": "C:\\Users\\2imtina\\Documents\\FALL2025\\SWP391\\EV-Battery-Swap-Station-Management-System-Backend\\src\\EVBSS.Api\\EVBSS.Api.csproj",
       "projectName": "EVBSS.Api",
-      "projectPath": "C:\\Users\\phamv\\Desktop\\SWP_FA25_docs\\EV-Battery-Swap-Station-Management-System-Backend\\src\\EVBSS.Api\\EVBSS.Api.csproj",
-      "packagesPath": "C:\\Users\\phamv\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\phamv\\Desktop\\SWP_FA25_docs\\EV-Battery-Swap-Station-Management-System-Backend\\src\\EVBSS.Api\\obj\\",
+      "projectPath": "C:\\Users\\2imtina\\Documents\\FALL2025\\SWP391\\EV-Battery-Swap-Station-Management-System-Backend\\src\\EVBSS.Api\\EVBSS.Api.csproj",
+      "packagesPath": "C:\\Users\\2imtina\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\2imtina\\Documents\\FALL2025\\SWP391\\EV-Battery-Swap-Station-Management-System-Backend\\src\\EVBSS.Api\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\phamv\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\2imtina\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
@@ -5051,7 +5051,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.302/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.305/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

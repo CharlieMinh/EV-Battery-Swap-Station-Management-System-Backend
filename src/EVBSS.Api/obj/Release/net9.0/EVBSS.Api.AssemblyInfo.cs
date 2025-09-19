@@ -13,9 +13,9 @@ using System.Reflection;
 
 [assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("3968eb09-64a9-4fec-a82d-f036534ba4b3")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("EVBSS.Api")]
-[assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
+[assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2a92f71317e92e4230e2fddd073e01740cb9442e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0ff59e22ff56e22ffb293b593191bb7f84f0538d")]
 [assembly: System.Reflection.AssemblyProductAttribute("EVBSS.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("EVBSS.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
