@@ -92,13 +92,15 @@ public class StationsController : ControllerBase
                 Full = g.Count(b => b.Status == BatteryStatus.Full),
                 Charging = g.Count(b => b.Status == BatteryStatus.Charging),
                 Maintenance = g.Count(b => b.Status == BatteryStatus.Maintenance),
-                Total = g.Count()
+                Total = g.Count(),
+                FullAvailable = g.Count(b => b.Status == BatteryStatus.Full && b.IsReserved == false)
             })
             .FirstOrDefaultAsync();
 
-        var a = agg is null ? new AvailabilityDto(0, 0, 0, 0)
-                            : new AvailabilityDto(agg.Full, agg.Charging, agg.Maintenance, agg.Total);
-        return a;
+        return agg is null
+            ? new AvailabilityDto(0, 0, 0, 0, 0)
+            : new AvailabilityDto(agg.Full, agg.Charging, agg.Maintenance, agg.Total, agg.FullAvailable);
+
     }
 
     // GET /api/v1/stations/{id}/batteries?status=Full|Charging|Maintenance|Issued

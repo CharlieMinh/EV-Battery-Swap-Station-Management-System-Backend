@@ -3,10 +3,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using EVBSS.Api.Data;
-using Microsoft.OpenApi.Models; 
+using Microsoft.OpenApi.Models;
 using EVBSS.Api.Models;     // Role, User
 using BCrypt.Net;           // Hash mật khẩu
-
+using EVBSS.Api.Services;   // Services
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,7 +27,7 @@ builder.Services.AddSwaggerGen(c =>
     c.AddSecurityDefinition("Bearer", scheme);
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        [ new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } } ] = new string[] {}
+        [new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }] = new string[] { }
     });
 });
 
@@ -67,6 +67,12 @@ builder.Services.AddAuthorization();
 
 // Controllers
 builder.Services.AddControllers();
+
+
+// Services
+builder.Services.AddScoped<ReservationService>();
+builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>();
+
 
 var app = builder.Build();
 

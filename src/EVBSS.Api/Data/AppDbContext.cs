@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
 
     public DbSet<BatteryModel> BatteryModels => Set<BatteryModel>();
     public DbSet<BatteryUnit> BatteryUnits => Set<BatteryUnit>();
+    public DbSet<Reservation> Reservations => Set<Reservation>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -45,6 +46,44 @@ public class AppDbContext : DbContext
 
         b.Entity<Vehicle>()
             .HasOne(v => v.CompatibleModel).WithMany().HasForeignKey(v => v.CompatibleBatteryModelId);
+
+        // BatteryUnit
+        b.Entity<BatteryUnit>().HasIndex(u => u.Serial).IsUnique();
+        b.Entity<BatteryUnit>().HasIndex(u => new { u.StationId, u.Status, u.IsReserved }); // tìm nhanh "Full & !IsReserved"
+        b.Entity<BatteryUnit>().Property(u => u.IsReserved).HasDefaultValue(false);
+
+        // Reservation
+        b.Entity<Reservation>().HasIndex(r => new { r.UserId, r.CreatedAt });
+        b.Entity<Reservation>().HasIndex(r => new { r.StationId, r.Status });
+
+        b.Entity<Reservation>().HasOne(r => r.User).WithMany().HasForeignKey(r => r.UserId);
+        b.Entity<Reservation>().HasOne(r => r.Station).WithMany().HasForeignKey(r => r.StationId);
+        b.Entity<Reservation>().HasOne(r => r.BatteryModel).WithMany().HasForeignKey(r => r.BatteryModelId);
+        b.Entity<Reservation>().HasOne(r => r.BatteryUnit).WithMany().HasForeignKey(r => r.BatteryUnitId);
+
+        b.Entity<Reservation>()
+        .HasOne(r => r.User)
+        .WithMany()
+        .HasForeignKey(r => r.UserId)
+        .OnDelete(DeleteBehavior.Restrict);
+
+    b.Entity<Reservation>()
+        .HasOne(r => r.Station)
+        .WithMany()
+        .HasForeignKey(r => r.StationId)
+        .OnDelete(DeleteBehavior.Restrict);
+
+    b.Entity<Reservation>()
+        .HasOne(r => r.BatteryModel)
+        .WithMany()
+        .HasForeignKey(r => r.BatteryModelId)
+        .OnDelete(DeleteBehavior.Restrict);
+
+    b.Entity<Reservation>()
+        .HasOne(r => r.BatteryUnit)
+        .WithMany()
+        .HasForeignKey(r => r.BatteryUnitId)
+        .OnDelete(DeleteBehavior.Restrict);
 
         base.OnModelCreating(b);
     }
