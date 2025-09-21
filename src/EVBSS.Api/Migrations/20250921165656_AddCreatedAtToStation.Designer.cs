@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250921165656_AddCreatedAtToStation")]
+    partial class AddCreatedAtToStation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -168,89 +171,6 @@ namespace EVBSS.Api.Migrations
                     b.ToTable("Stations");
                 });
 
-            modelBuilder.Entity("EVBSS.Api.Models.SubscriptionPlan", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("DurationDays")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("SwapsPerDay")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SubscriptionPlans");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.SwapTransaction", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal?>("Cost")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<Guid?>("NewBatteryId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("OldBatteryId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("StationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("SwapTime")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NewBatteryId");
-
-                    b.HasIndex("OldBatteryId");
-
-                    b.HasIndex("SwapTime");
-
-                    b.HasIndex("StationId", "SwapTime");
-
-                    b.HasIndex("UserId", "SwapTime");
-
-                    b.ToTable("SwapTransactions");
-                });
-
             modelBuilder.Entity("EVBSS.Api.Models.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -287,44 +207,6 @@ namespace EVBSS.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.UserSubscription", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("EndDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("StartDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("SubscriptionPlanId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("SwapsUsed")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SubscriptionPlanId");
-
-                    b.HasIndex("EndDate", "Status");
-
-                    b.HasIndex("UserId", "Status");
-
-                    b.ToTable("UserSubscriptions");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.Vehicle", b =>
@@ -415,56 +297,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("BatteryUnit");
 
                     b.Navigation("Station");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.SwapTransaction", b =>
-                {
-                    b.HasOne("EVBSS.Api.Models.BatteryUnit", "NewBattery")
-                        .WithMany()
-                        .HasForeignKey("NewBatteryId");
-
-                    b.HasOne("EVBSS.Api.Models.BatteryUnit", "OldBattery")
-                        .WithMany()
-                        .HasForeignKey("OldBatteryId");
-
-                    b.HasOne("EVBSS.Api.Models.Station", "Station")
-                        .WithMany()
-                        .HasForeignKey("StationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("NewBattery");
-
-                    b.Navigation("OldBattery");
-
-                    b.Navigation("Station");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.UserSubscription", b =>
-                {
-                    b.HasOne("EVBSS.Api.Models.SubscriptionPlan", "SubscriptionPlan")
-                        .WithMany()
-                        .HasForeignKey("SubscriptionPlanId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SubscriptionPlan");
 
                     b.Navigation("User");
                 });

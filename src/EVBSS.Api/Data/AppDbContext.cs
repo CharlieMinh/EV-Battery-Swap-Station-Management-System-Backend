@@ -14,6 +14,10 @@ public class AppDbContext : DbContext
     public DbSet<BatteryModel> BatteryModels => Set<BatteryModel>();
     public DbSet<BatteryUnit> BatteryUnits => Set<BatteryUnit>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
+    
+    public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
+    public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
+    public DbSet<SwapTransaction> SwapTransactions => Set<SwapTransaction>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -84,6 +88,35 @@ public class AppDbContext : DbContext
         .WithMany()
         .HasForeignKey(r => r.BatteryUnitId)
         .OnDelete(DeleteBehavior.Restrict);
+
+        // SubscriptionPlan
+        b.Entity<SubscriptionPlan>().Property(sp => sp.Name).HasMaxLength(200);
+        b.Entity<SubscriptionPlan>().Property(sp => sp.Description).HasMaxLength(500);
+        b.Entity<SubscriptionPlan>().Property(sp => sp.Price).HasPrecision(18, 2);
+
+        // UserSubscription
+        b.Entity<UserSubscription>().HasIndex(us => new { us.UserId, us.Status });
+        b.Entity<UserSubscription>().HasIndex(us => new { us.EndDate, us.Status });
+        
+        b.Entity<UserSubscription>()
+            .HasOne(us => us.User).WithMany().HasForeignKey(us => us.UserId);
+        b.Entity<UserSubscription>()
+            .HasOne(us => us.SubscriptionPlan).WithMany().HasForeignKey(us => us.SubscriptionPlanId);
+
+        // SwapTransaction
+        b.Entity<SwapTransaction>().HasIndex(st => new { st.UserId, st.SwapTime });
+        b.Entity<SwapTransaction>().HasIndex(st => new { st.StationId, st.SwapTime });
+        b.Entity<SwapTransaction>().HasIndex(st => st.SwapTime);
+        b.Entity<SwapTransaction>().Property(st => st.Cost).HasPrecision(18, 2);
+        
+        b.Entity<SwapTransaction>()
+            .HasOne(st => st.User).WithMany().HasForeignKey(st => st.UserId);
+        b.Entity<SwapTransaction>()
+            .HasOne(st => st.Station).WithMany().HasForeignKey(st => st.StationId);
+        b.Entity<SwapTransaction>()
+            .HasOne(st => st.OldBattery).WithMany().HasForeignKey(st => st.OldBatteryId);
+        b.Entity<SwapTransaction>()
+            .HasOne(st => st.NewBattery).WithMany().HasForeignKey(st => st.NewBatteryId);
 
         base.OnModelCreating(b);
     }

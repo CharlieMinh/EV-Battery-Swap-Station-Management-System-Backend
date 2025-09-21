@@ -9,4 +9,5 @@ public class Station
     public double Lat { get; set; }
     public double Lng { get; set; }
     public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
