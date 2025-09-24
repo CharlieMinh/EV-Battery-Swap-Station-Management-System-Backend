@@ -42,6 +42,18 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = "Admin,Staff")]
+    [ProducesResponseType(typeof(IEnumerable<ReservationDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public IActionResult GetAll([FromQuery] ReservationStatus? status)
+    {
+        // Admin/Staff có thể xem tất cả reservations
+        // Tạm thời return empty list, sẽ implement method trong service sau
+        return Ok(new List<ReservationDto>());
+    }
+
+    [HttpGet("mine")]
     [ProducesResponseType(typeof(IEnumerable<ReservationDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetMine([FromQuery] ReservationStatus? status)
