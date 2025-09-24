@@ -20,7 +20,7 @@ public class ReservationService
         Guid userId, Guid stationId, Guid batteryModelId, DateTime startTime, int holdMinutes = 15)
     {
         // Transaction + khóa hàng để tránh race
-        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
 
         // 1) chọn 1 viên Full & !IsReserved bằng SELECT có lock hint
         var unit = await _db.BatteryUnits
@@ -72,7 +72,7 @@ public class ReservationService
 
     public async Task CancelAsync(Guid userId, Guid reservationId)
     {
-        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
 
         var res = await _db.Reservations.FirstOrDefaultAsync(r => r.Id == reservationId && r.UserId == userId);
         if (res is null) throw new KeyNotFoundException("RESERVATION_NOT_FOUND");
@@ -109,7 +109,7 @@ public class ReservationService
 
     foreach (var item in overdue)
     {
-        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
         try
         {
             var res = await _db.Reservations.FirstAsync(x => x.Id == item.Id);

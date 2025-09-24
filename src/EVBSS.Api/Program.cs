@@ -31,11 +31,11 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// CORS cho React
+// CORS cho React và Swagger UI
 builder.Services.AddCors(opt =>
 {
     opt.AddPolicy("frontend", p => p
-        .WithOrigins("http://localhost:3000", "http://localhost:5173")
+        .WithOrigins("http://localhost:3000", "http://localhost:5173", "http://localhost:5194", "https://localhost:7240")
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials()); // cho phép gửi cookie
@@ -156,6 +156,64 @@ using (var scope = app.Services.CreateScope())
             );
             db.SaveChanges();
         }
+    }
+
+    // Seed VinFast-based Subscription Plans
+    if (!db.SubscriptionPlans.Any())
+    {
+        var bm48V = db.BatteryModels.First(x => x.Name == "BM-48V-30Ah");
+        var bm72V = db.BatteryModels.First(x => x.Name == "BM-72V-40Ah");
+        
+        db.SubscriptionPlans.AddRange(
+            // VF3 equivalent plans (48V battery)
+            new SubscriptionPlan 
+            { 
+                Name = "VF3-Basic", 
+                Description = "Gói cơ bản dành cho xe nhỏ - tương đương VF3",
+                MonthlyFeeUnder1500Km = 1100000,
+                MonthlyFee1500To3000Km = 1400000, 
+                MonthlyFeeOver3000Km = 3000000,
+                DepositAmount = 7000000,
+                BatteryModelId = bm48V.Id
+            },
+            
+            // VF5 equivalent plans (48V battery) 
+            new SubscriptionPlan 
+            { 
+                Name = "VF5-Standard", 
+                Description = "Gói tiêu chuẩn dành cho xe compact - tương đương VF5",
+                MonthlyFeeUnder1500Km = 1400000,
+                MonthlyFee1500To3000Km = 1900000,
+                MonthlyFeeOver3000Km = 3200000,
+                DepositAmount = 15000000,
+                BatteryModelId = bm48V.Id
+            },
+            
+            // VF7 equivalent plans (72V battery)
+            new SubscriptionPlan 
+            { 
+                Name = "VF7-Premium", 
+                Description = "Gói cao cấp dành cho xe SUV - tương đương VF7",
+                MonthlyFeeUnder1500Km = 2000000,
+                MonthlyFee1500To3000Km = 3500000,
+                MonthlyFeeOver3000Km = 5800000,
+                DepositAmount = 41000000,
+                BatteryModelId = bm72V.Id
+            },
+            
+            // VF9 equivalent plans (72V battery)
+            new SubscriptionPlan 
+            { 
+                Name = "VF9-Luxury", 
+                Description = "Gói siêu cao cấp dành cho xe hạng sang - tương đương VF9",
+                MonthlyFeeUnder1500Km = 3200000,
+                MonthlyFee1500To3000Km = 5400000,
+                MonthlyFeeOver3000Km = 8300000,
+                DepositAmount = 60000000,
+                BatteryModelId = bm72V.Id
+            }
+        );
+        db.SaveChanges();
     }
 }
 
