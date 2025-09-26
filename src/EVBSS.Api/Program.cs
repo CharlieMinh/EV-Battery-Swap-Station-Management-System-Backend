@@ -86,6 +86,7 @@ builder.Services.AddControllers();
 
 // Services
 builder.Services.AddScoped<ReservationService>();
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>();
 
 
