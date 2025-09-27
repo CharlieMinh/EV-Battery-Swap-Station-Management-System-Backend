@@ -23,5 +23,6 @@ public enum PaymentStatus
     Completed = 2,          // Thành công
     Failed = 3,             // Thất bại
     Cancelled = 4,          // Đã hủy
-    Refunded = 5            // Đã hoàn tiền
+    Refunded = 5,           // Đã hoàn tiền
+    PartiallyPaid = 6       // Thanh toán một phần
 }
