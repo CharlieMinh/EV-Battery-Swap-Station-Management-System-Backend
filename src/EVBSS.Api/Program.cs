@@ -7,6 +7,7 @@ using Microsoft.OpenApi.Models;
 using EVBSS.Api.Models;     // Role, User
 using BCrypt.Net;           // Hash mật khẩu
 using EVBSS.Api.Services;   // Services
+using EVBSS.Api.Configuration; // VnPayConfig
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -45,6 +46,9 @@ builder.Services.AddCors(opt =>
 var conn = builder.Configuration.GetConnectionString("Default")
            ?? throw new InvalidOperationException("Missing ConnectionStrings:Default");
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
+
+// VNPay Configuration
+builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPay"));
 
 // JWT (đủ dùng)
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -87,6 +91,8 @@ builder.Services.AddControllers();
 // Services
 builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IVnPayService, VnPayService>();
+builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>();
 
 
