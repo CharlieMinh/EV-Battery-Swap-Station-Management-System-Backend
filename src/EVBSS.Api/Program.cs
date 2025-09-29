@@ -93,6 +93,7 @@ builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>();
 
 
