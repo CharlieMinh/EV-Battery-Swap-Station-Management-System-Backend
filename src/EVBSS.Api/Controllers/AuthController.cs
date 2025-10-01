@@ -30,6 +30,18 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)
     {
+        // Validate input according to data annotations
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(x => x.Value!.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key.ToLower(),
+                    kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+            return BadRequest(new { error = new { code = "VALIDATION_FAILED", message = "Invalid input data.", details = errors } });
+        }
+
         var email = req.Email.Trim().ToLower();
         if (await _db.Users.AnyAsync(u => u.Email == email))
             return Conflict(new { error = new { code = "EMAIL_EXISTS", message = "Email already registered." } });
@@ -54,6 +66,18 @@ public class AuthController : ControllerBase
     [Produces("application/json")]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
     {
+        // Validate input according to data annotations
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(x => x.Value!.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key.ToLower(),
+                    kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+            return BadRequest(new { error = new { code = "VALIDATION_FAILED", message = "Invalid input data.", details = errors } });
+        }
+
         var email = req.Email.Trim().ToLower();
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
