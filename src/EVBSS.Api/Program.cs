@@ -110,7 +110,7 @@ using (var scope = app.Services.CreateScope())
         db.Users.Add(new User
         {
             Email = "admin@evbss.local",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678Swp@"),
             Name = "EVBSS Admin",
             Role = Role.Admin
         });
@@ -121,7 +121,7 @@ using (var scope = app.Services.CreateScope())
         db.Users.Add(new User
         {
             Email = "staff@evbss.local",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678Swp@"),
             Name = "EVBSS Staff",
             Role = Role.Staff
         });
