@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
+using EVBSS.Api.Validation;
 
 namespace EVBSS.Api.Dtos.Auth;
 
 public class LoginRequest
 {
-    [Required, EmailAddress, StringLength(255)]
+    [Required, CustomEmail, StringLength(255)]
     public string Email { get; set; } = default!;
 
     [Required, StringLength(100, MinimumLength = 6)]
