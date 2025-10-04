@@ -5,7 +5,7 @@ namespace EVBSS.Api.Validation;
 
 /// <summary>
 /// Custom validation attribute for strong password requirements
-/// Must contain: uppercase, lowercase, number, min 6 characters
+/// Must contain: uppercase, lowercase, number, min 8 characters
 /// </summary>
 public class StrongPasswordAttribute : ValidationAttribute
 {
@@ -19,7 +19,7 @@ public class StrongPasswordAttribute : ValidationAttribute
             return false;
 
         // Check minimum length
-        if (password.Length < 6)
+        if (password.Length < 8)
             return false;
 
         // Check for uppercase letter
@@ -39,7 +39,7 @@ public class StrongPasswordAttribute : ValidationAttribute
 
     public override string FormatErrorMessage(string name)
     {
-        return $"{name} must be at least 6 characters and contain uppercase, lowercase, and number.";
+        return $"{name} must be at least 8 characters and contain uppercase, lowercase, and number.";
     }
 }
 
