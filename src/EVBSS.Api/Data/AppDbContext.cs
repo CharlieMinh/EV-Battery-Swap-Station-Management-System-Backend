@@ -21,6 +21,9 @@ public class AppDbContext : DbContext
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<SwapTransaction> SwapTransactions => Set<SwapTransaction>();
+    
+    // Password Reset System
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -247,5 +250,41 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(st => st.ReturnedBatteryId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // Configure PasswordResetToken
+        b.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.TokenHash)
+                .IsRequired()
+                .HasMaxLength(255);
+                
+            entity.Property(e => e.CreatedAt)
+                .IsRequired();
+                
+            entity.Property(e => e.ExpiresAt)
+                .IsRequired();
+                
+            entity.Property(e => e.IsUsed)
+                .IsRequired()
+                .HasDefaultValue(false);
+                
+            entity.Property(e => e.RequestIpAddress)
+                .HasMaxLength(45); // IPv6 max length
+                
+            entity.Property(e => e.RequestUserAgent)
+                .HasMaxLength(500);
+            
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            // Indexes for performance
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.IsUsed, e.ExpiresAt });
+            entity.HasIndex(e => e.ExpiresAt); // For cleanup jobs
+        });
     }
 }
