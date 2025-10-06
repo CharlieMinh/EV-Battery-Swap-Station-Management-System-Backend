@@ -87,7 +87,33 @@ public class AuthController : ControllerBase
         user.LastLogin = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
+        //  Set JWT token vào HTTP-only Cookie
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,        
+            Secure = Request.IsHttps,  
+            SameSite = SameSiteMode.Lax,  
+            Expires = DateTimeOffset.UtcNow.AddMinutes(int.Parse(_cfg["Jwt:ExpiresMinutes"] ?? "120"))
+        };
+        Response.Cookies.Append("jwt", token, cookieOptions);
+
         return Ok(new AuthResponse { Token = token, Role = user.Role.ToString(), Name = user.Name });
+    }
+
+    [HttpPost("logout")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult Logout()
+    {
+        //  Xóa JWT cookie 
+        Response.Cookies.Delete("jwt", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = Request.IsHttps, 
+            SameSite = SameSiteMode.Lax  
+        });
+
+        return Ok(new { message = "Logged out successfully" });
     }
 
     [HttpGet("me")]
