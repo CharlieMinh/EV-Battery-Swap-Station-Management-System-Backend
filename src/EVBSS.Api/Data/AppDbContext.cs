@@ -25,7 +25,13 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // Station
         b.Entity<Station>().HasIndex(s => new { s.City, s.IsActive });
+        b.Entity<Station>().Property(s => s.Name).HasMaxLength(200);
+        b.Entity<Station>().Property(s => s.Address).HasMaxLength(500);
+        b.Entity<Station>().Property(s => s.City).HasMaxLength(100);
+        b.Entity<Station>().Property(s => s.PhoneNumber).HasMaxLength(20);
+        b.Entity<Station>().Property(s => s.PrimaryImageUrl).HasMaxLength(500);
 
         b.Entity<User>().HasIndex(u => u.Email).IsUnique();
         b.Entity<User>().Property(u => u.Email).HasMaxLength(255);

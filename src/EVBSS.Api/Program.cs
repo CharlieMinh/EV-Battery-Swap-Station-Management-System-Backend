@@ -105,6 +105,21 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 
+    // Update existing stations with default operating hours (8AM - 6PM)
+    var stationsNeedUpdate = db.Stations
+        .Where(s => s.OpenTime == TimeSpan.Zero && s.CloseTime == TimeSpan.Zero)
+        .ToList();
+    
+    if (stationsNeedUpdate.Any())
+    {
+        foreach (var station in stationsNeedUpdate)
+        {
+            station.OpenTime = new TimeSpan(8, 0, 0);   // 8:00 AM
+            station.CloseTime = new TimeSpan(18, 0, 0); // 6:00 PM
+        }
+        db.SaveChanges();
+    }
+
     if (!db.Users.Any(u => u.Email == "admin@evbss.local"))
     {
         db.Users.Add(new User

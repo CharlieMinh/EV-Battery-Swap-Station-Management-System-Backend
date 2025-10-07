@@ -30,7 +30,10 @@ public class StationsController : ControllerBase
         var items = await q.OrderBy(s => s.Name)
                            .Skip((page - 1) * pageSize)
                            .Take(pageSize)
-                           .Select(s => new StationDto(s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive))
+                           .Select(s => new StationDto(
+                               s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive,
+                               s.OpenTime, s.CloseTime, s.PhoneNumber, s.PrimaryImageUrl,
+                               s.IsOpenNow()))
                            .ToListAsync();
 
         return new PagedResult<StationDto> { Items = items, Page = page, PageSize = pageSize, Total = total };
@@ -42,17 +45,44 @@ public class StationsController : ControllerBase
     {
         var s = await _db.Stations.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (s is null) return NotFound(new { error = new { code = "STATION_NOT_FOUND", message = "Station not found" } });
-        return new StationDto(s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive);
+        return new StationDto(
+            s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive,
+            s.OpenTime, s.CloseTime, s.PhoneNumber, s.PrimaryImageUrl,
+            s.IsOpenNow());
     }
 
-    // GET /api/v1/stations/nearby?lat=10.77&lng=106.7&radiusKm=5
+    // GET /api/v1/stations/nearby?lat=10.77&lng=106.7&radiusKm=5&batteryModelId={guid}
+    /// <summary>
+    /// Tìm trạm gần vị trí hiện tại. Nếu có batteryModelId, chỉ trả về trạm có pin available của model đó.
+    /// </summary>
     [HttpGet("nearby")]
-    public async Task<ActionResult<IReadOnlyList<NearbyStationDto>>> Nearby([FromQuery] double lat, [FromQuery] double lng, [FromQuery] double radiusKm = 5)
+    public async Task<ActionResult<IReadOnlyList<NearbyStationDto>>> Nearby(
+        [FromQuery] double lat, 
+        [FromQuery] double lng, 
+        [FromQuery] Guid? batteryModelId,
+        [FromQuery] double radiusKm = 5)
     {
         if (radiusKm <= 0 || radiusKm > 50) radiusKm = 5; // hạn chế trong dev
 
-        // MVP: tính khoảng cách ở memory (danh sách trạm không quá lớn)
+        // Bước 1: Lấy tất cả trạm active
         var all = await _db.Stations.AsNoTracking().Where(s => s.IsActive).ToListAsync();
+
+        // Bước 2: Nếu filter theo BatteryModelId → Chỉ giữ trạm có pin available
+        if (batteryModelId.HasValue)
+        {
+            var stationsWithBattery = await _db.BatteryUnits
+                .Where(b => 
+                    b.BatteryModelId == batteryModelId.Value &&
+                    b.Status == BatteryStatus.Full &&
+                    !b.IsReserved)
+                .Select(b => b.StationId)
+                .Distinct()
+                .ToListAsync();
+
+            all = all.Where(s => stationsWithBattery.Contains(s.Id)).ToList();
+        }
+
+        // Bước 3: Tính khoảng cách và filter theo radiusKm
         var res = all.Select(s =>
                 new NearbyStationDto(s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, HaversineKm(lat, lng, s.Lat, s.Lng)))
             .Where(x => x.DistanceKm <= radiusKm)
@@ -77,30 +107,51 @@ public class StationsController : ControllerBase
     private static double ToRad(double deg) => deg * Math.PI / 180.0;
 
     // GET /api/v1/stations/{id}/availability
+    /// <summary>
+    /// Lấy tình trạng pin tại trạm (tổng quan + chi tiết theo từng BatteryModel)
+    /// </summary>
     [HttpGet("{id:guid}/availability")]
-    public async Task<ActionResult<AvailabilityDto>> Availability(Guid id)
+    public async Task<ActionResult<StationAvailabilityDto>> Availability(Guid id)
     {
         var exists = await _db.Stations.AnyAsync(s => s.Id == id && s.IsActive);
         if (!exists)
             return NotFound(new { error = new { code = "STATION_NOT_FOUND", message = "Station not found" } });
 
-        var agg = await _db.BatteryUnits
+        // Tổng quan chung
+        var summary = await _db.BatteryUnits
             .Where(b => b.StationId == id)
             .GroupBy(_ => 1)
-            .Select(g => new
-            {
-                Full = g.Count(b => b.Status == BatteryStatus.Full),
-                Charging = g.Count(b => b.Status == BatteryStatus.Charging),
-                Maintenance = g.Count(b => b.Status == BatteryStatus.Maintenance),
-                Total = g.Count(),
-                FullAvailable = g.Count(b => b.Status == BatteryStatus.Full && b.IsReserved == false)
-            })
+            .Select(g => new AvailabilitySummaryDto(
+                g.Count(b => b.Status == BatteryStatus.Full),
+                g.Count(b => b.Status == BatteryStatus.Charging),
+                g.Count(b => b.Status == BatteryStatus.Maintenance),
+                g.Count(),
+                g.Count(b => b.Status == BatteryStatus.Full && !b.IsReserved)
+            ))
             .FirstOrDefaultAsync();
 
-        return agg is null
-            ? new AvailabilityDto(0, 0, 0, 0, 0)
-            : new AvailabilityDto(agg.Full, agg.Charging, agg.Maintenance, agg.Total, agg.FullAvailable);
+        // Chi tiết theo từng BatteryModel
+        var byModel = await _db.BatteryUnits
+            .Where(b => b.StationId == id)
+            .GroupBy(b => new { b.BatteryModelId, b.Model.Name })
+            .Select(g => new AvailabilityByModelDto(
+                g.Key.BatteryModelId,
+                g.Key.Name,
+                g.Count(),
+                g.Count(b => b.Status == BatteryStatus.Full),
+                g.Count(b => b.Status == BatteryStatus.Full && !b.IsReserved),
+                g.Count(b => b.Status == BatteryStatus.Charging),
+                g.Count(b => b.Status == BatteryStatus.Maintenance)
+            ))
+            .ToListAsync();
 
+        // Nếu không có pin nào → Trả về empty
+        if (summary is null)
+        {
+            summary = new AvailabilitySummaryDto(0, 0, 0, 0, 0);
+        }
+
+        return new StationAvailabilityDto(summary, byModel);
     }
 
     // GET /api/v1/stations/{id}/batteries?status=Full|Charging|Maintenance|Issued
