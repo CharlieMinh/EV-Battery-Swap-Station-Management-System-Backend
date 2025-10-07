@@ -101,31 +101,70 @@ public class SwapTransactionsController : ControllerBase
     /// <param name="page">Số trang (mặc định: 1)</param>
     /// <param name="pageSize">Số item mỗi trang (mặc định: 10, tối đa: 50)</param>
     /// <returns>Lịch sử đổi pin có phân trang</returns>
-    [HttpGet("mine")]
-    public async Task<ActionResult<SwapHistoryResponse>> GetMySwapHistory(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10)
+   [HttpGet("mine")]
+public async Task<ActionResult<SwapHistoryResponse>> GetMySwapHistory(
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 3,        // default nhỏ (3) để load nhanh ở FE
+    [FromQuery] bool all = false)        // nếu true => trả toàn bộ (có giới hạn)
+{
+    try
     {
-        try
+        if (page < 1) page = 1;
+
+        // Giới hạn an toàn để tránh trả quá nhiều bản ghi (bảo vệ server)
+        const int MaxFetchLimit = 1000;
+
+        var userId = GetCurrentUserId();
+
+        if (all)
         {
-            // Validate pagination parameters
-            if (page < 1) page = 1;
-            if (pageSize < 1 || pageSize > 50) pageSize = 10;
+            // Lấy tổng số bản ghi (GetUserSwapHistoryAsync đã trả về TotalCount)
+            // Gọi 1 lần để biết totalCount (chỉ lấy pageSize=1 để giảm dữ liệu không cần thiết)
+            var tmp = await _swapService.GetUserSwapHistoryAsync(userId, 1, 1);
+            var totalCount = tmp.TotalCount;
 
-            var userId = GetCurrentUserId();
-            var result = await _swapService.GetUserSwapHistoryAsync(userId, page, pageSize);
+            // Nếu không có record thì trả response rỗng 
+            if (totalCount == 0)
+            {
+                return Ok(new SwapHistoryResponse
+                {
+                    Transactions = new List<SwapTransactionResponse>(),
+                    TotalCount = 0,
+                    Page = 1,
+                    PageSize = 0,
+                    TotalPages = 0
+                });
+            }
 
-            _logger.LogInformation("Retrieved swap history for user {UserId}: {Count} transactions", 
-                userId, result.TotalCount);
+            // Giới hạn số bản ghi trả về tối đa để tránh quá tải
+            var fetchSize = Math.Min(totalCount, MaxFetchLimit);
 
-            return Ok(result);
+            var resultAll = await _swapService.GetUserSwapHistoryAsync(userId, 1, fetchSize);
+
+            _logger.LogInformation("Retrieved ALL swap history for user {UserId}: {Count} transactions (capped at {Cap})",
+                userId, resultAll.TotalCount, MaxFetchLimit);
+
+            return Ok(resultAll);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving swap history for user {UserId}", GetCurrentUserId());
-            return StatusCode(500, new { error = "An error occurred while retrieving swap history" });
-        }
+
+       
+        if (pageSize < 1) pageSize = 3;
+        if (pageSize > MaxFetchLimit) pageSize = MaxFetchLimit;
+
+        var result = await _swapService.GetUserSwapHistoryAsync(userId, page, pageSize);
+
+        _logger.LogInformation("Retrieved swap history for user {UserId}: {Count} transactions (page {Page}, size {Size})",
+            userId, result.TotalCount, page, pageSize);
+
+        return Ok(result);
     }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error retrieving swap history for user {UserId}", GetCurrentUserId());
+        return StatusCode(500, new { error = "An error occurred while retrieving swap history" });
+    }
+}
+
 
     /// <summary>
     /// Get a specific swap transaction by ID
@@ -185,15 +224,18 @@ public class SwapTransactionsController : ControllerBase
         }
     }
 
-    private Guid GetCurrentUserId()
+  private Guid GetCurrentUserId()
+{
+    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
     {
-        var userIdClaim = User.FindFirst("userId")?.Value;
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
-        {
-            throw new UnauthorizedAccessException("User ID not found in token");
-        }
-        return userId;
+        throw new UnauthorizedAccessException("User ID not found in token");
     }
+
+    return userId;
+}
+
 
     private SwapTransactionResponse MapToResponse(SwapTransaction swap)
     {
