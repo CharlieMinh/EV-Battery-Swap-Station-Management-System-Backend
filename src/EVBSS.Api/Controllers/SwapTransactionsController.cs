@@ -185,15 +185,17 @@ public class SwapTransactionsController : ControllerBase
         }
     }
 
-    private Guid GetCurrentUserId()
+   private Guid GetCurrentUserId()
+{
+    var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
     {
-        var userIdClaim = User.FindFirst("userId")?.Value;
-        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
-        {
-            throw new UnauthorizedAccessException("User ID not found in token");
-        }
-        return userId;
+        throw new UnauthorizedAccessException("User ID not found in token");
     }
+
+    return userId;
+}
 
     private SwapTransactionResponse MapToResponse(SwapTransaction swap)
     {
