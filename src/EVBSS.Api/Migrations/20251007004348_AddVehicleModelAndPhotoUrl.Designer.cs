@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251007004348_AddVehicleModelAndPhotoUrl")]
+    partial class AddVehicleModelAndPhotoUrl
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -671,7 +674,7 @@ namespace EVBSS.Api.Migrations
                         .HasMaxLength(17)
                         .HasColumnType("nvarchar(17)");
 
-                    b.Property<Guid?>("VehicleModelId")
+                    b.Property<Guid>("VehicleModelId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
@@ -985,7 +988,8 @@ namespace EVBSS.Api.Migrations
                     b.HasOne("EVBSS.Api.Models.VehicleModel", "VehicleModel")
                         .WithMany()
                         .HasForeignKey("VehicleModelId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("CompatibleModel");
 
