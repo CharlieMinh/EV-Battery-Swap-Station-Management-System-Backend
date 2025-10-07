@@ -10,6 +10,16 @@ public class CreateVehicleRequest
     [Required, StringLength(20, MinimumLength = 3)]
     public string Plate { get; set; } = default!;
 
+    /// <summary>
+    /// Loại xe của hãng (VF3, VF5, VF8, VF9)
+    /// </summary>
     [Required]
-    public Guid CompatibleBatteryModelId { get; set; }
+    public Guid VehicleModelId { get; set; }
+    
+    /// <summary>
+    /// URL ảnh xe của chủ xe (để nhận diện)
+    /// </summary>
+    [Url]
+    [StringLength(500)]
+    public string? PhotoUrl { get; set; }
 }

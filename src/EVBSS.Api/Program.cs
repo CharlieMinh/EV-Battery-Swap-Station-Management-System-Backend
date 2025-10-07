@@ -240,4 +240,21 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// Seed VehicleModels
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        await EVBSS.Api.Data.VehicleModelSeeder.SeedVehicleModelsAsync(context);
+        logger.LogInformation("VehicleModels seeded successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error seeding VehicleModels");
+    }
+}
+
 app.Run();

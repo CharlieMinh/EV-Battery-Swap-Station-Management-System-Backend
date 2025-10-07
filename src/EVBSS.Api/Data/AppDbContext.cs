@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Station> Stations => Set<Station>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<VehicleModel> VehicleModels => Set<VehicleModel>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
 
     public DbSet<BatteryModel> BatteryModels => Set<BatteryModel>();
@@ -44,18 +45,40 @@ public class AppDbContext : DbContext
         b.Entity<BatteryUnit>()
             .HasIndex(u => new { u.StationId, u.Status });
 
+        // VehicleModel (Loại xe của hãng)
+        b.Entity<VehicleModel>()
+            .HasIndex(vm => vm.Name).IsUnique();
+        b.Entity<VehicleModel>()
+            .Property(vm => vm.Name).HasMaxLength(100);
+        b.Entity<VehicleModel>()
+            .Property(vm => vm.FullName).HasMaxLength(200);
+        b.Entity<VehicleModel>()
+            .Property(vm => vm.Brand).HasMaxLength(100);
+        b.Entity<VehicleModel>()
+            .HasOne(vm => vm.CompatibleBatteryModel)
+            .WithMany()
+            .HasForeignKey(vm => vm.CompatibleBatteryModelId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Vehicle
         b.Entity<Vehicle>().Property(v => v.VIN).HasMaxLength(17);
         b.Entity<Vehicle>().Property(v => v.Plate).HasMaxLength(20);
+        b.Entity<Vehicle>().Property(v => v.PhotoUrl).HasMaxLength(500);
 
         b.Entity<Vehicle>().HasIndex(v => new { v.UserId, v.VIN }).IsUnique();
         b.Entity<Vehicle>().HasIndex(v => new { v.UserId, v.Plate }).IsUnique();
 
         b.Entity<Vehicle>()
-            .HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId);
+            .HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<Vehicle>()
-            .HasOne(v => v.CompatibleModel).WithMany().HasForeignKey(v => v.CompatibleBatteryModelId);
+            .HasOne(v => v.VehicleModel).WithMany().HasForeignKey(v => v.VehicleModelId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.Entity<Vehicle>()
+            .HasOne(v => v.CompatibleModel).WithMany().HasForeignKey(v => v.CompatibleBatteryModelId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // BatteryUnit
         b.Entity<BatteryUnit>().HasIndex(u => u.Serial).IsUnique();

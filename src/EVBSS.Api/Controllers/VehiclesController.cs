@@ -34,11 +34,17 @@ public class VehiclesController : ControllerBase
         if (!TryGetUserId(out var userId)) return Unauthorized();
 
         var items = await _db.Vehicles.AsNoTracking()
+            .Include(v => v.VehicleModel)
+            .Include(v => v.CompatibleModel)
             .Where(v => v.UserId == userId)
             .OrderByDescending(v => v.CreatedAt)
             .Select(v => new VehicleDto(
                 v.Id, v.VIN, v.Plate,
-                v.CompatibleBatteryModelId, v.CompatibleModel.Name, v.CreatedAt))
+                v.VehicleModelId, v.VehicleModel != null ? v.VehicleModel.Name : null, 
+                v.VehicleModel != null ? v.VehicleModel.FullName : null, 
+                v.VehicleModel != null ? v.VehicleModel.Brand : null,
+                v.CompatibleBatteryModelId, v.CompatibleModel.Name,
+                v.PhotoUrl, v.CreatedAt, v.UpdatedAt))
             .ToListAsync();
 
         return Ok(items);
@@ -54,10 +60,16 @@ public class VehiclesController : ControllerBase
         if (!TryGetUserId(out var userId)) return Unauthorized();
 
         var v = await _db.Vehicles.AsNoTracking()
+            .Include(x => x.VehicleModel)
+            .Include(x => x.CompatibleModel)
             .Where(x => x.Id == id && x.UserId == userId)
             .Select(x => new VehicleDto(
                 x.Id, x.VIN, x.Plate,
-                x.CompatibleBatteryModelId, x.CompatibleModel.Name, x.CreatedAt))
+                x.VehicleModelId, x.VehicleModel != null ? x.VehicleModel.Name : null,
+                x.VehicleModel != null ? x.VehicleModel.FullName : null,
+                x.VehicleModel != null ? x.VehicleModel.Brand : null,
+                x.CompatibleBatteryModelId, x.CompatibleModel.Name,
+                x.PhotoUrl, x.CreatedAt, x.UpdatedAt))
             .FirstOrDefaultAsync();
 
         return v is null
@@ -78,10 +90,16 @@ public class VehiclesController : ControllerBase
         var vin = req.Vin.Trim().ToUpperInvariant();
         var plate = req.Plate.Trim().ToUpperInvariant();
 
-        // Model pin tồn tại?
-        var bm = await _db.BatteryModels.FindAsync(req.CompatibleBatteryModelId);
-        if (bm is null)
-            return BadRequest(new { error = new { code = "BATTERY_MODEL_NOT_FOUND", message = "Compatible battery model not found." } });
+        // VehicleModel tồn tại và active?
+        var vehicleModel = await _db.VehicleModels
+            .Include(vm => vm.CompatibleBatteryModel)
+            .FirstOrDefaultAsync(vm => vm.Id == req.VehicleModelId);
+        
+        if (vehicleModel is null)
+            return BadRequest(new { error = new { code = "VEHICLE_MODEL_NOT_FOUND", message = "Vehicle model not found." } });
+
+        if (!vehicleModel.IsActive)
+            return BadRequest(new { error = new { code = "VEHICLE_MODEL_INACTIVE", message = "This vehicle model is not supported for battery swap service." } });
 
         // Không trùng trong phạm vi user
         if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.VIN == vin))
@@ -95,16 +113,69 @@ public class VehiclesController : ControllerBase
             UserId = userId,
             VIN = vin,
             Plate = plate,
-            CompatibleBatteryModelId = bm.Id
+            VehicleModelId = vehicleModel.Id,
+            CompatibleBatteryModelId = vehicleModel.CompatibleBatteryModelId,
+            PhotoUrl = req.PhotoUrl
         };
 
         _db.Vehicles.Add(entity);
         await _db.SaveChangesAsync();
 
-        var dto = new VehicleDto(entity.Id, entity.VIN, entity.Plate,
-                                 entity.CompatibleBatteryModelId, bm.Name, entity.CreatedAt);
+        var dto = new VehicleDto(
+            entity.Id, entity.VIN, entity.Plate,
+            entity.VehicleModelId, vehicleModel.Name, vehicleModel.FullName, vehicleModel.Brand,
+            entity.CompatibleBatteryModelId, vehicleModel.CompatibleBatteryModel.Name,
+            entity.PhotoUrl, entity.CreatedAt, entity.UpdatedAt);
 
         return CreatedAtAction(nameof(GetById), new { id = entity.Id }, dto);
+    }
+
+    /// PUT /api/v1/vehicles/{id}
+    [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(VehicleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateVehicleRequest req)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+
+        var vehicle = await _db.Vehicles
+            .Include(v => v.VehicleModel)
+                .ThenInclude(vm => vm.CompatibleBatteryModel)
+            .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
+
+        if (vehicle is null)
+            return NotFound(new { error = new { code = "VEHICLE_NOT_FOUND", message = "Vehicle not found" } });
+
+        // Update Plate nếu có
+        if (!string.IsNullOrWhiteSpace(req.Plate))
+        {
+            var plate = req.Plate.Trim().ToUpperInvariant();
+            
+            // Check không trùng với xe khác của user
+            if (plate != vehicle.Plate && await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.Plate == plate && v.Id != id))
+                return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists." } });
+
+            vehicle.Plate = plate;
+        }
+
+        // Update PhotoUrl nếu có
+        if (req.PhotoUrl != null) // null check cho phép xóa ảnh bằng cách gửi null
+        {
+            vehicle.PhotoUrl = string.IsNullOrWhiteSpace(req.PhotoUrl) ? null : req.PhotoUrl;
+        }
+
+        vehicle.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var dto = new VehicleDto(
+            vehicle.Id, vehicle.VIN, vehicle.Plate,
+            vehicle.VehicleModelId, vehicle.VehicleModel.Name, vehicle.VehicleModel.FullName, vehicle.VehicleModel.Brand,
+            vehicle.CompatibleBatteryModelId, vehicle.VehicleModel.CompatibleBatteryModel.Name,
+            vehicle.PhotoUrl, vehicle.CreatedAt, vehicle.UpdatedAt);
+
+        return Ok(dto);
     }
 
     /// DELETE /api/v1/vehicles/{id}
@@ -112,6 +183,7 @@ public class VehiclesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(Guid id)
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
@@ -119,6 +191,31 @@ public class VehiclesController : ControllerBase
         var v = await _db.Vehicles.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
         if (v is null)
             return NotFound(new { error = new { code = "VEHICLE_NOT_FOUND", message = "Vehicle not found" } });
+
+        // Kiểm tra xe có subscription nào không (kể cả inactive vì còn FK constraint)
+        var hasAnySubscription = await _db.UserSubscriptions
+            .AnyAsync(s => s.VehicleId == id);
+        
+        if (hasAnySubscription)
+        {
+            var activeCount = await _db.UserSubscriptions.CountAsync(s => s.VehicleId == id && s.IsActive);
+            var inactiveCount = await _db.UserSubscriptions.CountAsync(s => s.VehicleId == id && !s.IsActive);
+            
+            return Conflict(new 
+            { 
+                error = new 
+                { 
+                    code = "VEHICLE_HAS_SUBSCRIPTION", 
+                    message = $"Cannot delete vehicle. It has {activeCount} active and {inactiveCount} inactive subscription(s). Please contact admin to remove subscriptions first.",
+                    details = new 
+                    {
+                        activeSubscriptions = activeCount,
+                        inactiveSubscriptions = inactiveCount,
+                        solution = "Ask admin to delete subscription records or set FK constraint to SET NULL"
+                    }
+                } 
+            });
+        }
 
         _db.Vehicles.Remove(v);
         await _db.SaveChangesAsync();
