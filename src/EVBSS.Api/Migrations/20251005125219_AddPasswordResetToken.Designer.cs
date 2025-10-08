@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251005125219_AddPasswordResetToken")]
+    partial class AddPasswordResetToken
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -308,35 +311,17 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("BatteryModelId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("BatteryUnitId")
+                    b.Property<Guid>("BatteryUnitId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("CancelNote")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("CancelReason")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("CheckedInAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("QRCode")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<int>("HoldDurationMinutes")
+                        .HasColumnType("int");
 
-                    b.Property<DateTime>("SlotDate")
+                    b.Property<DateTime>("StartTime")
                         .HasColumnType("datetime2");
-
-                    b.Property<TimeSpan>("SlotEndTime")
-                        .HasColumnType("time");
-
-                    b.Property<TimeSpan>("SlotStartTime")
-                        .HasColumnType("time");
 
                     b.Property<Guid>("StationId")
                         .HasColumnType("uniqueidentifier");
@@ -347,16 +332,11 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("VerifiedByStaffId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.HasIndex("BatteryModelId");
 
                     b.HasIndex("BatteryUnitId");
-
-                    b.HasIndex("VerifiedByStaffId");
 
                     b.HasIndex("StationId", "Status");
 
@@ -373,16 +353,11 @@ namespace EVBSS.Api.Migrations
 
                     b.Property<string>("Address")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("City")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<TimeSpan>("CloseTime")
-                        .HasColumnType("time");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -395,19 +370,7 @@ namespace EVBSS.Api.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<TimeSpan>("OpenTime")
-                        .HasColumnType("time");
-
-                    b.Property<string>("PhoneNumber")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("PrimaryImageUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -738,17 +701,10 @@ namespace EVBSS.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("PhotoUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<string>("Plate")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -758,14 +714,9 @@ namespace EVBSS.Api.Migrations
                         .HasMaxLength(17)
                         .HasColumnType("nvarchar(17)");
 
-                    b.Property<Guid?>("VehicleModelId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.HasIndex("CompatibleBatteryModelId");
-
-                    b.HasIndex("VehicleModelId");
 
                     b.HasIndex("UserId", "Plate")
                         .IsUnique();
@@ -774,55 +725,6 @@ namespace EVBSS.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("Vehicles");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.VehicleModel", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Brand")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<Guid>("CompatibleBatteryModelId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("FullName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("ImageUrl")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompatibleBatteryModelId");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("VehicleModels");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.BatteryUnit", b =>
@@ -917,7 +819,8 @@ namespace EVBSS.Api.Migrations
                     b.HasOne("EVBSS.Api.Models.BatteryUnit", "BatteryUnit")
                         .WithMany()
                         .HasForeignKey("BatteryUnitId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("EVBSS.Api.Models.Station", "Station")
                         .WithMany()
@@ -931,10 +834,6 @@ namespace EVBSS.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("EVBSS.Api.Models.User", "VerifiedByStaff")
-                        .WithMany()
-                        .HasForeignKey("VerifiedByStaffId");
-
                     b.Navigation("BatteryModel");
 
                     b.Navigation("BatteryUnit");
@@ -942,8 +841,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("Station");
 
                     b.Navigation("User");
-
-                    b.Navigation("VerifiedByStaff");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.SubscriptionPlan", b =>
@@ -1076,36 +973,18 @@ namespace EVBSS.Api.Migrations
                     b.HasOne("EVBSS.Api.Models.BatteryModel", "CompatibleModel")
                         .WithMany()
                         .HasForeignKey("CompatibleBatteryModelId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("EVBSS.Api.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.VehicleModel", "VehicleModel")
-                        .WithMany()
-                        .HasForeignKey("VehicleModelId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("CompatibleModel");
 
                     b.Navigation("User");
-
-                    b.Navigation("VehicleModel");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.VehicleModel", b =>
-                {
-                    b.HasOne("EVBSS.Api.Models.BatteryModel", "CompatibleBatteryModel")
-                        .WithMany()
-                        .HasForeignKey("CompatibleBatteryModelId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("CompatibleBatteryModel");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.Invoice", b =>

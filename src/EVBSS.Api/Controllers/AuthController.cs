@@ -4,6 +4,7 @@ using System.Text;
 using EVBSS.Api.Data;
 using EVBSS.Api.Dtos.Auth;
 using EVBSS.Api.Models;
+using EVBSS.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -20,10 +21,13 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IConfiguration _cfg;
+    private readonly PasswordResetService _passwordResetService;
 
-    public AuthController(AppDbContext db, IConfiguration cfg)
+    public AuthController(AppDbContext db, IConfiguration cfg, PasswordResetService passwordResetService)
     {
-        _db = db; _cfg = cfg;
+        _db = db; 
+        _cfg = cfg;
+        _passwordResetService = passwordResetService;
     }
 
     [HttpPost("register")]
@@ -144,5 +148,112 @@ public class AuthController : ControllerBase
         var expires = DateTime.UtcNow.AddMinutes(int.Parse(jwt["ExpiresMinutes"] ?? "120"));
         var token = new JwtSecurityToken(jwt["Issuer"], jwt["Audience"], claims, expires: expires, signingCredentials: creds);
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    // =================== PASSWORD RESET ENDPOINTS ===================
+
+    /// <summary>
+    /// Yêu cầu đặt lại mật khẩu - gửi link reset qua email
+    /// </summary>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ForgotPasswordResponse>> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(x => x.Value!.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key.ToLower(),
+                    kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+            
+            return BadRequest(new { errors });
+        }
+
+        var ipAddress = GetClientIpAddress();
+        var userAgent = Request.Headers.UserAgent.ToString();
+
+        var result = await _passwordResetService.RequestPasswordResetAsync(request, ipAddress, userAgent);
+        
+        // Luôn trả về 200 OK để tránh email enumeration
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Validate reset token - kiểm tra token có hợp lệ không
+    /// </summary>
+    [HttpPost("validate-reset-token")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ValidateResetTokenResponse>> ValidateResetToken([FromBody] ValidateResetTokenRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var result = await _passwordResetService.ValidateResetTokenAsync(request);
+        
+        if (!result.IsValid)
+        {
+            return BadRequest(result);
+        }
+        
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Đặt lại mật khẩu mới với token hợp lệ
+    /// </summary>
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ResetPasswordResponse>> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(x => x.Value!.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key.ToLower(),
+                    kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+            
+            return BadRequest(new { errors });
+        }
+
+        var ipAddress = GetClientIpAddress();
+        var userAgent = Request.Headers.UserAgent.ToString();
+
+        var result = await _passwordResetService.ResetPasswordAsync(request, ipAddress, userAgent);
+        
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+        
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Lấy IP address của client
+    /// </summary>
+    private string? GetClientIpAddress()
+    {
+        // Kiểm tra các header proxy phổ biến
+        var xForwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(xForwardedFor))
+        {
+            // X-Forwarded-For có thể chứa nhiều IP, lấy IP đầu tiên
+            return xForwardedFor.Split(',')[0].Trim();
+        }
+
+        var xRealIp = Request.Headers["X-Real-IP"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(xRealIp))
+        {
+            return xRealIp;
+        }
+
+        // Fallback to connection remote IP
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 }
