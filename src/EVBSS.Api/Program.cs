@@ -89,12 +89,16 @@ builder.Services.AddControllers();
 
 
 // Services
-builder.Services.AddScoped<ReservationService>();
+builder.Services.AddScoped<SlotReservationService>(); // New slot-based service
+builder.Services.AddScoped<ReservationService>(); // Legacy wrapper service
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<SwapTransactionService>();
-builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>();
+
+// Background Services
+builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>(); // Legacy
+builder.Services.AddHostedService<EVBSS.Api.Services.SlotReservationBackgroundService>(); // New slot-based
 
 
 var app = builder.Build();
@@ -191,8 +195,8 @@ using (var scope = app.Services.CreateScope())
             // VF3 equivalent plans (48V battery)
             new SubscriptionPlan 
             { 
-                Name = "VF3-Basic", 
-                Description = "Gói cơ bản dành cho xe nhỏ - tương đương VF3",
+                Name = "FF3-Basic", 
+                Description = "Gói cơ bản dành cho xe nhỏ - tương đương FF3",
                 MonthlyFeeUnder1500Km = 1100000,
                 MonthlyFee1500To3000Km = 1400000, 
                 MonthlyFeeOver3000Km = 3000000,
@@ -203,8 +207,8 @@ using (var scope = app.Services.CreateScope())
             // VF5 equivalent plans (48V battery) 
             new SubscriptionPlan 
             { 
-                Name = "VF5-Standard", 
-                Description = "Gói tiêu chuẩn dành cho xe compact - tương đương VF5",
+                Name = "FF5-Standard", 
+                Description = "Gói tiêu chuẩn dành cho xe compact - tương đương FF5",
                 MonthlyFeeUnder1500Km = 1400000,
                 MonthlyFee1500To3000Km = 1900000,
                 MonthlyFeeOver3000Km = 3200000,
@@ -215,8 +219,8 @@ using (var scope = app.Services.CreateScope())
             // VF7 equivalent plans (72V battery)
             new SubscriptionPlan 
             { 
-                Name = "VF7-Premium", 
-                Description = "Gói cao cấp dành cho xe SUV - tương đương VF7",
+                Name = "FF7-Premium", 
+                Description = "Gói cao cấp dành cho xe SUV - tương đương FF7",
                 MonthlyFeeUnder1500Km = 2000000,
                 MonthlyFee1500To3000Km = 3500000,
                 MonthlyFeeOver3000Km = 5800000,
@@ -227,8 +231,8 @@ using (var scope = app.Services.CreateScope())
             // VF9 equivalent plans (72V battery)
             new SubscriptionPlan 
             { 
-                Name = "VF9-Luxury", 
-                Description = "Gói siêu cao cấp dành cho xe hạng sang - tương đương VF9",
+                Name = "FF9-Luxury", 
+                Description = "Gói siêu cao cấp dành cho xe hạng sang - tương đương FF9",
                 MonthlyFeeUnder1500Km = 3200000,
                 MonthlyFee1500To3000Km = 5400000,
                 MonthlyFeeOver3000Km = 8300000,

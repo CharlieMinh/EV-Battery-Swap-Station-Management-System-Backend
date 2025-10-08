@@ -33,13 +33,15 @@ public class SwapTransactionService
             if (reservation == null)
                 throw new InvalidOperationException("Reservation not found or does not belong to user");
 
-            if (reservation.Status != ReservationStatus.Held)
+            // TODO: Update for slot-based system
+            if (reservation.Status != ReservationStatus.CheckedIn && reservation.Status != ReservationStatus.Pending)
                 throw new InvalidOperationException($"Reservation status is {reservation.Status}, cannot start swap");
 
             // Check if reservation is still valid (not expired)
-            var expiryTime = reservation.CreatedAt.AddMinutes(reservation.HoldDurationMinutes);
-            if (DateTime.UtcNow > expiryTime)
-                throw new InvalidOperationException("Reservation has expired");
+            // TODO: Update validation for slot-based system
+            // var expiryTime = reservation.CreatedAt.AddMinutes(reservation.HoldDurationMinutes);
+            // if (DateTime.UtcNow > expiryTime)
+            //     throw new InvalidOperationException("Reservation has expired");
 
             // 2. Validate vehicle belongs to user
             var vehicle = await _context.Vehicles
@@ -72,8 +74,8 @@ public class SwapTransactionService
                 StationId = reservation.StationId,
                 VehicleId = request.VehicleId,
                 UserSubscriptionId = activeSubscription?.Id,
-                IssuedBatteryId = reservation.BatteryUnitId,
-                IssuedBatterySerial = reservation.BatteryUnit.Serial,
+                IssuedBatteryId = reservation.BatteryUnitId ?? throw new InvalidOperationException("BatteryUnit not assigned"),
+                IssuedBatterySerial = reservation.BatteryUnit?.Serial ?? throw new InvalidOperationException("BatteryUnit not assigned"),
                 VehicleOdoAtSwap = request.VehicleOdometer,
                 BatteryHealthIssued = 90, // Default battery health - would be stored in BatteryUnit
                 PaymentType = activeSubscription != null ? PaymentType.Subscription : PaymentType.PayPerSwap,
@@ -88,8 +90,8 @@ public class SwapTransactionService
 
             _context.SwapTransactions.Add(swapTransaction);
 
-            // 8. Update reservation status to Confirmed when swap starts
-            reservation.Status = ReservationStatus.Confirmed;
+            // 8. Update reservation status to Completed when swap starts
+            reservation.Status = ReservationStatus.Completed;
 
             // 9. Update battery unit status to Issued
             reservation.BatteryUnit.Status = BatteryStatus.Issued;
