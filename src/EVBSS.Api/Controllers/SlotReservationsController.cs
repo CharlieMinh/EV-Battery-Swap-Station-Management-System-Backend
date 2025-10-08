@@ -42,6 +42,38 @@ public class SlotReservationsController : ControllerBase
     }
 
     /// <summary>
+    /// Xem danh sách reservations (Admin/Staff Dashboard)
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Admin,Staff")]
+    [ProducesResponseType(typeof(IEnumerable<SlotReservationResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetReservations(
+        [FromQuery] DateTime? date,
+        [FromQuery] Guid? stationId,
+        [FromQuery] ReservationStatus? status,
+        [FromQuery] Guid? userId)
+    {
+        var reservations = await _service.GetReservationsAsync(date, stationId, status, userId);
+        var response = reservations.Select(MapToResponse);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Xem reservations của mình (Customer)
+    /// </summary>
+    [HttpGet("mine")]
+    [ProducesResponseType(typeof(IEnumerable<SlotReservationResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetMyReservations([FromQuery] ReservationStatus? status)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var reservations = await _service.GetReservationsAsync(userId: userId, status: status);
+        var response = reservations.Select(MapToResponse);
+        return Ok(response);
+    }
+
+    /// <summary>
     /// Tạo reservation theo slot
     /// </summary>
     [HttpPost]
@@ -62,25 +94,7 @@ public class SlotReservationsController : ControllerBase
                 req.SlotStartTime,
                 req.SlotEndTime);
 
-            var (earliestCheckIn, latestCheckIn) = ReservationSlotConfig.GetCheckInWindow(
-                reservation.SlotDate,
-                reservation.SlotStartTime,
-                reservation.SlotEndTime);
-
-            var response = new SlotReservationResponse
-            {
-                ReservationId = reservation.Id,
-                Status = reservation.Status.ToString(),
-                SlotDate = reservation.SlotDate,
-                SlotStartTime = reservation.SlotStartTime,
-                SlotEndTime = reservation.SlotEndTime,
-                QRCode = reservation.QRCode!,
-                CheckInWindow = new CheckInWindowDto
-                {
-                    EarliestTime = earliestCheckIn,
-                    LatestTime = latestCheckIn
-                }
-            };
+            var response = MapToResponse(reservation);
 
             return CreatedAtAction(nameof(GetById), new { id = reservation.Id }, response);
         }
@@ -105,8 +119,19 @@ public class SlotReservationsController : ControllerBase
         if (!TryGetUserId(out var userId))
             return Unauthorized();
 
-        // TODO: Implement get by ID
-        return NotFound();
+        try
+        {
+            var reservation = await _service.GetReservationByIdAsync(id, userId);
+            return Ok(MapToResponse(reservation));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { error = new { code = "RESERVATION_NOT_FOUND", message = "Không tìm thấy lịch đặt" } });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
     }
 
     /// <summary>
@@ -181,6 +206,37 @@ public class SlotReservationsController : ControllerBase
             return BadRequest(new { error = new { code = "INVALID_OPERATION", message = ex.Message } });
         }
     }
+
+    // Helper method to map Reservation to Response DTO
+    private SlotReservationResponse MapToResponse(Reservation reservation)
+    {
+        var slotDateTime = reservation.SlotDate.Date.Add(reservation.SlotStartTime);
+        var (earliest, latest) = ReservationSlotConfig.GetCheckInWindow(
+            slotDateTime, 
+            reservation.SlotStartTime, 
+            ReservationSlotConfig.CheckInBuffer
+        );
+
+        return new SlotReservationResponse
+        {
+            Id = reservation.Id,
+            ReservationId = reservation.Id,  // For backward compatibility
+            StationId = reservation.StationId,
+            StationName = reservation.Station?.Name ?? "Unknown",
+            BatteryModelId = reservation.BatteryModelId,
+            BatteryModelName = reservation.BatteryModel?.Name ?? "Unknown",
+            Status = reservation.Status.ToString(),
+            SlotDate = reservation.SlotDate,
+            SlotStartTime = reservation.SlotStartTime,
+            SlotEndTime = reservation.SlotEndTime,
+            QRCode = reservation.QRCode ?? "",
+            CheckInWindow = new CheckInWindowDto
+            {
+                EarliestTime = earliest,
+                LatestTime = latest
+            }
+        };
+    }
 }
 
 // ===== DTOs =====
@@ -195,7 +251,12 @@ public record CreateSlotReservationRequest(
 
 public record SlotReservationResponse
 {
-    public Guid ReservationId { get; set; }
+    public Guid Id { get; set; }
+    public Guid ReservationId { get; set; }  // Backward compatibility
+    public Guid StationId { get; set; }
+    public string StationName { get; set; } = null!;
+    public Guid BatteryModelId { get; set; }
+    public string BatteryModelName { get; set; } = null!;
     public string Status { get; set; } = null!;
     public DateTime SlotDate { get; set; }
     public TimeSpan SlotStartTime { get; set; }

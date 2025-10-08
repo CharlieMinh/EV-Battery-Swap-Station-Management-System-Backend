@@ -172,6 +172,65 @@ public class SlotReservationService
     }
 
     /// <summary>
+    /// Lấy thông tin chi tiết reservation theo ID
+    /// User chỉ xem được reservation của mình, Staff/Admin xem được tất cả
+    /// </summary>
+    public async Task<Reservation> GetReservationByIdAsync(Guid reservationId, Guid userId)
+    {
+        var reservation = await _db.Reservations
+            .Include(r => r.Station)
+            .Include(r => r.BatteryModel)
+            .Include(r => r.BatteryUnit)
+            .Include(r => r.User)
+            .Include(r => r.VerifiedByStaff)
+            .FirstOrDefaultAsync(r => r.Id == reservationId);
+
+        if (reservation == null)
+            throw new KeyNotFoundException("Không tìm thấy lịch đặt");
+
+        // User chỉ xem được reservation của mình
+        if (reservation.UserId != userId)
+            throw new UnauthorizedAccessException("Bạn không có quyền xem lịch đặt này");
+
+        return reservation;
+    }
+
+    /// <summary>
+    /// Lấy danh sách reservations với filter (cho Admin/Staff)
+    /// </summary>
+    public async Task<List<Reservation>> GetReservationsAsync(
+        DateTime? date = null,
+        Guid? stationId = null,
+        ReservationStatus? status = null,
+        Guid? userId = null)
+    {
+        var query = _db.Reservations
+            .Include(r => r.Station)
+            .Include(r => r.User)
+            .Include(r => r.BatteryModel)
+            .Include(r => r.BatteryUnit)
+            .Include(r => r.VerifiedByStaff)
+            .AsQueryable();
+
+        if (date.HasValue)
+            query = query.Where(r => r.SlotDate.Date == date.Value.Date);
+
+        if (stationId.HasValue)
+            query = query.Where(r => r.StationId == stationId.Value);
+
+        if (status.HasValue)
+            query = query.Where(r => r.Status == status.Value);
+
+        if (userId.HasValue)
+            query = query.Where(r => r.UserId == userId.Value);
+
+        return await query
+            .OrderBy(r => r.SlotDate)
+            .ThenBy(r => r.SlotStartTime)
+            .ToListAsync();
+    }
+
+    /// <summary>
     /// Staff check-in driver bằng QR Code
     /// </summary>
     public async Task<Reservation> CheckInAsync(
