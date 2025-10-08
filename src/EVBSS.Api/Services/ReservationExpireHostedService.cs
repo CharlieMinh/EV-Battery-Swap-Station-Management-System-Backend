@@ -14,7 +14,12 @@ public class ReservationExpireHostedService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Dev: mỗi 60s quét 1 lần
+        // DEPRECATED: This service is replaced by SlotReservationBackgroundService
+        // Keeping for backward compatibility but disabled
+        _logger.LogWarning("ReservationExpireHostedService is deprecated. Use SlotReservationBackgroundService instead.");
+        await Task.CompletedTask;
+        
+        /* // Dev: mỗi 60s quét 1 lần
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -30,6 +35,6 @@ public class ReservationExpireHostedService : BackgroundService
             }
 
             await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
-        }
+        } */
     }
 }

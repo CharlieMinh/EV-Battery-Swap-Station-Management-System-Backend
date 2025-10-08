@@ -23,6 +23,8 @@ public class ReservationsController : ControllerBase
         return Guid.TryParse(sub, out userId);
     }
 
+    // DEPRECATED: Use SlotReservationsController POST /api/v1/slot-reservations instead
+    /* 
     [HttpPost]
     [ProducesResponseType(typeof(ReservationCreatedResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -40,6 +42,7 @@ public class ReservationsController : ControllerBase
             return BadRequest(new { error = new { code = "NO_BATTERY", message = "No full battery available." } });
         }
     }
+    */
 
     [HttpGet]
     [Authorize(Roles = "Admin,Staff")]
@@ -53,6 +56,8 @@ public class ReservationsController : ControllerBase
         return Ok(new List<ReservationDto>());
     }
 
+    // DEPRECATED: Use SlotReservationsController GET /api/v1/slot-reservations instead
+    /* 
     [HttpGet("mine")]
     [ProducesResponseType(typeof(IEnumerable<ReservationDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -65,7 +70,10 @@ public class ReservationsController : ControllerBase
             r.Status.ToString(), r.StartTime, r.HoldDurationMinutes, r.CreatedAt));
         return Ok(dto);
     }
+    */
 
+    // DEPRECATED: Use SlotReservationsController DELETE /api/v1/slot-reservations/{id} instead
+    /* 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -83,4 +91,5 @@ public class ReservationsController : ControllerBase
             return NotFound(new { error = new { code = "RESERVATION_NOT_FOUND", message = "Reservation not found" } });
         }
     }
+    */
 }
