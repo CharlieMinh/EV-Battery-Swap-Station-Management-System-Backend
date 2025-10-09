@@ -95,7 +95,7 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<SwapTransactionService>();
-builder.Services.AddScoped<PasswordResetService>(); // Add missing service
+builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
 
 // Background Services
 // Legacy ReservationExpireHostedService removed - using SlotReservationBackgroundService instead
