@@ -60,6 +60,11 @@ public class SwapTransaction
     // Additional info
     public string? Notes { get; set; }                           // Ghi chú
     public string? CancellationReason { get; set; }              // Lý do hủy
+    
+    // Feedback và đánh giá từ khách hàng
+    public int? Rating { get; set; }                             // Đánh giá 1-5 sao
+    public string? Feedback { get; set; }                        // Phản hồi chi tiết
+    public DateTime? RatedAt { get; set; }                       // Thời gian đánh giá
 
     // Navigation properties
     public User User { get; set; } = null!;

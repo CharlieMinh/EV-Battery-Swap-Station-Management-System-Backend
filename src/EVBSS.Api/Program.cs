@@ -95,9 +95,10 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<SwapTransactionService>();
+builder.Services.AddScoped<PasswordResetService>(); // Add missing service
 
 // Background Services
-builder.Services.AddHostedService<EVBSS.Api.Services.ReservationExpireHostedService>(); // Legacy
+// Legacy ReservationExpireHostedService removed - using SlotReservationBackgroundService instead
 builder.Services.AddHostedService<EVBSS.Api.Services.SlotReservationBackgroundService>(); // New slot-based
 
 
@@ -151,18 +152,21 @@ using (var scope = app.Services.CreateScope())
     {
         db.BatteryModels.AddRange(
             new BatteryModel { Name = "BM-48V-30Ah", Voltage = 48, CapacityWh = 1440, Manufacturer = "EVBSS" },
-            new BatteryModel { Name = "BM-72V-40Ah", Voltage = 72, CapacityWh = 2880, Manufacturer = "EVBSS" }
+            new BatteryModel { Name = "BM-72V-40Ah", Voltage = 72, CapacityWh = 2880, Manufacturer = "EVBSS" },
+            new BatteryModel { Name = "VF5 Battery Pack", Voltage = 60, CapacityWh = 3000, Manufacturer = "VinFast" }
         );
         db.SaveChanges();
     }
 
-    // Seed Battery Units (mỗi station vài viên, các trạng thái khác nhau)
+    // Seed Battery Units (mỗi station những pin theo ID cụ thể)
     if (!db.BatteryUnits.Any())
     {
         var models = db.BatteryModels.ToList();
         var m48 = models.First(x => x.Name == "BM-48V-30Ah");
         var m72 = models.First(x => x.Name == "BM-72V-40Ah");
+        var vf5 = models.First(x => x.Name == "VF5 Battery Pack");
         var stations = db.Stations.ToList();
+        
         if (stations.Count > 0)
         {
             var st1 = stations[0];
@@ -174,12 +178,16 @@ using (var scope = app.Services.CreateScope())
                 new BatteryUnit { Serial = "BM48-0002", BatteryModelId = m48.Id, StationId = st1.Id, Status = BatteryStatus.Full },
                 new BatteryUnit { Serial = "BM48-0003", BatteryModelId = m48.Id, StationId = st1.Id, Status = BatteryStatus.Charging },
                 new BatteryUnit { Serial = "BM72-0001", BatteryModelId = m72.Id, StationId = st1.Id, Status = BatteryStatus.Maintenance },
+                new BatteryUnit { Serial = "VF5-0001", BatteryModelId = vf5.Id, StationId = st1.Id, Status = BatteryStatus.Full },
+                new BatteryUnit { Serial = "VF5-0002", BatteryModelId = vf5.Id, StationId = st1.Id, Status = BatteryStatus.Full },
 
                 // Station 2
                 new BatteryUnit { Serial = "BM48-0101", BatteryModelId = m48.Id, StationId = st2.Id, Status = BatteryStatus.Full },
                 new BatteryUnit { Serial = "BM48-0102", BatteryModelId = m48.Id, StationId = st2.Id, Status = BatteryStatus.Charging },
                 new BatteryUnit { Serial = "BM72-0101", BatteryModelId = m72.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                new BatteryUnit { Serial = "BM72-0102", BatteryModelId = m72.Id, StationId = st2.Id, Status = BatteryStatus.Issued }
+                new BatteryUnit { Serial = "BM72-0102", BatteryModelId = m72.Id, StationId = st2.Id, Status = BatteryStatus.Issued },
+                new BatteryUnit { Serial = "VF5-0101", BatteryModelId = vf5.Id, StationId = st2.Id, Status = BatteryStatus.Full },
+                new BatteryUnit { Serial = "VF5-0102", BatteryModelId = vf5.Id, StationId = st2.Id, Status = BatteryStatus.Charging }
             );
             db.SaveChanges();
         }
@@ -190,6 +198,7 @@ using (var scope = app.Services.CreateScope())
     {
         var bm48V = db.BatteryModels.First(x => x.Name == "BM-48V-30Ah");
         var bm72V = db.BatteryModels.First(x => x.Name == "BM-72V-40Ah");
+        var vf5Battery = db.BatteryModels.First(x => x.Name == "VF5 Battery Pack");
         
         db.SubscriptionPlans.AddRange(
             // VF3 equivalent plans (48V battery)
@@ -202,6 +211,18 @@ using (var scope = app.Services.CreateScope())
                 MonthlyFeeOver3000Km = 3000000,
                 DepositAmount = 7000000,
                 BatteryModelId = bm48V.Id
+            },
+            
+            // VF5 plans (VF5 Battery Pack)
+            new SubscriptionPlan 
+            { 
+                Name = "VF5-Standard", 
+                Description = "Gói tiêu chuẩn dành cho VinFast VF5 - Pin chính hãng VF5",
+                MonthlyFeeUnder1500Km = 1500000,
+                MonthlyFee1500To3000Km = 2000000,
+                MonthlyFeeOver3000Km = 3500000,
+                DepositAmount = 18000000,
+                BatteryModelId = vf5Battery.Id
             },
             
             // VF5 equivalent plans (48V battery) 
@@ -268,10 +289,34 @@ using (var scope = app.Services.CreateScope())
     {
         await EVBSS.Api.Data.VehicleModelSeeder.SeedVehicleModelsAsync(context);
         logger.LogInformation("VehicleModels seeded successfully");
+        
+        // Seed test vehicles for users
+        if (!context.Vehicles.Any(v => v.Id == Guid.Parse("cbe25b14-fd54-4c47-be7d-ff710fe16e22")))
+        {
+            var driver1 = context.Users.FirstOrDefault(u => u.Email == "driver1@evbss.local");
+            var vf5BatteryModel = context.BatteryModels.FirstOrDefault(b => b.Name == "VF5 Battery Pack");
+            
+            if (driver1 != null && vf5BatteryModel != null)
+            {
+                context.Vehicles.Add(new EVBSS.Api.Models.Vehicle
+                {
+                    Id = Guid.Parse("cbe25b14-fd54-4c47-be7d-ff710fe16e22"),
+                    UserId = driver1.Id,
+                    Plate = "51F-12345",
+                    VIN = "VF5TEST123456789",
+                    CompatibleBatteryModelId = vf5BatteryModel.Id,
+                    PhotoUrl = "https://example.com/vf5.jpg",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+                context.SaveChanges();
+                logger.LogInformation("Test vehicle seeded for Driver1");
+            }
+        }
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error seeding VehicleModels");
+        logger.LogError(ex, "Error seeding VehicleModels and Vehicles");
     }
 }
 

@@ -117,12 +117,12 @@ public class SlotReservationService
             throw new ActiveReservationExistsException();
         }
         
-        // Validation 2: Slot phải trong tương lai (ít nhất 1 giờ trước)
-        var slotDateTime = slotDate.Date.Add(slotStartTime);
-        if (slotDateTime <= DateTime.UtcNow.AddHours(1))
-        {
-            throw new SlotNotAvailableException("Vui lòng đặt lịch trước ít nhất 1 giờ.");
-        }
+        // Validation 2: Slot phải trong tương lai (ít nhất 1 giờ trước) - TẠMĐỪNG
+        // var slotDateTime = slotDate.Date.Add(slotStartTime);
+        // if (slotDateTime <= DateTime.UtcNow.AddHours(1))
+        // {
+        //     throw new SlotNotAvailableException("Vui lòng đặt lịch trước ít nhất 1 giờ.");
+        // }
         
         // Validation 3: Không đặt quá xa (max 7 ngày)
         if (slotDate.Date > DateTime.UtcNow.Date.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays))
