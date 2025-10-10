@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("EVBSS.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9d5769a31f3133c57ea55b8a49db03e342b0915c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f9589be4f64504ab4d60b53834489d9c349d3ac5")]
 [assembly: System.Reflection.AssemblyProductAttribute("EVBSS.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("EVBSS.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
