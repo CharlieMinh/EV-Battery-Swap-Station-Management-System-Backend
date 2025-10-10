@@ -4,7 +4,7 @@ using EVBSS.Api.Validation;
 namespace EVBSS.Api.Dtos.Auth;
 
 /// <summary>
-/// Request để yêu cầu reset mật khẩu
+/// Request để yêu cầu OTP reset mật khẩu
 /// </summary>
 public class ForgotPasswordRequest
 {
@@ -15,15 +15,33 @@ public class ForgotPasswordRequest
 }
 
 /// <summary>
-/// Request để đặt lại mật khẩu mới
+/// Request để xác thực OTP
+/// </summary>
+public class VerifyOtpRequest
+{
+    [Required(ErrorMessage = "Email là bắt buộc")]
+    [EmailAddress(ErrorMessage = "Email không đúng định dạng")]
+    public string Email { get; set; } = string.Empty;
+    
+    [Required(ErrorMessage = "Mã OTP là bắt buộc")]
+    [StringLength(6, MinimumLength = 6, ErrorMessage = "Mã OTP phải có đúng 6 chữ số")]
+    [RegularExpression(@"^\d{6}$", ErrorMessage = "Mã OTP phải là 6 chữ số")]
+    public string Otp { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Request để đặt lại mật khẩu mới với OTP đã xác thực
 /// </summary>
 public class ResetPasswordRequest
 {
-    [Required(ErrorMessage = "Token là bắt buộc")]
-    public string Token { get; set; } = string.Empty;
+    [Required(ErrorMessage = "Email là bắt buộc")]
+    [EmailAddress(ErrorMessage = "Email không đúng định dạng")]
+    public string Email { get; set; } = string.Empty;
     
-    [Required(ErrorMessage = "UserId là bắt buộc")]
-    public Guid UserId { get; set; }
+    [Required(ErrorMessage = "Mã OTP là bắt buộc")]
+    [StringLength(6, MinimumLength = 6, ErrorMessage = "Mã OTP phải có đúng 6 chữ số")]
+    [RegularExpression(@"^\d{6}$", ErrorMessage = "Mã OTP phải là 6 chữ số")]
+    public string Otp { get; set; } = string.Empty;
     
     [Required(ErrorMessage = "Mật khẩu mới là bắt buộc")]
     [StrongPassword]
@@ -46,6 +64,25 @@ public class ForgotPasswordResponse
     /// Email được mask để bảo mật (ví dụ: k***@gmail.com)
     /// </summary>
     public string? MaskedEmail { get; set; }
+    
+    /// <summary>
+    /// Thời gian hết hạn OTP
+    /// </summary>
+    public DateTime? ExpiresAt { get; set; }
+}
+
+/// <summary>
+/// Response cho verify OTP
+/// </summary>
+public class VerifyOtpResponse
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Token tạm thời để reset password (có thể bỏ nếu dùng OTP trực tiếp)
+    /// </summary>
+    public string? TempToken { get; set; }
 }
 
 /// <summary>
@@ -55,27 +92,4 @@ public class ResetPasswordResponse
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
-}
-
-/// <summary>
-/// Request để validate reset token
-/// </summary>
-public class ValidateResetTokenRequest
-{
-    [Required(ErrorMessage = "UserId là bắt buộc")]
-    public Guid UserId { get; set; }
-    
-    [Required(ErrorMessage = "Token là bắt buộc")]
-    public string Token { get; set; } = string.Empty;
-}
-
-/// <summary>
-/// Response cho validate token
-/// </summary>
-public class ValidateResetTokenResponse
-{
-    public bool IsValid { get; set; }
-    public string Message { get; set; } = string.Empty;
-    public string? UserEmail { get; set; } // Masked email để hiển thị cho user
-    public DateTime? ExpiresAt { get; set; }
 }

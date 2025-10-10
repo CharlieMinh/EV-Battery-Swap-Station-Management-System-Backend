@@ -1,0 +1,147 @@
+using EVBSS.Api.Services;
+using EVBSS.Api.Data;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace EVBSS.Api.Controllers;
+
+[ApiController]
+[Route("api/v1/[controller]")]
+public class TestController : ControllerBase
+{
+    private readonly IEmailService _emailService;
+    private readonly ILogger<TestController> _logger;
+    private readonly AppDbContext _context;
+
+    public TestController(IEmailService emailService, ILogger<TestController> logger, AppDbContext context)
+    {
+        _emailService = emailService;
+        _logger = logger;
+        _context = context;
+    }
+
+    /// <summary>
+    /// Kiểm tra email có tồn tại trong hệ thống User không
+    /// </summary>
+    [HttpPost("check-email")]
+    public async Task<IActionResult> CheckEmailExists([FromBody] CheckEmailRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        try
+        {
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
+
+            if (user == null)
+            {
+                return Ok(new { 
+                    exists = false, 
+                    message = $"Email '{request.Email}' không tồn tại trong hệ thống.",
+                    suggestion = "Vui lòng kiểm tra lại email hoặc đăng ký tài khoản mới."
+                });
+            }
+
+            return Ok(new { 
+                exists = true, 
+                message = $"Email '{MaskEmail(request.Email)}' tồn tại trong hệ thống.",
+                maskedEmail = MaskEmail(request.Email)
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking email existence: {Email}", request.Email);
+            return StatusCode(500, new { 
+                error = "Lỗi hệ thống khi kiểm tra email." 
+            });
+        }
+    }
+
+    /// <summary>
+    /// Mask email để bảo mật
+    /// </summary>
+    private static string MaskEmail(string email)
+    {
+        if (string.IsNullOrEmpty(email) || !email.Contains('@'))
+            return "***@***.***";
+
+        var parts = email.Split('@');
+        var username = parts[0];
+        var domain = parts[1];
+
+        if (username.Length <= 1)
+            return $"{username}***@{domain}";
+
+        var maskedUsername = $"{username[0]}{new string('*', Math.Max(1, username.Length - 1))}";
+        return $"{maskedUsername}@{domain}";
+    }
+
+    /// <summary>
+    /// Test gửi email OTP (chỉ dùng cho development)
+    /// </summary>
+    [HttpPost("send-test-email")]
+    public async Task<IActionResult> SendTestEmail([FromBody] TestEmailRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        try
+        {
+            var testOtp = "123456"; // OTP test
+            var result = await _emailService.SendPasswordResetOtpAsync(
+                request.Email, 
+                testOtp, 
+                request.UserName ?? "Test User"
+            );
+
+            if (result)
+            {
+                _logger.LogInformation("Test email sent successfully to {Email}", request.Email);
+                return Ok(new { 
+                    success = true, 
+                    message = $"Email đã được gửi thành công đến {request.Email}",
+                    otpSent = testOtp // Chỉ show trong test
+                });
+            }
+            else
+            {
+                _logger.LogError("Failed to send test email to {Email}", request.Email);
+                return BadRequest(new { 
+                    success = false, 
+                    message = "Không thể gửi email. Kiểm tra lại cấu hình SMTP." 
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending test email to {Email}", request.Email);
+            return StatusCode(500, new { 
+                success = false, 
+                message = "Lỗi hệ thống khi gửi email.",
+                error = ex.Message 
+            });
+        }
+    }
+}
+
+/// <summary>
+/// Request model để test email
+/// </summary>
+public class TestEmailRequest
+{
+    public string Email { get; set; } = string.Empty;
+    public string? UserName { get; set; }
+}
+
+/// <summary>
+/// Request model để kiểm tra email tồn tại
+/// </summary>
+public class CheckEmailRequest
+{
+    public string Email { get; set; } = string.Empty;
+}

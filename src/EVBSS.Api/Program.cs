@@ -95,6 +95,7 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<SwapTransactionService>();
+builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for OTP
 builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
 
 // Background Services

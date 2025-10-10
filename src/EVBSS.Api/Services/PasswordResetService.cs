@@ -3,38 +3,39 @@ using EVBSS.Api.Models;
 using EVBSS.Api.Dtos.Auth;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
-using System.Text;
 using BCrypt.Net;
 
 namespace EVBSS.Api.Services;
 
 /// <summary>
-/// Service xử lý chức năng quên mật khẩu an toàn
+/// Service xử lý chức năng quên mật khẩu với OTP
 /// </summary>
 public class PasswordResetService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<PasswordResetService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IEmailService _emailService;
     
-    // Salt riêng cho token hash (tăng bảo mật)
-    private readonly string _tokenSalt;
-    private readonly string _frontendUrl;
+    // Salt riêng cho OTP hash (tăng bảo mật)
+    private readonly string _otpSalt;
+    private const int MaxOtpAttempts = 3; // Số lần nhập OTP tối đa
     
     public PasswordResetService(
         AppDbContext context,
         ILogger<PasswordResetService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IEmailService emailService)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
-        _tokenSalt = _configuration["Security:TokenSalt"] ?? "EVBSS_TOKEN_SALT_2024_V1";
-        _frontendUrl = _configuration["App:FrontendUrl"] ?? "http://localhost:3000";
+        _emailService = emailService;
+        _otpSalt = _configuration["Security:OtpSalt"] ?? "EVBSS_OTP_SALT_2024_V1";
     }
 
     /// <summary>
-    /// Tạo yêu cầu reset mật khẩu
+    /// Tạo và gửi OTP qua email
     /// </summary>
     public async Task<ForgotPasswordResponse> RequestPasswordResetAsync(
         ForgotPasswordRequest request, 
@@ -47,22 +48,17 @@ public class PasswordResetService
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
 
-            // Luôn trả về success message để tránh Email Enumeration Attack
-            var response = new ForgotPasswordResponse
-            {
-                Success = true,
-                Message = "Nếu email tồn tại trong hệ thống, bạn sẽ nhận được link đặt lại mật khẩu trong vòng 5-10 phút.",
-                MaskedEmail = MaskEmail(request.Email)
-            };
-
             if (user == null)
             {
                 _logger.LogWarning("Password reset requested for non-existent email: {Email} from IP: {IP}", 
                     request.Email, ipAddress);
                 
-                // Delay để giống như đang xử lý thật (tránh timing attack)
-                await Task.Delay(Random.Shared.Next(1000, 3000));
-                return response;
+                return new ForgotPasswordResponse
+                {
+                    Success = false,
+                    Message = $"Email '{request.Email}' không tồn tại trong hệ thống. Vui lòng kiểm tra lại email hoặc đăng ký tài khoản mới.",
+                    MaskedEmail = MaskEmail(request.Email)
+                };
             }
 
             // 2. Rate limiting - chỉ cho phép 3 request/hour cho mỗi user
@@ -83,35 +79,26 @@ public class PasswordResetService
                 };
             }
 
-            // 3. Vô hiệu hóa các token cũ chưa sử dụng
+            // 3. Vô hiệu hóa các OTP cũ chưa sử dụng
             await InvalidateExistingTokensAsync(user.Id);
 
-            // 4. Tạo secure random token (256 bits)
-            var tokenBytes = new byte[32];
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(tokenBytes);
-            }
-            
-            // Convert to URL-safe Base64
-            var token = Convert.ToBase64String(tokenBytes)
-                .Replace("+", "-")
-                .Replace("/", "_")
-                .Replace("=", "");
+            // 4. Tạo mã OTP 6 số ngẫu nhiên
+            var otpCode = GenerateOtpCode();
 
-            // 5. Hash token với salt và user info
-            var tokenData = $"{token}:{_tokenSalt}:{user.Email}:{user.Id}";
-            var tokenHash = BCrypt.Net.BCrypt.HashPassword(tokenData, 12); // Cost factor 12
+            // 5. Hash OTP với salt và user info để bảo mật
+            var otpData = $"{otpCode}:{_otpSalt}:{user.Email}:{user.Id}";
+            var otpHash = BCrypt.Net.BCrypt.HashPassword(otpData, 12);
 
             // 6. Tạo và lưu password reset token
             var resetToken = new PasswordResetToken
             {
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
-                TokenHash = tokenHash,
+                OtpHash = otpHash,
                 CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddHours(2), // Hết hạn sau 2 giờ
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                 IsUsed = false,
+                AttemptCount = 0,
                 RequestIpAddress = ipAddress,
                 RequestUserAgent = userAgent
             };
@@ -119,13 +106,30 @@ public class PasswordResetService
             _context.PasswordResetTokens.Add(resetToken);
             await _context.SaveChangesAsync();
 
-            // 7. Gửi email reset password
-            await SendPasswordResetEmailAsync(user, token);
+            // 7. Gửi OTP qua email
+            var userName = user.Email.Split('@')[0];
+            var emailSent = await _emailService.SendPasswordResetOtpAsync(user.Email, otpCode, userName);
+            
+            if (!emailSent)
+            {
+                _logger.LogError("Failed to send OTP email to user: {UserId}", user.Id);
+                return new ForgotPasswordResponse
+                {
+                    Success = false,
+                    Message = "Không thể gửi email OTP. Vui lòng thử lại sau.",
+                    MaskedEmail = MaskEmail(user.Email)
+                };
+            }
 
-            _logger.LogInformation("Password reset token created for user: {UserId} from IP: {IP}", 
+            _logger.LogInformation("Password reset OTP created for user: {UserId} from IP: {IP}", 
                 user.Id, ipAddress);
             
-            return response;
+            return new ForgotPasswordResponse
+            {
+                Success = true,
+                Message = $"Mã OTP đã được gửi đến email {MaskEmail(user.Email)}. Vui lòng kiểm tra hộp thư và nhập mã OTP.",
+                MaskedEmail = MaskEmail(user.Email)
+            };
         }
         catch (Exception ex)
         {
@@ -141,76 +145,90 @@ public class PasswordResetService
     }
 
     /// <summary>
-    /// Validate reset token
+    /// Xác thực mã OTP
     /// </summary>
-    public async Task<ValidateResetTokenResponse> ValidateResetTokenAsync(ValidateResetTokenRequest request)
+    public async Task<VerifyOtpResponse> VerifyOtpAsync(VerifyOtpRequest request, string? ipAddress = null)
     {
         try
         {
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == request.UserId);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
 
             if (user == null)
             {
-                return new ValidateResetTokenResponse
+                return new VerifyOtpResponse
                 {
-                    IsValid = false,
-                    Message = "Người dùng không tồn tại."
+                    Success = false,
+                    Message = "Email không tồn tại trong hệ thống."
                 };
             }
 
-            // Tìm token hợp lệ
-            var resetTokens = await _context.PasswordResetTokens
-                .Where(t => t.UserId == request.UserId && 
-                           !t.IsUsed && 
-                           t.ExpiresAt > DateTime.UtcNow)
-                .ToListAsync();
+            var resetToken = await _context.PasswordResetTokens
+                .Where(t => t.UserId == user.Id && !t.IsUsed && t.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(t => t.CreatedAt)
+                .FirstOrDefaultAsync();
 
-            if (!resetTokens.Any())
+            if (resetToken == null)
             {
-                return new ValidateResetTokenResponse
+                return new VerifyOtpResponse
                 {
-                    IsValid = false,
-                    Message = "Token không tồn tại hoặc đã hết hạn."
+                    Success = false,
+                    Message = "Không tìm thấy OTP hoặc OTP đã hết hạn. Vui lòng yêu cầu OTP mới."
                 };
             }
 
-            // Verify token
-            var tokenData = $"{request.Token}:{_tokenSalt}:{user.Email}:{user.Id}";
-            var validToken = resetTokens.FirstOrDefault(t => 
-                BCrypt.Net.BCrypt.Verify(tokenData, t.TokenHash));
-
-            if (validToken == null)
+            if (resetToken.AttemptCount >= MaxOtpAttempts)
             {
-                _logger.LogWarning("Invalid reset token attempted for user: {UserId}", user.Id);
-                return new ValidateResetTokenResponse
+                resetToken.IsUsed = true;
+                resetToken.UsedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+                return new VerifyOtpResponse
                 {
-                    IsValid = false,
-                    Message = "Token không hợp lệ."
+                    Success = false,
+                    Message = "OTP đã bị khóa do nhập sai quá nhiều lần. Vui lòng yêu cầu OTP mới."
                 };
             }
 
-            return new ValidateResetTokenResponse
+            var otpData = $"{request.Otp}:{_otpSalt}:{user.Email}:{user.Id}";
+            var isValidOtp = BCrypt.Net.BCrypt.Verify(otpData, resetToken.OtpHash);
+
+            if (!isValidOtp)
             {
-                IsValid = true,
-                Message = "Token hợp lệ.",
-                UserEmail = MaskEmail(user.Email),
-                ExpiresAt = validToken.ExpiresAt
+                resetToken.AttemptCount++;
+                await _context.SaveChangesAsync();
+
+                var remainingAttempts = MaxOtpAttempts - resetToken.AttemptCount;
+                return new VerifyOtpResponse
+                {
+                    Success = false,
+                    Message = remainingAttempts > 0 
+                        ? $"Mã OTP không đúng. Bạn còn {remainingAttempts} lần thử."
+                        : "Mã OTP không đúng. OTP sẽ bị khóa."
+                };
+            }
+
+            return new VerifyOtpResponse
+            {
+                Success = true,
+                Message = "Xác thực OTP thành công. Bạn có thể đặt lại mật khẩu."
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error validating reset token for user: {UserId}", request.UserId);
-            return new ValidateResetTokenResponse
+            _logger.LogError(ex, "Error verifying OTP for email: {Email} from IP: {IP}", 
+                request.Email, ipAddress);
+            
+            return new VerifyOtpResponse
             {
-                IsValid = false,
-                Message = "Có lỗi xảy ra khi xác thực token."
+                Success = false,
+                Message = "Có lỗi xảy ra khi xác thực OTP. Vui lòng thử lại sau."
             };
         }
     }
 
     /// <summary>
-    /// Đặt lại mật khẩu mới
+    /// Đặt lại mật khẩu mới sau khi đã verify OTP
     /// </summary>
     public async Task<ResetPasswordResponse> ResetPasswordAsync(
         ResetPasswordRequest request, 
@@ -221,53 +239,44 @@ public class PasswordResetService
         
         try
         {
-            // 1. Tìm user
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == request.UserId);
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
 
             if (user == null)
             {
                 return new ResetPasswordResponse
                 {
                     Success = false,
-                    Message = "Người dùng không tồn tại."
+                    Message = "Email không tồn tại trong hệ thống."
                 };
             }
 
-            // 2. Tìm token hợp lệ
-            var resetTokens = await _context.PasswordResetTokens
-                .Where(t => t.UserId == request.UserId && 
-                           !t.IsUsed && 
-                           t.ExpiresAt > DateTime.UtcNow)
-                .ToListAsync();
+            var resetToken = await _context.PasswordResetTokens
+                .Where(t => t.UserId == user.Id && !t.IsUsed && t.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(t => t.CreatedAt)
+                .FirstOrDefaultAsync();
 
-            if (!resetTokens.Any())
+            if (resetToken == null)
             {
                 return new ResetPasswordResponse
                 {
                     Success = false,
-                    Message = "Token không tồn tại hoặc đã hết hạn."
+                    Message = "Session đã hết hạn. Vui lòng yêu cầu OTP mới."
                 };
             }
 
-            // 3. Verify token
-            var tokenData = $"{request.Token}:{_tokenSalt}:{user.Email}:{user.Id}";
-            var validToken = resetTokens.FirstOrDefault(t => 
-                BCrypt.Net.BCrypt.Verify(tokenData, t.TokenHash));
+            var otpData = $"{request.Otp}:{_otpSalt}:{user.Email}:{user.Id}";
+            var isValidOtp = BCrypt.Net.BCrypt.Verify(otpData, resetToken.OtpHash);
 
-            if (validToken == null)
+            if (!isValidOtp)
             {
-                _logger.LogWarning("Invalid reset token used for password reset. User: {UserId}, IP: {IP}", 
-                    user.Id, ipAddress);
-                
                 return new ResetPasswordResponse
                 {
                     Success = false,
-                    Message = "Token không hợp lệ."
+                    Message = "Mã OTP không hợp lệ."
                 };
             }
 
-            // 4. Kiểm tra mật khẩu mới khác mật khẩu cũ
             if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
             {
                 return new ResetPasswordResponse
@@ -277,16 +286,11 @@ public class PasswordResetService
                 };
             }
 
-            // 5. Cập nhật mật khẩu mới
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword, 12);
+            resetToken.IsUsed = true;
+            resetToken.UsedAt = DateTime.UtcNow;
 
-            // 6. Đánh dấu token đã sử dụng
-            validToken.IsUsed = true;
-            validToken.UsedAt = DateTime.UtcNow;
-
-            // 7. Vô hiệu hóa tất cả tokens còn lại của user
             await InvalidateExistingTokensAsync(user.Id);
-
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
@@ -302,8 +306,8 @@ public class PasswordResetService
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            _logger.LogError(ex, "Error resetting password for user: {UserId} from IP: {IP}", 
-                request.UserId, ipAddress);
+            _logger.LogError(ex, "Error resetting password for email: {Email} from IP: {IP}", 
+                request.Email, ipAddress);
             
             return new ResetPasswordResponse
             {
@@ -314,7 +318,19 @@ public class PasswordResetService
     }
 
     /// <summary>
-    /// Vô hiệu hóa các token cũ của user
+    /// Tạo mã OTP 6 số ngẫu nhiên
+    /// </summary>
+    private static string GenerateOtpCode()
+    {
+        using var rng = RandomNumberGenerator.Create();
+        var bytes = new byte[4];
+        rng.GetBytes(bytes);
+        var number = Math.Abs(BitConverter.ToInt32(bytes, 0));
+        return (number % 1000000).ToString("D6");
+    }
+
+    /// <summary>
+    /// Vô hiệu hóa các OTP tokens cũ của user
     /// </summary>
     private async Task InvalidateExistingTokensAsync(Guid userId)
     {
@@ -330,24 +346,7 @@ public class PasswordResetService
     }
 
     /// <summary>
-    /// Gửi email reset password
-    /// </summary>
-    private async Task SendPasswordResetEmailAsync(User user, string token)
-    {
-        var resetUrl = $"{_frontendUrl}/reset-password?userId={user.Id}&token={Uri.EscapeDataString(token)}";
-        
-        // TODO: Implement proper email service (SendGrid, SMTP, etc.)
-        _logger.LogInformation("🔐 Password reset email for {Email}:\n" +
-                              "Reset URL: {ResetUrl}\n" +
-                              "Token expires in 2 hours.", 
-                              MaskEmail(user.Email), resetUrl);
-        
-        // Mock email sending
-        await Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Mask email để bảo mật (ví dụ: khai@gmail.com -> k***@gmail.com)
+    /// Mask email để bảo mật
     /// </summary>
     private static string MaskEmail(string email)
     {
@@ -366,7 +365,7 @@ public class PasswordResetService
     }
 
     /// <summary>
-    /// Cleanup expired tokens (có thể chạy background job)
+    /// Cleanup expired tokens
     /// </summary>
     public async Task CleanupExpiredTokensAsync()
     {
