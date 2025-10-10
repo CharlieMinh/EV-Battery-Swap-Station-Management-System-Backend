@@ -130,7 +130,16 @@ public class AuthController : ControllerBase
         var u = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId);
         if (u is null) return Unauthorized();
 
-        return new MeResponse { Id = u.Id, Email = u.Email, Name = u.Name, Role = u.Role.ToString(), CreatedAt = u.CreatedAt, LastLogin = u.LastLogin };
+        return new MeResponse 
+        { 
+            Id = u.Id, 
+            Email = u.Email, 
+            Name = u.Name, 
+            PhoneNumber = u.Phone,
+            Role = u.Role.ToString(), 
+            CreatedAt = u.CreatedAt, 
+            LastLogin = u.LastLogin 
+        };
     }
 
     private string GenerateJwt(User user)
