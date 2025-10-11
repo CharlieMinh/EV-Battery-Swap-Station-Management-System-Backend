@@ -285,7 +285,7 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             
-            entity.Property(e => e.TokenHash)
+            entity.Property(e => e.OtpHash)
                 .IsRequired()
                 .HasMaxLength(255);
                 
@@ -298,6 +298,10 @@ public class AppDbContext : DbContext
             entity.Property(e => e.IsUsed)
                 .IsRequired()
                 .HasDefaultValue(false);
+                
+            entity.Property(e => e.AttemptCount)
+                .IsRequired()
+                .HasDefaultValue(0);
                 
             entity.Property(e => e.RequestIpAddress)
                 .HasMaxLength(45); // IPv6 max length

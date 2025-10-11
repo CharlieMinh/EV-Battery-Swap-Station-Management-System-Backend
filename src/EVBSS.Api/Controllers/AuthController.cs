@@ -162,7 +162,7 @@ public class AuthController : ControllerBase
     // =================== PASSWORD RESET ENDPOINTS ===================
 
     /// <summary>
-    /// Yêu cầu đặt lại mật khẩu - gửi link reset qua email
+    /// Yêu cầu đặt lại mật khẩu - gửi OTP qua email
     /// </summary>
     [HttpPost("forgot-password")]
     [AllowAnonymous]
@@ -190,20 +190,28 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Validate reset token - kiểm tra token có hợp lệ không
+    /// Xác thực mã OTP được gửi qua email
     /// </summary>
-    [HttpPost("validate-reset-token")]
+    [HttpPost("verify-otp")]
     [AllowAnonymous]
-    public async Task<ActionResult<ValidateResetTokenResponse>> ValidateResetToken([FromBody] ValidateResetTokenRequest request)
+    public async Task<ActionResult<VerifyOtpResponse>> VerifyOtp([FromBody] VerifyOtpRequest request)
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(ModelState);
+            var errors = ModelState
+                .Where(x => x.Value!.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key.ToLower(),
+                    kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+            
+            return BadRequest(new { errors });
         }
 
-        var result = await _passwordResetService.ValidateResetTokenAsync(request);
+        var ipAddress = GetClientIpAddress();
+        var result = await _passwordResetService.VerifyOtpAsync(request, ipAddress);
         
-        if (!result.IsValid)
+        if (!result.Success)
         {
             return BadRequest(result);
         }
@@ -212,7 +220,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Đặt lại mật khẩu mới với token hợp lệ
+    /// Đặt lại mật khẩu mới với OTP đã được xác thực
     /// </summary>
     [HttpPost("reset-password")]
     [AllowAnonymous]

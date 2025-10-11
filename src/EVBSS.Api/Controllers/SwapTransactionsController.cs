@@ -38,7 +38,7 @@ public class SwapTransactionsController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
-            var swap = await _swapService.StartSwapFromReservationAsync(userId, request);
+            var swap = await _swapService.StartSwapAsync(userId, request);
 
             var response = MapToResponse(swap);
 
@@ -56,6 +56,80 @@ public class SwapTransactionsController : ControllerBase
         {
             _logger.LogError(ex, "Lỗi khi bắt đầu đổi pin cho user {UserId}", GetCurrentUserId());
             return StatusCode(500, new { error = "Đã xảy ra lỗi khi bắt đầu giao dịch đổi pin" });
+        }
+    }
+
+    /// <summary>
+    /// Cập nhật trạng thái giao dịch khi cấp pin cho khách hàng (dành cho Staff)
+    /// </summary>
+    /// <param name="id">ID giao dịch đổi pin</param>
+    /// <param name="request">Chi tiết yêu cầu cấp pin</param>
+    /// <returns>Thông tin giao dịch đã cập nhật</returns>
+    [HttpPut("{id}/issue-battery")]
+    [Authorize(Roles = "Staff,Admin")]
+    public async Task<ActionResult<SwapTransactionResponse>> IssueBattery(
+        [FromRoute] Guid id, 
+        [FromBody] IssueBatteryRequest request)
+    {
+        try
+        {
+            var staffId = GetCurrentUserId();
+            var swap = await _swapService.IssueBatteryAsync(id, staffId, request);
+
+            var response = MapToResponse(swap);
+
+            _logger.LogInformation("Battery issued for swap {TransactionNumber} by staff {StaffId}", 
+                swap.TransactionNumber, staffId);
+
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Failed to issue battery for swap {SwapId} by staff {StaffId}: {Error}", 
+                id, GetCurrentUserId(), ex.Message);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error issuing battery for swap {SwapId} by staff {StaffId}", id, GetCurrentUserId());
+            return StatusCode(500, new { error = "An error occurred while issuing battery" });
+        }
+    }
+
+    /// <summary>
+    /// Cập nhật trạng thái giao dịch khi nhận pin cũ từ khách hàng (dành cho Staff)
+    /// </summary>
+    /// <param name="id">ID giao dịch đổi pin</param>
+    /// <param name="request">Chi tiết yêu cầu nhận pin cũ</param>
+    /// <returns>Thông tin giao dịch đã cập nhật</returns>
+    [HttpPut("{id}/receive-battery")]
+    [Authorize(Roles = "Staff,Admin")]
+    public async Task<ActionResult<SwapTransactionResponse>> ReceiveBattery(
+        [FromRoute] Guid id, 
+        [FromBody] ReceiveBatteryRequest request)
+    {
+        try
+        {
+            var staffId = GetCurrentUserId();
+            var swap = await _swapService.ReceiveBatteryAsync(id, staffId, request);
+
+            var response = MapToResponse(swap);
+
+            _logger.LogInformation("Battery received for swap {TransactionNumber} by staff {StaffId}", 
+                swap.TransactionNumber, staffId);
+
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Failed to receive battery for swap {SwapId} by staff {StaffId}: {Error}", 
+                id, GetCurrentUserId(), ex.Message);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error receiving battery for swap {SwapId} by staff {StaffId}", id, GetCurrentUserId());
+            return StatusCode(500, new { error = "An error occurred while receiving battery" });
         }
     }
 
@@ -101,7 +175,7 @@ public class SwapTransactionsController : ControllerBase
     /// <param name="page">Số trang (mặc định: 1)</param>
     /// <param name="pageSize">Số item mỗi trang (mặc định: 10, tối đa: 50)</param>
     /// <returns>Lịch sử đổi pin có phân trang</returns>
-    [HttpGet("mine")]
+    [HttpGet("history")]
     public async Task<ActionResult<SwapHistoryResponse>> GetMySwapHistory(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10)
@@ -185,6 +259,65 @@ public class SwapTransactionsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Lấy thống kê chi tiết lịch sử đổi pin của người dùng
+    /// </summary>
+    /// <returns>Thống kê tổng hợp về việc đổi pin</returns>
+    [HttpGet("statistics")]
+    public async Task<ActionResult<SwapStatisticsResponse>> GetMySwapStatistics()
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var stats = await _swapService.GetUserSwapStatisticsAsync(userId);
+
+            _logger.LogInformation("Retrieved swap statistics for user {UserId}", userId);
+
+            return Ok(stats);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving swap statistics for user {UserId}", GetCurrentUserId());
+            return StatusCode(500, new { error = "An error occurred while retrieving swap statistics" });
+        }
+    }
+
+    /// <summary>
+    /// Đánh giá và phản hồi về giao dịch đổi pin đã hoàn thành
+    /// </summary>
+    /// <param name="id">ID giao dịch đổi pin</param>
+    /// <param name="request">Chi tiết đánh giá và phản hồi</param>
+    /// <returns>Thông tin giao dịch đã được đánh giá</returns>
+    [HttpPut("{id}/rate")]
+    public async Task<ActionResult<SwapTransactionResponse>> RateSwap(
+        [FromRoute] Guid id, 
+        [FromBody] SwapRatingRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var swap = await _swapService.RateSwapAsync(id, userId, request);
+
+            var response = MapToResponse(swap);
+
+            _logger.LogInformation("Swap {TransactionNumber} rated {Rating} stars by user {UserId}", 
+                swap.TransactionNumber, request.Rating, userId);
+
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Failed to rate swap {SwapId} for user {UserId}: {Error}", 
+                id, GetCurrentUserId(), ex.Message);
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error rating swap {SwapId} for user {UserId}", id, GetCurrentUserId());
+            return StatusCode(500, new { error = "An error occurred while rating the swap transaction" });
+        }
+    }
+
    private Guid GetCurrentUserId()
 {
     var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -226,7 +359,10 @@ public class SwapTransactionsController : ControllerBase
             CompletedAt = swap.CompletedAt,
             Notes = swap.Notes,
             ReservationId = swap.ReservationId,
-            UserSubscriptionId = swap.UserSubscriptionId
+            UserSubscriptionId = swap.UserSubscriptionId,
+            Rating = swap.Rating,
+            Feedback = swap.Feedback,
+            RatedAt = swap.RatedAt
         };
     }
 }

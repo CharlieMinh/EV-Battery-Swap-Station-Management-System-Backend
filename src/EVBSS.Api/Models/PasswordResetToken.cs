@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace EVBSS.Api.Models;
 
 /// <summary>
-/// Token để reset mật khẩu - lưu hash để bảo mật
+/// Model cho password reset với OTP
 /// </summary>
 public class PasswordResetToken
 {
@@ -13,32 +13,32 @@ public class PasswordResetToken
     public Guid UserId { get; set; }
     
     /// <summary>
-    /// Hash của token gốc (không lưu plain text)
+    /// Hash của OTP code (6 chữ số)
     /// </summary>
     [Required]
     [StringLength(255)]
-    public string TokenHash { get; set; } = string.Empty;
+    public string OtpHash { get; set; } = string.Empty;
     
     /// <summary>
-    /// Thời gian tạo token
+    /// Thời gian tạo OTP
     /// </summary>
     [Required]
     public DateTime CreatedAt { get; set; }
     
     /// <summary>
-    /// Thời gian hết hạn token (2 giờ sau khi tạo)
+    /// Thời gian hết hạn OTP (10 phút sau khi tạo)
     /// </summary>
     [Required]
     public DateTime ExpiresAt { get; set; }
     
     /// <summary>
-    /// Token đã được sử dụng chưa (one-time use)
+    /// OTP đã được sử dụng chưa (one-time use)
     /// </summary>
     [Required]
     public bool IsUsed { get; set; } = false;
     
     /// <summary>
-    /// Thời gian sử dụng token
+    /// Thời gian sử dụng OTP
     /// </summary>
     public DateTime? UsedAt { get; set; }
     
@@ -54,6 +54,13 @@ public class PasswordResetToken
     [StringLength(500)]
     public string? RequestUserAgent { get; set; }
     
-    // Navigation property
-    public User User { get; set; } = null!;
+    /// <summary>
+    /// Số lần thử OTP sai (max 3 lần)
+    /// </summary>
+    public int AttemptCount { get; set; } = 0;
+    
+    /// <summary>
+    /// Navigation property đến User
+    /// </summary>
+    public virtual User User { get; set; } = null!;
 }

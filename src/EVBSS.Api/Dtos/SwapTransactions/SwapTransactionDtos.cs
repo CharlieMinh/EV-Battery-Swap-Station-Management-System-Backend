@@ -1,13 +1,13 @@
 namespace EVBSS.Api.Dtos.SwapTransactions;
 
 /// <summary>
-/// Request để bắt đầu giao dịch đổi pin từ đặt chỗ
+/// Request để bắt đầu giao dịch đổi pin
 /// </summary>
 public class StartSwapRequest
 {
-    public Guid ReservationId { get; set; }           // ID đặt chỗ pin
+    public Guid StationId { get; set; }               // ID trạm đổi pin
     public Guid VehicleId { get; set; }               // ID xe muốn đổi pin
-    public int VehicleOdometer { get; set; }          // Số km xe hiện tại
+    public Guid? ReservationId { get; set; }          // ID đặt chỗ pin (optional)
     public string? Notes { get; set; }                // Ghi chú thêm từ khách hàng
 }
 
@@ -64,6 +64,11 @@ public class SwapTransactionResponse
     public string? Notes { get; set; }                         // Ghi chú
     public Guid? ReservationId { get; set; }                   // ID đặt chỗ liên quan
     public Guid? UserSubscriptionId { get; set; }              // ID gói thuê bao đang dùng
+    
+    // Feedback và đánh giá
+    public int? Rating { get; set; }                           // Đánh giá 1-5 sao
+    public string? Feedback { get; set; }                      // Phản hồi chi tiết
+    public DateTime? RatedAt { get; set; }                     // Thời gian đánh giá
 }
 
 /// <summary>
@@ -76,4 +81,75 @@ public class SwapHistoryResponse
     public int Page { get; set; }                             // Trang hiện tại
     public int PageSize { get; set; }                         // Số item mỗi trang
     public int TotalPages { get; set; }                       // Tổng số trang
+}
+
+/// <summary>
+/// Request để cấp pin cho khách hàng (dành cho Staff)
+/// </summary>
+public class IssueBatteryRequest
+{
+    public Guid BatteryUnitId { get; set; }                   // ID pin cấp cho khách
+    public string? Notes { get; set; }                        // Ghi chú từ staff
+}
+
+/// <summary>
+/// Request để nhận pin cũ từ khách hàng (dành cho Staff)
+/// </summary>
+public class ReceiveBatteryRequest
+{
+    public string ReturnedBatterySerial { get; set; } = null!; // Serial pin khách trả lại  
+    public int BatteryHealthReturned { get; set; }             // % sức khỏe pin trả lại (0-100)
+    public string? Notes { get; set; }                         // Ghi chú từ staff
+}
+
+/// <summary>
+/// Thống kê chi tiết lịch sử đổi pin của người dùng
+/// </summary>
+public class SwapStatisticsResponse
+{
+    // Thống kê tổng quan
+    public int TotalSwaps { get; set; }                        // Tổng số lần đổi pin
+    public int CompletedSwaps { get; set; }                    // Số lần đổi thành công
+    public int CancelledSwaps { get; set; }                    // Số lần hủy
+    public int FailedSwaps { get; set; }                       // Số lần thất bại
+    public decimal SuccessRate { get; set; }                   // Tỷ lệ thành công (%)
+    
+    // Thống kê tài chính
+    public decimal TotalAmount { get; set; }                   // Tổng chi phí
+    public decimal AverageSwapFee { get; set; }                // Chi phí trung bình mỗi lần đổi
+    public decimal TotalKmCharges { get; set; }                // Tổng phí theo km
+    
+    // Thống kê xe và pin
+    public int TotalKilometers { get; set; }                   // Tổng số km đã chạy (tracking qua swap)
+    public int AverageKmPerSwap { get; set; }                  // Trung bình km mỗi lần đổi
+    public int AverageBatteryHealthIssued { get; set; }        // Sức khỏe pin trung bình được cấp
+    public int AverageBatteryHealthReturned { get; set; }      // Sức khỏe pin trung bình được trả
+    
+    // Thống kê thời gian
+    public DateTime? FirstSwapDate { get; set; }               // Lần đổi đầu tiên
+    public DateTime? LastSwapDate { get; set; }                // Lần đổi gần nhất
+    public int DaysSinceFirstSwap { get; set; }                // Số ngày từ lần đổi đầu
+    public double AverageSwapsPerMonth { get; set; }           // Trung bình số lần đổi/tháng
+    
+    // Thống kê trạm được sử dụng nhiều nhất
+    public string? MostUsedStationName { get; set; }           // Trạm được dùng nhiều nhất
+    public int MostUsedStationCount { get; set; }              // Số lần sử dụng trạm đó
+    
+    // Feedback và đánh giá
+    public double? AverageRating { get; set; }                 // Đánh giá trung bình
+    public int TotalFeedbacks { get; set; }                    // Số lượng feedback đã đưa
+    
+    // Thống kê theo thời gian gần đây
+    public int SwapsLast30Days { get; set; }                   // Số lần đổi trong 30 ngày qua
+    public int SwapsLast7Days { get; set; }                    // Số lần đổi trong 7 ngày qua
+}
+
+/// <summary>
+/// Response cho việc đánh giá và phản hồi giao dịch đổi pin
+/// </summary>
+public class SwapRatingRequest
+{
+    public int Rating { get; set; }                            // Đánh giá từ 1-5 sao
+    public string? Feedback { get; set; }                      // Phản hồi chi tiết
+    public List<string>? Issues { get; set; }                  // Các vấn đề gặp phải (nếu có)
 }
