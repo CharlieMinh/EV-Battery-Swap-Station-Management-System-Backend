@@ -1,0 +1,78 @@
+### Test Battery Units API - Step by Step
+### Base URL
+@baseUrl = http://localhost:5194/api
+
+### STEP 1: Login để lấy token
+POST {{baseUrl}}/Auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@evbss.local",
+  "password": "12345678Swp@"
+}
+
+### STEP 2: Copy token từ response trên và paste vào đây
+@accessToken = YOUR_JWT_TOKEN_HERE
+
+### STEP 3: Lấy danh sách stations để có stationId
+GET {{baseUrl}}/v1/Stations
+Authorization: Bearer {{accessToken}}
+
+### STEP 4: Lấy danh sách battery models để có batteryModelId  
+GET {{baseUrl}}/BatteryModels
+Authorization: Bearer {{accessToken}}
+
+### STEP 5: Thay thế các GUID thực từ response trên
+@stationId = REAL_STATION_ID_FROM_STEP_3
+@batteryModelId = REAL_BATTERY_MODEL_ID_FROM_STEP_4
+
+### STEP 6: Test tạo pin đơn lẻ
+POST {{baseUrl}}/BatteryUnits
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "serial": "BAT001-TEST",
+  "batteryModelId": "{{batteryModelId}}",
+  "stationId": "{{stationId}}"
+}
+
+### STEP 7: Test thêm nhiều pin vào trạm
+POST {{baseUrl}}/BatteryUnits/add-to-station
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryUnits": [
+    {
+      "serial": "BAT002-BULK",
+      "batteryModelId": "{{batteryModelId}}"
+    },
+    {
+      "serial": "BAT003-BULK", 
+      "batteryModelId": "{{batteryModelId}}"
+    }
+  ]
+}
+
+### STEP 8: Xem pin trong trạm
+GET {{baseUrl}}/BatteryUnits/station/{{stationId}}
+Authorization: Bearer {{accessToken}}
+
+### STEP 9: Xem thống kê pin trong trạm
+GET {{baseUrl}}/v1/Stations/{{stationId}}/battery-stats
+Authorization: Bearer {{accessToken}}
+
+### STEP 10: Lấy ID pin từ response Step 8 và cập nhật trạng thái
+@batteryUnitId = REAL_BATTERY_UNIT_ID_FROM_STEP_8
+
+PATCH {{baseUrl}}/BatteryUnits/{{batteryUnitId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+1
+
+### STEP 11: Xem lại thống kê sau khi cập nhật
+GET {{baseUrl}}/v1/Stations/{{stationId}}/battery-stats
+Authorization: Bearer {{accessToken}}
