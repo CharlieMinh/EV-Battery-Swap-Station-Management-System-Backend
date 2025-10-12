@@ -146,6 +146,63 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Get all staff members (for Admin staff management)
+    /// </summary>
+    [HttpGet("staff")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetAllStaff(
+        [FromQuery] string? search = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100;
+
+        var query = _db.Users
+            .AsNoTracking()
+            .Where(u => u.Role == Role.Staff); // Only staff
+
+        // Search
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.Trim().ToLower();
+            query = query.Where(u =>
+                (u.Name != null && u.Name.ToLower().Contains(searchLower)) ||
+                u.Email.ToLower().Contains(searchLower) ||
+                (u.Phone != null && u.Phone.Contains(searchLower))
+            );
+        }
+
+        var totalItems = await query.CountAsync();
+
+        var staff = await query
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(u => new UserResponse
+            {
+                Id = u.Id,
+                Email = u.Email,
+                Name = u.Name,
+                PhoneNumber = u.Phone,
+                Role = u.Role.ToString(),
+                CreatedAt = u.CreatedAt,
+                LastLogin = u.LastLogin
+            })
+            .ToListAsync();
+
+        return Ok(new
+        {
+            page,
+            pageSize,
+            totalItems,
+            totalPages = (int)Math.Ceiling(totalItems / (double)pageSize),
+            data = staff
+        });
+    }
+
+    /// <summary>
     /// Get user by ID (Admin only)
     /// </summary>
     [HttpGet("{id:guid}")]
