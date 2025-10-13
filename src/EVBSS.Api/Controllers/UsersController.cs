@@ -236,10 +236,13 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Update user info (Admin only)
+    /// Update user info
+    /// - Driver: Can only update their own profile (Name, Phone only)
+    /// - Staff: Can update Driver profiles (Name, Phone only)
+    /// - Admin: Full access to update any user
     /// </summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Staff,Driver")]
     public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest req)
     {
         if (!ModelState.IsValid)
@@ -253,6 +256,49 @@ public class UsersController : ControllerBase
             return NotFound(new { error = "User not found" });
         }
 
+        // Get current user info
+        var currentUserIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var currentUserRoleClaim = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+        if (currentUserIdClaim == null || currentUserRoleClaim == null)
+        {
+            return Unauthorized(new { error = "Invalid user claims" });
+        }
+
+        var currentUserId = Guid.Parse(currentUserIdClaim);
+        var currentUserRole = Enum.Parse<Role>(currentUserRoleClaim);
+
+        // Authorization logic based on role
+        if (currentUserRole == Role.Driver)
+        {
+            // Driver can only update their own profile
+            if (currentUserId != id)
+            {
+                return Forbid();
+            }
+
+            // Driver cannot change their own role
+            if (req.Role.HasValue)
+            {
+                return BadRequest(new { error = "You are not allowed to change your role" });
+            }
+        }
+        else if (currentUserRole == Role.Staff)
+        {
+            // Staff can only update Driver profiles
+            if (user.Role != Role.Driver)
+            {
+                return Forbid();
+            }
+
+            // Staff cannot change roles
+            if (req.Role.HasValue)
+            {
+                return BadRequest(new { error = "Staff members are not allowed to change user roles" });
+            }
+        }
+        // Admin has full access - no additional checks needed
+
         // Update fields
         if (!string.IsNullOrWhiteSpace(req.Name))
         {
@@ -264,7 +310,8 @@ public class UsersController : ControllerBase
             user.Phone = req.PhoneNumber.Trim();
         }
 
-        if (req.Role.HasValue)
+        // Only Admin can change roles
+        if (req.Role.HasValue && currentUserRole == Role.Admin)
         {
             user.Role = req.Role.Value;
         }
