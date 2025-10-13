@@ -318,8 +318,8 @@ public class SubscriptionService : ISubscriptionService
 
             monthlyUsage.Add(new MonthlyUsageDto
             {
-                Year = targetMonth.Year,
-                Month = targetMonth.Month,
+                Year = periodEnd.Year,
+                Month = periodEnd.Month,
                 MonthName = CultureInfo.GetCultureInfo("vi-VN").DateTimeFormat.GetMonthName(targetMonth.Month),
                 KmUsed = kmUsed,
                 SwapCount = monthTransactions.Count,
