@@ -177,4 +177,34 @@ public class StationsController : ControllerBase
 
         return list;
     }
+
+    /// <summary>
+    /// Lấy thống kê pin trong trạm
+    /// </summary>
+    [HttpGet("{stationId:guid}/battery-stats")]
+    public async Task<ActionResult<object>> GetStationBatteryStats(Guid stationId)
+    {
+        var stationExists = await _db.Stations.AnyAsync(s => s.Id == stationId && s.IsActive);
+        if (!stationExists)
+            return NotFound(new { error = new { code = "STATION_NOT_FOUND", message = "Station not found" } });
+
+        var batteryStats = await _db.BatteryUnits
+            .Where(b => b.StationId == stationId)
+            .GroupBy(b => b.Status)
+            .Select(g => new { Status = g.Key.ToString(), Count = g.Count() })
+            .ToListAsync();
+
+        var totalBatteries = await _db.BatteryUnits.CountAsync(b => b.StationId == stationId);
+        var availableBatteries = await _db.BatteryUnits
+            .CountAsync(b => b.StationId == stationId && b.Status == BatteryStatus.Full && !b.IsReserved);
+
+        return new
+        {
+            StationId = stationId,
+            TotalBatteries = totalBatteries,
+            AvailableBatteries = availableBatteries,
+            BatteryStatusBreakdown = batteryStats,
+            LastUpdated = DateTime.UtcNow
+        };
+    }
 }
