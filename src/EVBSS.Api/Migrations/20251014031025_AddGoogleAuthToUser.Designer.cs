@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251013234635_SyncUserModelWithExistingDatabase")]
-    partial class SyncUserModelWithExistingDatabase
+    [Migration("20251014031025_AddGoogleAuthToUser")]
+    partial class AddGoogleAuthToUser
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

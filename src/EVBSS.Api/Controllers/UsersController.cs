@@ -203,6 +203,63 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Get staff member details by ID (Admin only)
+    /// Returns detailed information including work statistics
+    /// </summary>
+    [HttpGet("staff/{id:guid}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetStaffById(Guid id)
+    {
+        var staff = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == id && u.Role == Role.Staff);
+
+        if (staff == null)
+        {
+            return NotFound(new { error = "Staff member not found" });
+        }
+
+        // Calculate date for recent activity (last 30 days)
+        var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+
+        // Get statistics
+        var totalReservationsVerified = await _db.Reservations
+            .CountAsync(r => r.VerifiedByStaffId == id);
+
+        var recentReservationsVerified = await _db.Reservations
+            .CountAsync(r => r.VerifiedByStaffId == id && r.CheckedInAt >= thirtyDaysAgo);
+
+        // Count swap transactions where this staff was involved in any capacity
+        var totalSwapTransactions = await _db.SwapTransactions
+            .CountAsync(st => st.CheckedInByStaffId == id 
+                           || st.BatteryIssuedByStaffId == id 
+                           || st.BatteryReceivedByStaffId == id 
+                           || st.CompletedByStaffId == id);
+
+        var recentSwapTransactions = await _db.SwapTransactions
+            .CountAsync(st => (st.CheckedInByStaffId == id 
+                            || st.BatteryIssuedByStaffId == id 
+                            || st.BatteryReceivedByStaffId == id 
+                            || st.CompletedByStaffId == id) 
+                           && st.StartedAt >= thirtyDaysAgo);
+
+        return Ok(new StaffDetailResponse
+        {
+            Id = staff.Id,
+            Email = staff.Email,
+            Name = staff.Name,
+            PhoneNumber = staff.Phone,
+            Role = staff.Role.ToString(),
+            CreatedAt = staff.CreatedAt,
+            LastLogin = staff.LastLogin,
+            TotalReservationsVerified = totalReservationsVerified,
+            TotalSwapTransactions = totalSwapTransactions,
+            RecentReservationsVerified = recentReservationsVerified,
+            RecentSwapTransactions = recentSwapTransactions
+        });
+    }
+
+    /// <summary>
     /// Get user by ID (Admin only)
     /// </summary>
     [HttpGet("{id:guid}")]
