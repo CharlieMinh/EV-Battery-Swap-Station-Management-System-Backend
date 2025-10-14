@@ -19,6 +19,64 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Create a new user (Admin only)
+    /// Admin can create accounts for Staff and Driver roles
+    /// </summary>
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest req)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        // Check if email already exists
+        var email = req.Email.Trim().ToLower();
+        if (await _db.Users.AnyAsync(u => u.Email == email))
+        {
+            return Conflict(new { error = "Email already exists" });
+        }
+
+        // Prevent creating another Admin (optional security measure)
+        // Admin accounts should be created through a special process
+        if (req.Role == Role.Admin)
+        {
+            return BadRequest(new { error = "Cannot create Admin accounts through this endpoint. Please contact system administrator." });
+        }
+
+        // Create new user
+        var user = new User
+        {
+            Email = email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+            Name = req.Name.Trim(),
+            Phone = req.PhoneNumber?.Trim(),
+            Role = req.Role,
+            Status = req.Status ?? UserStatus.Active, // Default to Active if not specified
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        return CreatedAtAction(
+            nameof(GetUserById), 
+            new { id = user.Id }, 
+            new UserResponse
+            {
+                Id = user.Id,
+                Email = user.Email,
+                Name = user.Name,
+                PhoneNumber = user.Phone,
+                Role = user.Role.ToString(),
+                Status = user.Status.ToString(),
+                CreatedAt = user.CreatedAt,
+                LastLogin = user.LastLogin
+            });
+    }
+
+    /// <summary>
     /// Get all users with optional filtering by role
     /// </summary>
     /// <param name="role">Filter by role: Driver (0), Staff (1), Admin (2)</param>
