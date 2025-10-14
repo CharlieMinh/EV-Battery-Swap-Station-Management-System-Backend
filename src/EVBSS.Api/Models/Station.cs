@@ -3,6 +3,11 @@ namespace EVBSS.Api.Models;
 public class Station
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    
+    /// <summary>
+    /// Display ID in format T01, T02, T03... (auto-generated)
+    /// </summary>
+    public string? DisplayId { get; set; }
     public string Name { get; set; } = null!;
     public string Address { get; set; } = null!;
     public string City { get; set; } = "HCM";
@@ -39,3 +44,4 @@ public class Station
         return now >= OpenTime && now <= CloseTime;
     }
 }
+

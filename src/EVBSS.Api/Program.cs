@@ -103,6 +103,7 @@ builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for OTP
 builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
 builder.Services.AddScoped<GoogleAuthService>(); // Google OAuth service
+builder.Services.AddScoped<StationService>(); // Station management with DisplayId generation
 
 // Background Services
 // Legacy ReservationExpireHostedService removed - using SlotReservationBackgroundService instead
@@ -131,6 +132,10 @@ using (var scope = app.Services.CreateScope())
         }
         db.SaveChanges();
     }
+
+    // Auto-generate DisplayId for existing stations that don't have one
+    var stationService = scope.ServiceProvider.GetRequiredService<StationService>();
+    await stationService.UpdateExistingStationsDisplayIdAsync();
 
     if (!db.Users.Any(u => u.Email == "admin@evbss.local"))
     {
