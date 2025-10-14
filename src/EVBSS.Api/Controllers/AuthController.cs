@@ -93,6 +93,10 @@ public class AuthController : ControllerBase
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized(new { error = new { code = "INVALID_CREDENTIALS", message = "Invalid email or password." } });
 
+        // Check if user account is locked
+        if (user.Status == UserStatus.Locked)
+            return Unauthorized(new { error = new { code = "ACCOUNT_LOCKED", message = "Your account has been locked. Please contact administrator." } });
+
         var token = GenerateJwt(user);
         user.LastLogin = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -135,6 +139,10 @@ public class AuthController : ControllerBase
             
             // Tìm hoặc tạo user
             var user = await _googleAuthService.FindOrCreateUserAsync(payload);
+            
+            // Check if user account is locked
+            if (user.Status == UserStatus.Locked)
+                return Unauthorized(new { error = new { code = "ACCOUNT_LOCKED", message = "Your account has been locked. Please contact administrator." } });
             
             // Generate JWT token
             var token = GenerateJwt(user);

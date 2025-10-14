@@ -4,6 +4,12 @@ public enum Role { Driver = 0, Staff = 1, Admin = 2 }
 
 public enum AuthMethod { Local = 0, Google = 1 }
 
+public enum UserStatus 
+{ 
+    Active = 0,      // Hoạt động
+    Locked = 1       // Bị khóa
+}
+
 public class User
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -12,6 +18,7 @@ public class User
     public string? Name { get; set; }
     public string? Phone { get; set; }
     public Role Role { get; set; } = Role.Driver;
+    public UserStatus Status { get; set; } = UserStatus.Active; // Default: Active
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLogin { get; set; }
     

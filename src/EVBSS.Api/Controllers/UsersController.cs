@@ -71,6 +71,7 @@ public class UsersController : ControllerBase
                 Name = u.Name,
                 PhoneNumber = u.Phone,
                 Role = u.Role.ToString(),
+                Status = u.Status.ToString(),
                 CreatedAt = u.CreatedAt,
                 LastLogin = u.LastLogin
             })
@@ -127,6 +128,7 @@ public class UsersController : ControllerBase
                 Email = u.Email,
                 Name = u.Name,
                 PhoneNumber = u.Phone,
+                Status = u.Status.ToString(),
                 CreatedAt = u.CreatedAt,
                 LastLogin = u.LastLogin,
                 // Count reservations for this customer
@@ -187,6 +189,7 @@ public class UsersController : ControllerBase
                 Name = u.Name,
                 PhoneNumber = u.Phone,
                 Role = u.Role.ToString(),
+                Status = u.Status.ToString(),
                 CreatedAt = u.CreatedAt,
                 LastLogin = u.LastLogin
             })
@@ -250,6 +253,7 @@ public class UsersController : ControllerBase
             Name = staff.Name,
             PhoneNumber = staff.Phone,
             Role = staff.Role.ToString(),
+            Status = staff.Status.ToString(),
             CreatedAt = staff.CreatedAt,
             LastLogin = staff.LastLogin,
             TotalReservationsVerified = totalReservationsVerified,
@@ -282,6 +286,7 @@ public class UsersController : ControllerBase
             Name = user.Name,
             PhoneNumber = user.Phone,
             Role = user.Role.ToString(),
+            Status = user.Status.ToString(),
             CreatedAt = user.CreatedAt,
             LastLogin = user.LastLogin,
             // Statistics
@@ -348,10 +353,15 @@ public class UsersController : ControllerBase
                 return Forbid();
             }
 
-            // Staff cannot change roles
+            // Staff cannot change roles or status
             if (req.Role.HasValue)
             {
                 return BadRequest(new { error = "Staff members are not allowed to change user roles" });
+            }
+
+            if (req.Status.HasValue)
+            {
+                return BadRequest(new { error = "Staff members are not allowed to change user status" });
             }
         }
         // Admin has full access - no additional checks needed
@@ -373,6 +383,12 @@ public class UsersController : ControllerBase
             user.Role = req.Role.Value;
         }
 
+        // Only Admin can change status
+        if (req.Status.HasValue && currentUserRole == Role.Admin)
+        {
+            user.Status = req.Status.Value;
+        }
+
         await _db.SaveChangesAsync();
 
         return Ok(new UserResponse
@@ -382,6 +398,7 @@ public class UsersController : ControllerBase
             Name = user.Name,
             PhoneNumber = user.Phone,
             Role = user.Role.ToString(),
+            Status = user.Status.ToString(),
             CreatedAt = user.CreatedAt,
             LastLogin = user.LastLogin
         });
