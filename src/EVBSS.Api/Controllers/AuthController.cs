@@ -22,12 +22,18 @@ public class AuthController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IConfiguration _cfg;
     private readonly PasswordResetService _passwordResetService;
+    private readonly GoogleAuthService _googleAuthService;
 
-    public AuthController(AppDbContext db, IConfiguration cfg, PasswordResetService passwordResetService)
+    public AuthController(
+        AppDbContext db, 
+        IConfiguration cfg, 
+        PasswordResetService passwordResetService,
+        GoogleAuthService googleAuthService)
     {
         _db = db; 
         _cfg = cfg;
         _passwordResetService = passwordResetService;
+        _googleAuthService = googleAuthService;
     }
 
     [HttpPost("register")]
@@ -102,6 +108,58 @@ public class AuthController : ControllerBase
         Response.Cookies.Append("jwt", token, cookieOptions);
 
         return Ok(new AuthResponse { Token = token, Role = user.Role.ToString(), Name = user.Name });
+    }
+
+    [HttpPost("google-login")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [Produces("application/json")]
+    public async Task<ActionResult<AuthResponse>> GoogleLogin([FromBody] GoogleLoginRequest req)
+    {
+        try
+        {
+            // Validate input
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState
+                    .Where(x => x.Value!.Errors.Count > 0)
+                    .ToDictionary(
+                        kvp => kvp.Key.ToLower(),
+                        kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
+                    );
+                return BadRequest(new { error = new { code = "VALIDATION_FAILED", message = "Invalid input data.", details = errors } });
+            }
+
+            // Xác thực Google ID Token
+            var payload = await _googleAuthService.VerifyGoogleTokenAsync(req.IdToken);
+            
+            // Tìm hoặc tạo user
+            var user = await _googleAuthService.FindOrCreateUserAsync(payload);
+            
+            // Generate JWT token
+            var token = GenerateJwt(user);
+
+            // Set JWT token vào HTTP-only Cookie
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Expires = DateTimeOffset.UtcNow.AddMinutes(int.Parse(_cfg["Jwt:ExpiresMinutes"] ?? "120"))
+            };
+            Response.Cookies.Append("jwt", token, cookieOptions);
+
+            return Ok(new AuthResponse 
+            { 
+                Token = token, 
+                Role = user.Role.ToString(), 
+                Name = user.Name 
+            });
+        }
+        catch (Exception ex)
+        {
+            return Unauthorized(new { error = new { code = "GOOGLE_AUTH_FAILED", message = "Google authentication failed.", details = ex.Message } });
+        }
     }
 
     [HttpPost("logout")]
