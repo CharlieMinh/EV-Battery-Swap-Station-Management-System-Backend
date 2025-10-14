@@ -9,6 +9,7 @@ public class CustomerResponse
     public string Email { get; set; } = default!;
     public string? Name { get; set; }
     public string? PhoneNumber { get; set; }
+    public string Status { get; set; } = default!; // "Active" or "Locked"
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLogin { get; set; }
     
