@@ -36,7 +36,12 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddCors(opt =>
 {
     opt.AddPolicy("frontend", p => p
-        .WithOrigins("http://localhost:3000", "http://localhost:5173", "http://localhost:5194", "https://localhost:7240")
+        .WithOrigins(
+            "http://localhost:3000", 
+            "http://localhost:5173", 
+            "http://127.0.0.1:5173",
+            "http://localhost:5194",
+            "https://localhost:7240")
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials()); // cho phép gửi cookie
@@ -97,6 +102,7 @@ builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for OTP
 builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
+builder.Services.AddScoped<GoogleAuthService>(); // Google OAuth service
 
 // Background Services
 // Legacy ReservationExpireHostedService removed - using SlotReservationBackgroundService instead
