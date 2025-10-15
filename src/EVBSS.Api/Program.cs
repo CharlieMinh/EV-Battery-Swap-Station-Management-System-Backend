@@ -11,6 +11,8 @@ using EVBSS.Api.Configuration; // VnPayConfig
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpClient();
+
 // Swagger (đơn giản)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

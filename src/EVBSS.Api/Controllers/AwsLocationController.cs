@@ -1,50 +1,68 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 
-// Lớp POCO đại diện cho cấu hình AWS của bạn (cần đảm bảo tên namespace khớp)
-// Ví dụ: using YourProject.Models; 
+// [Phần DTOs giữ nguyên]
+// ... (AwsPlaceGeometry, AwsPlace, AwsResult, AwsGeocodeResponse, GeocodeRequest, GeocodeResponse)
+// [Để giữ cho file này gọn, tôi không lặp lại phần DTOs]
 
 [Route("api/[controller]")]
 [ApiController]
 public class AwsLocationController : ControllerBase
 {
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly AwsSettings _awsSettings;
-    private readonly string _awsBaseUrl;
 
-    public AwsLocationController(
-        HttpClient httpClient,
-        IOptions<AwsSettings> awsSettingsOptions)
+    // Định nghĩa DTOs nội bộ cho phản hồi AWS
+    private class AwsPlaceGeometry
     {
-        _httpClient = httpClient;
-        _awsSettings = awsSettingsOptions.Value;
+        public required double[] Point { get; set; }
+    }
 
-        // Xây dựng URL cơ sở từ cấu hình
-        _awsBaseUrl = $"https://places.geo.{_awsSettings.Region}.amazonaws.com/places/v0/indexes/{_awsSettings.PlaceIndex}/search/text";
+    private class AwsPlace
+    {
+        public required AwsPlaceGeometry Geometry { get; set; }
+        public required string Label { get; set; }
+    }
+
+    private class AwsResult
+    {
+        public required AwsPlace Place { get; set; }
+    }
+
+    private class AwsGeocodeResponse
+    {
+        public required AwsResult[] Results { get; set; }
     }
 
     // Định nghĩa kiểu dữ liệu cho yêu cầu từ Frontend
     public class GeocodeRequest
     {
-        public string Address { get; set; }
+        // Sử dụng required để tránh cảnh báo Nullability
+        [System.ComponentModel.DataAnnotations.Required]
+        public required string Address { get; set; }
     }
 
     // Định nghĩa kiểu dữ liệu cho phản hồi Geocode đơn giản
     public class GeocodeResponse
     {
-        public double Lat { get; set; }
-        public double Lng { get; set; }
-        public string Label { get; set; }
+        public required double Lat { get; set; }
+        public required double Lng { get; set; }
+        public required string Label { get; set; }
     }
 
-    /// <summary>
-    /// Endpoint Proxy an toàn để Geocode địa chỉ.
-    /// Frontend gọi endpoint này, Backend sẽ chèn API Key và gọi AWS.
-    /// </summary>
+
+    public AwsLocationController(
+        IHttpClientFactory httpClientFactory,
+        IOptions<AwsSettings> awsSettingsOptions)
+    {
+        _httpClientFactory = httpClientFactory;
+        _awsSettings = awsSettingsOptions.Value!;
+    }
+
     [HttpPost("geocode")]
     public async Task<IActionResult> Geocode([FromBody] GeocodeRequest request)
     {
@@ -55,18 +73,26 @@ public class AwsLocationController : ControllerBase
 
         if (string.IsNullOrEmpty(_awsSettings.ApiKey))
         {
-            // Kiểm tra bảo mật
             return StatusCode(500, new { error = "Lỗi cấu hình Server: AWS API Key bị thiếu." });
         }
 
         try
         {
-            // --- 1. Chuẩn bị yêu cầu gửi đến AWS ---
+            using var httpClient = _httpClientFactory.CreateClient();
+
+            var awsBaseUrl = $"https://places.geo.{_awsSettings.Region}.amazonaws.com/places/v0/indexes/{_awsSettings.PlaceIndex}/search/text";
+
+            // --- 1. Vô hiệu hóa hoặc đặt lại User-Agent (Khắc phục lỗi Non-ASCII) ---
+            // Đảm bảo User-Agent không chứa ký tự Non-ASCII từ môi trường
+            httpClient.DefaultRequestHeaders.UserAgent.Clear();
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EVBSS-Proxy/1.0");
+
+            // --- 2. Chuẩn bị Payload ---
             var awsPayload = new
             {
                 Text = request.Address,
                 MaxResults = 1,
-                BiasPosition = new[] { 106.7, 10.8 } // Tọa độ bias TP.HCM
+                BiasPosition = new[] { 106.7, 10.8 }
             };
 
             var jsonContent = new StringContent(
@@ -75,47 +101,50 @@ public class AwsLocationController : ControllerBase
                 "application/json"
             );
 
-            // --- 2. Gửi yêu cầu đến AWS và chèn API Key ---
-            _httpClient.DefaultRequestHeaders.Clear();
-            _httpClient.DefaultRequestHeaders.Add("x-api-key", _awsSettings.ApiKey);
+            // --- 3. SỬ DỤNG HttpRequestMessage để kiểm soát Header tuyệt đối ---
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, awsBaseUrl);
 
-            var awsResponse = await _httpClient.PostAsync(_awsBaseUrl, jsonContent);
+            // Gán Content (Content Header sẽ được quản lý tại đây)
+            httpRequest.Content = jsonContent;
 
-            // --- 3. Xử lý phản hồi từ AWS ---
+            // Thêm API Key vào Request Header (chắc chắn chỉ có ASCII)
+            // LƯU Ý: Không sử dụng DefaultRequestHeaders.Add() cho API Key
+            httpRequest.Headers.Add("x-api-key", _awsSettings.ApiKey.Trim());
+
+            // AWS response (Gửi yêu cầu)
+            var awsResponse = await httpClient.SendAsync(httpRequest);
+
+            // --- Xử lý Phản hồi ---
             if (!awsResponse.IsSuccessStatusCode)
             {
                 var errorContent = await awsResponse.Content.ReadAsStringAsync();
-                // Log và trả về lỗi AWS
+                Console.WriteLine($"AWS Geolocation API failed: {awsResponse.StatusCode}. Content: {errorContent}");
                 return StatusCode((int)awsResponse.StatusCode, new { error = "Lỗi từ AWS Geolocation", details = errorContent });
             }
 
             var content = await awsResponse.Content.ReadAsStringAsync();
-            using var document = JsonDocument.Parse(content);
-            var results = document.RootElement.GetProperty("Results");
+            var awsResult = JsonSerializer.Deserialize<AwsGeocodeResponse>(content,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-            if (results.GetArrayLength() > 0)
+            var result = awsResult?.Results?.FirstOrDefault();
+
+            if (result?.Place?.Geometry?.Point != null && result.Place.Geometry.Point.Length >= 2)
             {
-                var place = results[0].GetProperty("Place");
-                var point = place.GetProperty("Geometry").GetProperty("Point");
-
                 var response = new GeocodeResponse
                 {
-                    Lng = point[0].GetDouble(),
-                    Lat = point[1].GetDouble(),
-                    Label = place.GetProperty("Label").GetString()
+                    Lng = result.Place.Geometry.Point[0],
+                    Lat = result.Place.Geometry.Point[1],
+                    Label = result.Place.Label
                 };
-
-                // Trả về kết quả cho Frontend
                 return Ok(response);
             }
 
-            // Không tìm thấy kết quả
-            return Ok(new { coords = (object)null, label = (object)null });
+            return Ok(new { lat = 0.0, lng = 0.0, label = "Không tìm thấy" });
 
         }
         catch (Exception ex)
         {
-            // Xử lý lỗi hệ thống/network
+            Console.WriteLine($"System Error during Geocoding: {ex}");
             return StatusCode(500, new { error = "Lỗi không xác định khi xử lý Geocoding.", message = ex.Message });
         }
     }
