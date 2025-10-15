@@ -18,8 +18,9 @@ public class Reservation
     // === SLOT-BASED BOOKING FIELDS ===
     /// <summary>
     /// Ngày đặt lịch (chỉ ngày, không có giờ)
+    /// UPDATED: Changed from DateTime to DateOnly to avoid timezone issues
     /// </summary>
-    public DateTime SlotDate { get; set; }
+    public DateOnly SlotDate { get; set; }
     
     /// <summary>
     /// Giờ bắt đầu slot (VD: 09:00:00)

@@ -63,6 +63,7 @@ public static class ReservationSlotConfig
     
     /// <summary>
     /// Kiểm tra xem thời điểm hiện tại có trong check-in window của slot không
+    /// UPDATED: Support both DateTime and DateOnly parameters
     /// </summary>
     public static bool IsWithinCheckInWindow(DateTime slotDate, TimeSpan slotStartTime, TimeSpan slotEndTime, DateTime now)
     {
@@ -74,12 +75,39 @@ public static class ReservationSlotConfig
     }
     
     /// <summary>
+    /// Kiểm tra xem thời điểm hiện tại có trong check-in window của slot không (DateOnly overload)
+    /// </summary>
+    public static bool IsWithinCheckInWindow(DateOnly slotDate, TimeSpan slotStartTime, TimeSpan slotEndTime, DateTime now)
+    {
+        // Convert DateOnly to DateTime for calculation
+        var slotDateTime = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
+        var windowStart = slotDateTime.Add(-CheckInBuffer);
+        var windowEnd = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotEndTime)).Add(CheckInBuffer);
+        
+        return now >= windowStart && now <= windowEnd;
+    }
+    
+    /// <summary>
     /// Lấy check-in window cho một slot
     /// </summary>
     public static (DateTime EarliestCheckIn, DateTime LatestCheckIn) GetCheckInWindow(DateTime slotDate, TimeSpan slotStartTime, TimeSpan slotEndTime)
     {
         var slotStart = slotDate.Date.Add(slotStartTime);
         var slotEnd = slotDate.Date.Add(slotEndTime);
+        
+        return (
+            slotStart.Add(-CheckInBuffer),
+            slotEnd.Add(CheckInBuffer)
+        );
+    }
+    
+    /// <summary>
+    /// Lấy check-in window cho một slot (DateOnly overload)
+    /// </summary>
+    public static (DateTime EarliestCheckIn, DateTime LatestCheckIn) GetCheckInWindow(DateOnly slotDate, TimeSpan slotStartTime, TimeSpan slotEndTime)
+    {
+        var slotStart = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
+        var slotEnd = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotEndTime));
         
         return (
             slotStart.Add(-CheckInBuffer),

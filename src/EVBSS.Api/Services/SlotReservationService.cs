@@ -52,7 +52,7 @@ public class SlotReservationService
     /// </summary>
     public async Task<List<SlotAvailabilityDto>> GetAvailableSlotsAsync(
         Guid stationId, 
-        DateTime date, 
+        DateOnly date,  // UPDATED: Changed from DateTime to DateOnly
         Guid batteryModelId)
     {
         // Lấy tất cả slots trong ngày
@@ -62,7 +62,7 @@ public class SlotReservationService
         var reservationCounts = await _db.Reservations
             .Where(r => 
                 r.StationId == stationId &&
-                r.SlotDate.Date == date.Date &&
+                r.SlotDate == date &&  // UPDATED: Direct DateOnly comparison, no need for .Date
                 r.BatteryModelId == batteryModelId &&
                 (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.CheckedIn))
             .GroupBy(r => new { r.SlotStartTime, r.SlotEndTime })
@@ -102,7 +102,7 @@ public class SlotReservationService
         Guid userId,
         Guid stationId,
         Guid batteryModelId,
-        DateTime slotDate,
+        DateOnly slotDate,  // UPDATED: Changed from DateTime to DateOnly
         TimeSpan slotStartTime,
         TimeSpan slotEndTime)
     {
@@ -118,14 +118,16 @@ public class SlotReservationService
         }
         
         // Validation 2: Slot phải trong tương lai (ít nhất 1 giờ trước) - TẠMĐỪNG
-        // var slotDateTime = slotDate.Date.Add(slotStartTime);
+        // var slotDateTime = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
         // if (slotDateTime <= DateTime.UtcNow.AddHours(1))
         // {
         //     throw new SlotNotAvailableException("Vui lòng đặt lịch trước ít nhất 1 giờ.");
         // }
         
         // Validation 3: Không đặt quá xa (max 7 ngày)
-        if (slotDate.Date > DateTime.UtcNow.Date.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays))
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);  // UPDATED: Convert current DateTime to DateOnly
+        var maxDate = today.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays);
+        if (slotDate > maxDate)
         {
             throw new SlotNotAvailableException($"Chỉ có thể đặt lịch trong vòng {ReservationSlotConfig.MaxAdvanceBookingDays} ngày tới.");
         }
@@ -134,7 +136,7 @@ public class SlotReservationService
         var currentCount = await _db.Reservations
             .CountAsync(r =>
                 r.StationId == stationId &&
-                r.SlotDate.Date == slotDate.Date &&
+                r.SlotDate == slotDate &&  // UPDATED: Direct DateOnly comparison
                 r.SlotStartTime == slotStartTime &&
                 r.SlotEndTime == slotEndTime &&
                 r.BatteryModelId == batteryModelId &&
@@ -152,7 +154,7 @@ public class SlotReservationService
             StationId = stationId,
             BatteryModelId = batteryModelId,
             BatteryUnitId = null, // Chưa assign pin
-            SlotDate = slotDate.Date,
+            SlotDate = slotDate,  // UPDATED: No need for .Date anymore
             SlotStartTime = slotStartTime,
             SlotEndTime = slotEndTime,
             Status = ReservationStatus.Pending,
@@ -213,7 +215,10 @@ public class SlotReservationService
             .AsQueryable();
 
         if (date.HasValue)
-            query = query.Where(r => r.SlotDate.Date == date.Value.Date);
+        {
+            var dateOnly = DateOnly.FromDateTime(date.Value);  // UPDATED: Convert DateTime to DateOnly
+            query = query.Where(r => r.SlotDate == dateOnly);
+        }
 
         if (stationId.HasValue)
             query = query.Where(r => r.StationId == stationId.Value);
@@ -357,7 +362,7 @@ public class SlotReservationService
     public async Task<int> ExpireOverdueReservationsAsync()
     {
         var now = DateTime.UtcNow;
-        var today = now.Date;
+        var today = DateOnly.FromDateTime(now);  // UPDATED: Convert to DateOnly
         var currentTime = now.TimeOfDay;
         
         // Tìm reservations đã quá check-in window
@@ -368,10 +373,10 @@ public class SlotReservationService
         
         var overdueReservations = allPendingReservations
             .Where(r => 
-                // Slot của ngày hôm qua
-                r.SlotDate.Date < today ||
+                // Slot của ngày hôm qua - UPDATED: Direct DateOnly comparison
+                r.SlotDate < today ||
                 // Slot hôm nay nhưng đã quá window
-                (r.SlotDate.Date == today && 
+                (r.SlotDate == today && 
                  currentTime > r.SlotEndTime.Add(ReservationSlotConfig.CheckInBuffer)))
             .ToList();
         
