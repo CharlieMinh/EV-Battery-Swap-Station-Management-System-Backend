@@ -34,7 +34,7 @@ public class SlotReservationsController : ControllerBase
     [ProducesResponseType(typeof(IEnumerable<SlotAvailabilityDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAvailableSlots(
         [FromQuery] Guid stationId,
-        [FromQuery] DateTime date,
+        [FromQuery] DateOnly date,  // UPDATED: Changed from DateTime to DateOnly
         [FromQuery] Guid batteryModelId)
     {
         var slots = await _service.GetAvailableSlotsAsync(stationId, date, batteryModelId);
@@ -210,7 +210,8 @@ public class SlotReservationsController : ControllerBase
     // Helper method to map Reservation to Response DTO
     private SlotReservationResponse MapToResponse(Reservation reservation)
     {
-        var slotDateTime = reservation.SlotDate.Date.Add(reservation.SlotStartTime);
+        // Convert DateOnly + TimeSpan to DateTime for check-in window calculation
+        var slotDateTime = reservation.SlotDate.ToDateTime(TimeOnly.FromTimeSpan(reservation.SlotStartTime));
         var (earliest, latest) = ReservationSlotConfig.GetCheckInWindow(
             slotDateTime, 
             reservation.SlotStartTime, 
@@ -244,7 +245,7 @@ public class SlotReservationsController : ControllerBase
 public record CreateSlotReservationRequest(
     Guid StationId,
     Guid BatteryModelId,
-    DateTime SlotDate,
+    DateOnly SlotDate,  // UPDATED: Changed from DateTime to DateOnly to fix timezone issue
     TimeSpan SlotStartTime,
     TimeSpan SlotEndTime
 );
@@ -258,7 +259,7 @@ public record SlotReservationResponse
     public Guid BatteryModelId { get; set; }
     public string BatteryModelName { get; set; } = null!;
     public string Status { get; set; } = null!;
-    public DateTime SlotDate { get; set; }
+    public DateOnly SlotDate { get; set; }  // UPDATED: Changed from DateTime to DateOnly
     public TimeSpan SlotStartTime { get; set; }
     public TimeSpan SlotEndTime { get; set; }
     public string QRCode { get; set; } = null!;
