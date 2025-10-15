@@ -37,8 +37,8 @@ builder.Services.AddCors(opt =>
 {
     opt.AddPolicy("frontend", p => p
         .WithOrigins(
-            "http://localhost:3000", 
-            "http://localhost:5173", 
+            "http://localhost:3000",
+            "http://localhost:5173",
             "http://127.0.0.1:5173",
             "http://localhost:5194",
             "https://localhost:7240")
@@ -54,6 +54,10 @@ builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
 
 // VNPay Configuration
 builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPay"));
+
+// Đăng ký cấu hình AWS (được thêm vào đây)
+builder.Services.Configure<AwsSettings>(
+    builder.Configuration.GetSection("AwsSettings"));
 
 // JWT (đủ dùng)
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -122,7 +126,7 @@ using (var scope = app.Services.CreateScope())
     var stationsNeedUpdate = db.Stations
         .Where(s => s.OpenTime == TimeSpan.Zero && s.CloseTime == TimeSpan.Zero)
         .ToList();
-    
+
     if (stationsNeedUpdate.Any())
     {
         foreach (var station in stationsNeedUpdate)
@@ -178,7 +182,7 @@ using (var scope = app.Services.CreateScope())
         var m72 = models.First(x => x.Name == "BM-72V-40Ah");
         var vf5 = models.First(x => x.Name == "VF5 Battery Pack");
         var stations = db.Stations.ToList();
-        
+
         if (stations.Count > 0)
         {
             var st1 = stations[0];
@@ -211,24 +215,24 @@ using (var scope = app.Services.CreateScope())
         var bm48V = db.BatteryModels.First(x => x.Name == "BM-48V-30Ah");
         var bm72V = db.BatteryModels.First(x => x.Name == "BM-72V-40Ah");
         var vf5Battery = db.BatteryModels.First(x => x.Name == "VF5 Battery Pack");
-        
+
         db.SubscriptionPlans.AddRange(
             // VF3 equivalent plans (48V battery)
-            new SubscriptionPlan 
-            { 
-                Name = "FF3-Basic", 
+            new SubscriptionPlan
+            {
+                Name = "FF3-Basic",
                 Description = "Gói cơ bản dành cho xe nhỏ - tương đương FF3",
                 MonthlyFeeUnder1500Km = 1100000,
-                MonthlyFee1500To3000Km = 1400000, 
+                MonthlyFee1500To3000Km = 1400000,
                 MonthlyFeeOver3000Km = 3000000,
                 DepositAmount = 7000000,
                 BatteryModelId = bm48V.Id
             },
-            
+
             // VF5 plans (VF5 Battery Pack)
-            new SubscriptionPlan 
-            { 
-                Name = "VF5-Standard", 
+            new SubscriptionPlan
+            {
+                Name = "VF5-Standard",
                 Description = "Gói tiêu chuẩn dành cho VinFast VF5 - Pin chính hãng VF5",
                 MonthlyFeeUnder1500Km = 1500000,
                 MonthlyFee1500To3000Km = 2000000,
@@ -236,11 +240,11 @@ using (var scope = app.Services.CreateScope())
                 DepositAmount = 18000000,
                 BatteryModelId = vf5Battery.Id
             },
-            
+
             // VF5 equivalent plans (48V battery) 
-            new SubscriptionPlan 
-            { 
-                Name = "FF5-Standard", 
+            new SubscriptionPlan
+            {
+                Name = "FF5-Standard",
                 Description = "Gói tiêu chuẩn dành cho xe compact - tương đương FF5",
                 MonthlyFeeUnder1500Km = 1400000,
                 MonthlyFee1500To3000Km = 1900000,
@@ -248,11 +252,11 @@ using (var scope = app.Services.CreateScope())
                 DepositAmount = 15000000,
                 BatteryModelId = bm48V.Id
             },
-            
+
             // VF7 equivalent plans (72V battery)
-            new SubscriptionPlan 
-            { 
-                Name = "FF7-Premium", 
+            new SubscriptionPlan
+            {
+                Name = "FF7-Premium",
                 Description = "Gói cao cấp dành cho xe SUV - tương đương FF7",
                 MonthlyFeeUnder1500Km = 2000000,
                 MonthlyFee1500To3000Km = 3500000,
@@ -260,11 +264,11 @@ using (var scope = app.Services.CreateScope())
                 DepositAmount = 41000000,
                 BatteryModelId = bm72V.Id
             },
-            
+
             // VF9 equivalent plans (72V battery)
-            new SubscriptionPlan 
-            { 
-                Name = "FF9-Luxury", 
+            new SubscriptionPlan
+            {
+                Name = "FF9-Luxury",
                 Description = "Gói siêu cao cấp dành cho xe hạng sang - tương đương FF9",
                 MonthlyFeeUnder1500Km = 3200000,
                 MonthlyFee1500To3000Km = 5400000,
@@ -301,13 +305,13 @@ using (var scope = app.Services.CreateScope())
     {
         await EVBSS.Api.Data.VehicleModelSeeder.SeedVehicleModelsAsync(context);
         logger.LogInformation("VehicleModels seeded successfully");
-        
+
         // Seed test vehicles for users
         if (!context.Vehicles.Any(v => v.Id == Guid.Parse("cbe25b14-fd54-4c47-be7d-ff710fe16e22")))
         {
             var driver1 = context.Users.FirstOrDefault(u => u.Email == "driver1@evbss.local");
             var vf5BatteryModel = context.BatteryModels.FirstOrDefault(b => b.Name == "VF5 Battery Pack");
-            
+
             if (driver1 != null && vf5BatteryModel != null)
             {
                 context.Vehicles.Add(new EVBSS.Api.Models.Vehicle
@@ -330,6 +334,8 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogError(ex, "Error seeding VehicleModels and Vehicles");
     }
+
+
 }
 
 app.Run();
