@@ -17,9 +17,18 @@ public class CreateVehicleRequest
     public Guid VehicleModelId { get; set; }
     
     /// <summary>
-    /// URL ảnh xe của chủ xe (để nhận diện)
+    /// URL ảnh xe của chủ xe (bắt buộc để nhận diện)
     /// </summary>
+    [Required(ErrorMessage = "Vehicle photo is required")]
     [Url]
     [StringLength(500)]
-    public string? PhotoUrl { get; set; }
+    public string PhotoUrl { get; set; } = default!;
+    
+    /// <summary>
+    /// URL ảnh cà vẹt xe / giấy đăng ký xe (bắt buộc để xác minh)
+    /// </summary>
+    [Required(ErrorMessage = "Vehicle registration photo is required")]
+    [Url]
+    [StringLength(500)]
+    public string RegistrationPhotoUrl { get; set; } = default!;
 }

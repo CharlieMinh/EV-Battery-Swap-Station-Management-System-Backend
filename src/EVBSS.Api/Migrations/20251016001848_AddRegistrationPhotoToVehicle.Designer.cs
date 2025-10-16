@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251014031025_AddGoogleAuthToUser")]
-    partial class AddGoogleAuthToUser
+    [Migration("20251016001848_AddRegistrationPhotoToVehicle")]
+    partial class AddRegistrationPhotoToVehicle
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -337,8 +337,8 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("QRCode")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("SlotDate")
-                        .HasColumnType("datetime2");
+                    b.Property<DateOnly>("SlotDate")
+                        .HasColumnType("date");
 
                     b.Property<TimeSpan>("SlotEndTime")
                         .HasColumnType("time");
@@ -391,6 +391,9 @@ namespace EVBSS.Api.Migrations
 
                     b.Property<TimeSpan>("CloseTime")
                         .HasColumnType("time");
+
+                    b.Property<string>("DisplayId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -675,6 +678,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("int");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
@@ -772,6 +778,9 @@ namespace EVBSS.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RegistrationPhotoUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
