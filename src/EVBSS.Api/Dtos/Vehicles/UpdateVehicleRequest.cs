@@ -19,4 +19,11 @@ public class UpdateVehicleRequest
     [Url]
     [StringLength(500)]
     public string? PhotoUrl { get; set; }
+    
+    /// <summary>
+    /// URL ảnh cà vẹt xe mới (giấy đăng ký xe)
+    /// </summary>
+    [Url]
+    [StringLength(500)]
+    public string? RegistrationPhotoUrl { get; set; }
 }

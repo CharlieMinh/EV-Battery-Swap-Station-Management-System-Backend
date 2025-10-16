@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251014063124_AddUserStatus")]
-    partial class AddUserStatus
+    [Migration("20251015013734_AddAllPendingChanges")]
+    partial class AddAllPendingChanges
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -391,6 +391,9 @@ namespace EVBSS.Api.Migrations
 
                     b.Property<TimeSpan>("CloseTime")
                         .HasColumnType("time");
+
+                    b.Property<string>("DisplayId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");

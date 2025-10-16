@@ -11,6 +11,7 @@ public record VehicleDto(
     Guid CompatibleBatteryModelId,
     string CompatibleBatteryModelName,
     string? PhotoUrl,
+    string? RegistrationPhotoUrl,    // Ảnh cà vẹt xe
     DateTime CreatedAt,
     DateTime? UpdatedAt
 );

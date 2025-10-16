@@ -23,6 +23,11 @@ public class Vehicle
     /// </summary>
     public string? PhotoUrl { get; set; }
     
+    /// <summary>
+    /// URL ảnh cà vẹt xe (giấy đăng ký xe) - bắt buộc khi tạo xe
+    /// </summary>
+    public string? RegistrationPhotoUrl { get; set; }
+    
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

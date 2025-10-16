@@ -44,7 +44,7 @@ public class VehiclesController : ControllerBase
                 v.VehicleModel != null ? v.VehicleModel.FullName : null, 
                 v.VehicleModel != null ? v.VehicleModel.Brand : null,
                 v.CompatibleBatteryModelId, v.CompatibleModel.Name,
-                v.PhotoUrl, v.CreatedAt, v.UpdatedAt))
+                v.PhotoUrl, v.RegistrationPhotoUrl, v.CreatedAt, v.UpdatedAt))
             .ToListAsync();
 
         return Ok(items);
@@ -69,7 +69,7 @@ public class VehiclesController : ControllerBase
                 x.VehicleModel != null ? x.VehicleModel.FullName : null,
                 x.VehicleModel != null ? x.VehicleModel.Brand : null,
                 x.CompatibleBatteryModelId, x.CompatibleModel.Name,
-                x.PhotoUrl, x.CreatedAt, x.UpdatedAt))
+                x.PhotoUrl, x.RegistrationPhotoUrl, x.CreatedAt, x.UpdatedAt))
             .FirstOrDefaultAsync();
 
         return v is null
@@ -115,7 +115,8 @@ public class VehiclesController : ControllerBase
             Plate = plate,
             VehicleModelId = vehicleModel.Id,
             CompatibleBatteryModelId = vehicleModel.CompatibleBatteryModelId,
-            PhotoUrl = req.PhotoUrl
+            PhotoUrl = req.PhotoUrl,
+            RegistrationPhotoUrl = req.RegistrationPhotoUrl
         };
 
         _db.Vehicles.Add(entity);
@@ -125,7 +126,7 @@ public class VehiclesController : ControllerBase
             entity.Id, entity.VIN, entity.Plate,
             entity.VehicleModelId, vehicleModel.Name, vehicleModel.FullName, vehicleModel.Brand,
             entity.CompatibleBatteryModelId, vehicleModel.CompatibleBatteryModel.Name,
-            entity.PhotoUrl, entity.CreatedAt, entity.UpdatedAt);
+            entity.PhotoUrl, entity.RegistrationPhotoUrl, entity.CreatedAt, entity.UpdatedAt);
 
         return CreatedAtAction(nameof(GetById), new { id = entity.Id }, dto);
     }
@@ -165,6 +166,12 @@ public class VehiclesController : ControllerBase
         {
             vehicle.PhotoUrl = string.IsNullOrWhiteSpace(req.PhotoUrl) ? null : req.PhotoUrl;
         }
+        
+        // Update RegistrationPhotoUrl nếu có
+        if (req.RegistrationPhotoUrl != null)
+        {
+            vehicle.RegistrationPhotoUrl = string.IsNullOrWhiteSpace(req.RegistrationPhotoUrl) ? null : req.RegistrationPhotoUrl;
+        }
 
         vehicle.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -173,7 +180,7 @@ public class VehiclesController : ControllerBase
             vehicle.Id, vehicle.VIN, vehicle.Plate,
             vehicle.VehicleModelId, vehicle.VehicleModel.Name, vehicle.VehicleModel.FullName, vehicle.VehicleModel.Brand,
             vehicle.CompatibleBatteryModelId, vehicle.VehicleModel.CompatibleBatteryModel.Name,
-            vehicle.PhotoUrl, vehicle.CreatedAt, vehicle.UpdatedAt);
+            vehicle.PhotoUrl, vehicle.RegistrationPhotoUrl, vehicle.CreatedAt, vehicle.UpdatedAt);
 
         return Ok(dto);
     }
