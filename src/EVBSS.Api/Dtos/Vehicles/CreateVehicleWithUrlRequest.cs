@@ -32,3 +32,4 @@ public class CreateVehicleWithUrlRequest
     [StringLength(500)]
     public string RegistrationPhotoUrl { get; set; } = default!;
 }
+
