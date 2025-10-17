@@ -17,11 +17,13 @@ public class VehiclesController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IAwsRekognitionService _rekognitionService;
+    private readonly IFileStorageService _fileStorageService;
     
-    public VehiclesController(AppDbContext db, IAwsRekognitionService rekognitionService)
+    public VehiclesController(AppDbContext db, IAwsRekognitionService rekognitionService, IFileStorageService fileStorageService)
     {
         _db = db;
         _rekognitionService = rekognitionService;
+        _fileStorageService = fileStorageService;
     }
 
     // Lấy userId từ token (sub hoặc NameIdentifier)
@@ -90,7 +92,84 @@ public class VehiclesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Create([FromBody] CreateVehicleRequest req)
+    public async Task<IActionResult> Create([FromForm] CreateVehicleRequest req)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+
+        var vin = req.Vin.Trim().ToUpperInvariant();
+        var plate = req.Plate.Trim().ToUpperInvariant();
+
+        // VehicleModel tồn tại và active?
+        var vehicleModel = await _db.VehicleModels
+            .Include(vm => vm.CompatibleBatteryModel)
+            .FirstOrDefaultAsync(vm => vm.Id == req.VehicleModelId);
+        
+        if (vehicleModel is null)
+            return BadRequest(new { error = new { code = "VEHICLE_MODEL_NOT_FOUND", message = "Vehicle model not found." } });
+
+        if (!vehicleModel.IsActive)
+            return BadRequest(new { error = new { code = "VEHICLE_MODEL_INACTIVE", message = "This vehicle model is not supported for battery swap service." } });
+
+        // Không trùng trong phạm vi user
+        if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.VIN == vin))
+            return Conflict(new { error = new { code = "VIN_EXISTS", message = "VIN already exists." } });
+
+        if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.Plate == plate))
+            return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists." } });
+
+        // Upload file ảnh xe
+        string photoUrl;
+        try
+        {
+            photoUrl = await _fileStorageService.SaveFileAsync(req.Photo, "vehicles");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = new { code = "FILE_SAVE_ERROR", message = $"Error saving vehicle photo: {ex.Message}" } });
+        }
+
+        // Upload file ảnh đăng ký xe
+        string registrationPhotoUrl;
+        try
+        {
+            registrationPhotoUrl = await _fileStorageService.SaveFileAsync(req.RegistrationPhoto, "registrations");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = new { code = "FILE_SAVE_ERROR", message = $"Error saving registration photo: {ex.Message}" } });
+        }
+
+        var entity = new Vehicle
+        {
+            UserId = userId,
+            VIN = vin,
+            Plate = plate,
+            VehicleModelId = vehicleModel.Id,
+            CompatibleBatteryModelId = vehicleModel.CompatibleBatteryModelId,
+            PhotoUrl = photoUrl,
+            RegistrationPhotoUrl = registrationPhotoUrl
+        };
+
+        _db.Vehicles.Add(entity);
+        await _db.SaveChangesAsync();
+
+        var dto = new VehicleDto(
+            entity.Id, entity.VIN, entity.Plate,
+            entity.VehicleModelId, vehicleModel.Name, vehicleModel.FullName, vehicleModel.Brand,
+            entity.CompatibleBatteryModelId, vehicleModel.CompatibleBatteryModel.Name,
+            entity.PhotoUrl, entity.RegistrationPhotoUrl, entity.CreatedAt, entity.UpdatedAt);
+
+        return CreatedAtAction(nameof(GetById), new { id = entity.Id }, dto);
+    }
+
+    /// POST /api/v1/vehicles/with-url
+    /// Tạo xe mới với URL ảnh (sau khi đã upload riêng)
+    [HttpPost("with-url")]
+    [ProducesResponseType(typeof(VehicleDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> CreateWithUrl([FromBody] CreateVehicleWithUrlRequest req)
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
 

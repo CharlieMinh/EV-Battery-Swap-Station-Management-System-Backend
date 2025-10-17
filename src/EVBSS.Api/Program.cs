@@ -107,6 +107,10 @@ builder.Services.AddScoped<PasswordResetService>(); // Password reset service fo
 builder.Services.AddScoped<GoogleAuthService>(); // Google OAuth service
 builder.Services.AddScoped<StationService>(); // Station management with DisplayId generation
 
+// File Storage Service
+builder.Services.AddHttpContextAccessor(); // Cần thiết để lấy base URL
+builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
+
 // AWS Rekognition Service
 var awsConfig = builder.Configuration.GetSection("AWS");
 var awsAccessKey = awsConfig["AccessKey"];
@@ -309,6 +313,9 @@ app.UseSwaggerUI();
 
 // app.UseHttpsRedirection(); // đang chạy HTTP 8080 nên tắt tạm
 app.UseCors("frontend");
+
+// Cấu hình để phục vụ file tĩnh (ảnh, css, js...) từ thư mục wwwroot
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
