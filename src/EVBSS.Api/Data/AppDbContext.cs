@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
 
     public DbSet<BatteryModel> BatteryModels => Set<BatteryModel>();
     public DbSet<BatteryUnit> BatteryUnits => Set<BatteryUnit>();
+    public DbSet<BatteryInventory> BatteryInventories => Set<BatteryInventory>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
 
     // Payment & Invoice System
@@ -90,6 +91,31 @@ public class AppDbContext : DbContext
         b.Entity<BatteryUnit>().HasIndex(u => u.Serial).IsUnique();
         b.Entity<BatteryUnit>().HasIndex(u => new { u.StationId, u.Status, u.IsReserved }); // tìm nhanh "Full & !IsReserved"
         b.Entity<BatteryUnit>().Property(u => u.IsReserved).HasDefaultValue(false);
+
+        // BatteryInventory - HYBRID SOLUTION for quantity-based management
+        b.Entity<BatteryInventory>()
+            .HasIndex(bi => new { bi.BatteryModelId, bi.StationId, bi.Status })
+            .IsUnique(); // Unique constraint: only one record per (Model, Station, Status)
+        
+        b.Entity<BatteryInventory>()
+            .HasOne(bi => bi.BatteryModel)
+            .WithMany()
+            .HasForeignKey(bi => bi.BatteryModelId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        b.Entity<BatteryInventory>()
+            .HasOne(bi => bi.Station)
+            .WithMany()
+            .HasForeignKey(bi => bi.StationId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        b.Entity<BatteryInventory>()
+            .Property(bi => bi.Quantity)
+            .HasDefaultValue(0);
+        
+        b.Entity<BatteryInventory>()
+            .Property(bi => bi.UpdatedAt)
+            .HasDefaultValueSql("GETUTCDATE()");
 
         // Reservation
         b.Entity<Reservation>().HasIndex(r => new { r.UserId, r.CreatedAt });

@@ -106,6 +106,7 @@ builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for 
 builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
 builder.Services.AddScoped<GoogleAuthService>(); // Google OAuth service
 builder.Services.AddScoped<StationService>(); // Station management with DisplayId generation
+builder.Services.AddScoped<IBatteryInventoryService, BatteryInventoryService>(); // HYBRID SOLUTION: Quantity-based inventory management
 
 // File Storage Service
 builder.Services.AddHttpContextAccessor(); // Cần thiết để lấy base URL
