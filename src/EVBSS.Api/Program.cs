@@ -8,6 +8,8 @@ using EVBSS.Api.Models;     // Role, User
 using BCrypt.Net;           // Hash mật khẩu
 using EVBSS.Api.Services;   // Services
 using EVBSS.Api.Configuration; // VnPayConfig
+using Amazon.Rekognition;   // AWS Rekognition
+using Amazon.Runtime;       // AWS Credentials
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -104,6 +106,28 @@ builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for 
 builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
 builder.Services.AddScoped<GoogleAuthService>(); // Google OAuth service
 builder.Services.AddScoped<StationService>(); // Station management with DisplayId generation
+
+// AWS Rekognition Service
+var awsConfig = builder.Configuration.GetSection("AWS");
+var awsAccessKey = awsConfig["AccessKey"];
+var awsSecretKey = awsConfig["SecretKey"];
+var awsRegion = awsConfig["Region"] ?? "ap-southeast-1";
+
+if (!string.IsNullOrWhiteSpace(awsAccessKey) && !string.IsNullOrWhiteSpace(awsSecretKey))
+{
+    var awsCredentials = new BasicAWSCredentials(awsAccessKey, awsSecretKey);
+    builder.Services.AddSingleton<IAmazonRekognition>(_ => 
+        new AmazonRekognitionClient(awsCredentials, Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
+}
+else
+{
+    // Fallback to default credentials chain (IAM role, environment variables, etc.)
+    builder.Services.AddSingleton<IAmazonRekognition>(_ => 
+        new AmazonRekognitionClient(Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
+}
+
+builder.Services.AddHttpClient<IAwsRekognitionService, AwsRekognitionService>();
+builder.Services.AddScoped<IAwsRekognitionService, AwsRekognitionService>();
 
 // Background Services
 // Legacy ReservationExpireHostedService removed - using SlotReservationBackgroundService instead
