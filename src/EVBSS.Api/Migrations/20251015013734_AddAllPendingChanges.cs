@@ -10,20 +10,31 @@ namespace EVBSS.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "Status",
-                table: "Users",
-                type: "int",
-                nullable: false,
-                defaultValue: 0);
+            // Kiểm tra cột Status đã tồn tại chưa trước khi thêm
+            migrationBuilder.Sql(@"
+                IF NOT EXISTS (
+                    SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = 'Users' AND COLUMN_NAME = 'Status'
+                )
+                BEGIN
+                    ALTER TABLE [Users] ADD [Status] int NOT NULL DEFAULT 0;
+                END
+            ");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Status",
-                table: "Users");
+            // Xóa cột Status nếu tồn tại
+            migrationBuilder.Sql(@"
+                IF EXISTS (
+                    SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_NAME = 'Users' AND COLUMN_NAME = 'Status'
+                )
+                BEGIN
+                    ALTER TABLE [Users] DROP COLUMN [Status];
+                END
+            ");
         }
     }
 }
