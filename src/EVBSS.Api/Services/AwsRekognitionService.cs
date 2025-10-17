@@ -317,6 +317,7 @@ public class AwsRekognitionService : IAwsRekognitionService
         // Priority 1: Look for model label
         for (int i = 0; i < allText.Count; i++)
         {
+           // Regex mới cho phép 'logi', 'loai', 'loạl', v.v.
             if (Regex.IsMatch(allText[i], @"S[oó]\s*lo[aá][ií].*Model\s*code", RegexOptions.IgnoreCase))
             {
                 // Try same line after colon
@@ -448,6 +449,19 @@ public class AwsRekognitionService : IAwsRekognitionService
                 }
             }
         }
+        if (brandUpper.Contains("YAMAHA"))
+    {
+        foreach (var line in allText)
+        {
+            var lineUpper = line.ToUpper();
+            // Thêm các model phổ biến của Yamaha
+            if (lineUpper.Contains("EXCITER") || lineUpper.Contains("SIRIUS") || lineUpper.Contains("JUPITER") || 
+                lineUpper.Contains("GRANDE") || lineUpper.Contains("NVX"))
+            {
+                return line.Trim();
+            }
+        }
+    }
 
         return null;
     }
