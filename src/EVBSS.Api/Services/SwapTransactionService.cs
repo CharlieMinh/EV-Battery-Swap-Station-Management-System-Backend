@@ -9,11 +9,16 @@ public class SwapTransactionService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<SwapTransactionService> _logger;
+    private readonly IBatteryInventoryService _inventoryService;
 
-    public SwapTransactionService(AppDbContext context, ILogger<SwapTransactionService> logger)
+    public SwapTransactionService(
+        AppDbContext context, 
+        ILogger<SwapTransactionService> logger,
+        IBatteryInventoryService inventoryService)
     {
         _context = context;
         _logger = logger;
+        _inventoryService = inventoryService;
     }
 
     public async Task<SwapTransaction> StartSwapAsync(Guid userId, StartSwapRequest request)
@@ -286,10 +291,29 @@ public class SwapTransactionService
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
             // Update battery status
+            var oldStatus = battery.Status; // Store old status for inventory sync
             battery.Status = BatteryStatus.Issued;
             battery.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            // HYBRID SOLUTION: Sync inventory count (Full -> Issued)
+            // This maintains consistency between BatteryUnit and BatteryInventory tables
+            try
+            {
+                await _inventoryService.UpdateInventoryCountAsync(
+                    battery.BatteryModelId, 
+                    battery.StationId, 
+                    oldStatus, 
+                    BatteryStatus.Issued, 
+                    quantity: 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to sync inventory for battery {BatterySerial}. Manual reconciliation may be needed.", battery.Serial);
+                // Continue - don't fail the main transaction if inventory sync fails
+            }
+
             await transaction.CommitAsync();
 
             _logger.LogInformation("Battery {BatterySerial} issued for swap {TransactionNumber} by staff {StaffId}", 
