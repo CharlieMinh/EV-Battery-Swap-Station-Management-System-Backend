@@ -314,36 +314,49 @@ public class AwsRekognitionService : IAwsRekognitionService
 
     private string? ExtractVehicleModel(List<string> allText, string? brand)
     {
-        // Priority 1: Look for model label
-        for (int i = 0; i < allText.Count; i++)
-        {
-           // Regex mới cho phép 'logi', 'loai', 'loạl', v.v.
-            if (Regex.IsMatch(allText[i], @"S[oó]\s*lo[aá][ií].*Model\s*code", RegexOptions.IgnoreCase))
-            {
-                // Try same line after colon
-                var colonIndex = allText[i].IndexOf(':');
-                if (colonIndex >= 0 && colonIndex < allText[i].Length - 1)
-                {
-                    var modelValue = allText[i].Substring(colonIndex + 1).Trim();
-                    if (!string.IsNullOrEmpty(modelValue) && modelValue.Length <= 30)
-                    {
-                        return modelValue;
-                    }
-                }
+       // Trong hàm ExtractVehicleModel
 
-                // Try next lines
-                for (int j = i + 1; j < Math.Min(i + 3, allText.Count); j++)
+            // Priority 1: Look for model label
+            for (int i = 0; i < allText.Count; i++)
+            {
+                // Regex linh hoạt để khớp "Số loại", "Só logi", v.v.
+                if (Regex.IsMatch(allText[i], @"S[oó]\s*lo[a-z]{1,2}.*Model\s*code", RegexOptions.IgnoreCase))
                 {
-                    var nextLine = allText[j].Trim();
-                    if (!string.IsNullOrEmpty(nextLine) && 
-                        nextLine.Length <= 30 && 
-                        !Regex.IsMatch(nextLine, @"[:\(\)]"))
+                    var line = allText[i];
+
+                    // *** ƯU TIÊN 1: Tìm model trên CÙNG DÒNG, sau dấu hai chấm (:) ***
+                    var colonIndex = line.IndexOf(':');
+                    if (colonIndex > -1)
                     {
-                        return nextLine;
+                        var modelValue = line.Substring(colonIndex + 1).Trim();
+                        if (!string.IsNullOrEmpty(modelValue))
+                        {
+                            return modelValue; // Sẽ trả về "EXCITER" ngay lập tức
+                        }
+                    }
+
+                    // *** ƯU TIÊN 2: Nếu không có, mới tìm ở dòng NGAY TRƯỚC ***
+                    if (i > 0)
+                    {
+                        var prevLine = allText[i - 1].Trim();
+                        // Thêm điều kiện kiểm tra chặt chẽ hơn để tránh lấy nhầm địa chỉ
+                        if (!string.IsNullOrEmpty(prevLine) && prevLine.Length <= 20 && !prevLine.Contains(" ") && !Regex.IsMatch(prevLine, @"[:\(\)]"))
+                        {
+                            return prevLine;
+                        }
+                    }
+                    
+                    // *** ƯU TIÊN 3: Cuối cùng mới tìm ở dòng NGAY SAU ***
+                    if (i < allText.Count - 1)
+                    {
+                        var nextLine = allText[i + 1].Trim();
+                        if (!string.IsNullOrEmpty(nextLine) && nextLine.Length <= 30 && !Regex.IsMatch(nextLine, @"[:\(\)]"))
+                        {
+                            return nextLine;
+                        }
                     }
                 }
             }
-        }
 
         // Priority 2: Look after brand name
         if (!string.IsNullOrEmpty(brand))
