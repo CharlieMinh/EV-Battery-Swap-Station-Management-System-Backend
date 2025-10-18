@@ -219,11 +219,12 @@ public class VehiclesController : ControllerBase
 
     /// PUT /api/v1/vehicles/{id}
     [HttpPut("{id:guid}")]
+    [Consumes("multipart/form-data")]
     [ProducesResponseType(typeof(VehicleDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateVehicleRequest req)
+    public async Task<IActionResult> Update(Guid id, [FromForm] UpdateVehicleRequest req)
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
 
@@ -247,16 +248,44 @@ public class VehiclesController : ControllerBase
             vehicle.Plate = plate;
         }
 
-        // Update PhotoUrl nếu có
-        if (req.PhotoUrl != null) // null check cho phép xóa ảnh bằng cách gửi null
+        // Update PhotoUrl nếu có file ảnh mới
+        if (req.Photo != null)
         {
-            vehicle.PhotoUrl = string.IsNullOrWhiteSpace(req.PhotoUrl) ? null : req.PhotoUrl;
+            try
+            {
+                // Validate file
+                var validationResult = ValidateImageFile(req.Photo);
+                if (validationResult != null)
+                    return BadRequest(validationResult);
+
+                // Upload file và lấy URL
+                var photoUrl = await _fileStorageService.SaveFileAsync(req.Photo, "vehicles");
+                vehicle.PhotoUrl = photoUrl;
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { error = new { code = "FILE_SAVE_ERROR", message = $"Error saving vehicle photo: {ex.Message}" } });
+            }
         }
         
-        // Update RegistrationPhotoUrl nếu có
-        if (req.RegistrationPhotoUrl != null)
+        // Update RegistrationPhotoUrl nếu có file ảnh đăng ký mới
+        if (req.RegistrationPhoto != null)
         {
-            vehicle.RegistrationPhotoUrl = string.IsNullOrWhiteSpace(req.RegistrationPhotoUrl) ? null : req.RegistrationPhotoUrl;
+            try
+            {
+                // Validate file
+                var validationResult = ValidateImageFile(req.RegistrationPhoto);
+                if (validationResult != null)
+                    return BadRequest(validationResult);
+
+                // Upload file và lấy URL
+                var registrationPhotoUrl = await _fileStorageService.SaveFileAsync(req.RegistrationPhoto, "registrations");
+                vehicle.RegistrationPhotoUrl = registrationPhotoUrl;
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { error = new { code = "FILE_SAVE_ERROR", message = $"Error saving registration photo: {ex.Message}" } });
+            }
         }
 
         vehicle.UpdatedAt = DateTime.UtcNow;
@@ -380,5 +409,43 @@ public class VehiclesController : ControllerBase
         {
             return BadRequest(new { error = new { code = "SCAN_FAILED", message = $"Failed to scan registration from URL: {ex.Message}" } });
         }
+    }
+
+    /// <summary>
+    /// Validate file ảnh
+    /// </summary>
+    private FileUploadResponse? ValidateImageFile(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return new FileUploadResponse
+            {
+                Success = false,
+                Message = "Vui lòng chọn file ảnh"
+            };
+        }
+
+        // Kiểm tra file type
+        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
+        if (!allowedTypes.Contains(file.ContentType.ToLower()))
+        {
+            return new FileUploadResponse
+            {
+                Success = false,
+                Message = "Chỉ chấp nhận file ảnh định dạng JPEG hoặc PNG"
+            };
+        }
+
+        // Kiểm tra file size (max 10MB)
+        if (file.Length > 10 * 1024 * 1024)
+        {
+            return new FileUploadResponse
+            {
+                Success = false,
+                Message = "Kích thước file không được vượt quá 10MB"
+            };
+        }
+
+        return null; // Valid
     }
 }

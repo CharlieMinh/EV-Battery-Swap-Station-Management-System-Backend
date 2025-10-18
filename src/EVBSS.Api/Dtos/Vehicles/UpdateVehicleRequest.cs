@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace EVBSS.Api.Dtos.Vehicles;
 
 /// <summary>
-/// Request để cập nhật thông tin xe
+/// Request để cập nhật thông tin xe với file upload
 /// </summary>
 public class UpdateVehicleRequest
 {
@@ -14,16 +14,12 @@ public class UpdateVehicleRequest
     public string? Plate { get; set; }
     
     /// <summary>
-    /// URL ảnh xe mới
+    /// File ảnh xe mới (có thể upload file ảnh trực tiếp)
     /// </summary>
-    [Url]
-    [StringLength(500)]
-    public string? PhotoUrl { get; set; }
+    public IFormFile? Photo { get; set; }
     
     /// <summary>
-    /// URL ảnh cà vẹt xe mới (giấy đăng ký xe)
+    /// File ảnh cà vẹt xe mới / giấy đăng ký xe (có thể upload file ảnh trực tiếp)
     /// </summary>
-    [Url]
-    [StringLength(500)]
-    public string? RegistrationPhotoUrl { get; set; }
+    public IFormFile? RegistrationPhoto { get; set; }
 }
