@@ -62,9 +62,10 @@ public class SubscriptionService : ISubscriptionService
             throw new InvalidOperationException($"Xe {vehicle.Plate} không tương thích với gói pin {subscriptionPlan.Name}.");
         }
 
-        // Calculate billing period (VinFast style: 26th to 25th)
+        // ✅ SIMPLIFIED: 30-day billing period (from start date)
         var startDate = request.StartDate ?? DateTime.UtcNow;
-        var (billingStart, billingEnd) = CalculateBillingPeriod(startDate);
+        var billingStart = startDate;
+        var billingEnd = startDate.AddDays(30);  // 30 days from now
 
         var subscription = new UserSubscription
         {
@@ -74,6 +75,7 @@ public class SubscriptionService : ISubscriptionService
             StartDate = startDate,
             CurrentBillingPeriodStart = billingStart,
             CurrentBillingPeriodEnd = billingEnd,
+            CurrentMonthSwapCount = 0,  // ✅ Initialize swap counter
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -81,15 +83,17 @@ public class SubscriptionService : ISubscriptionService
         _context.UserSubscriptions.Add(subscription);
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("User {UserId} created subscription {SubscriptionId} for vehicle {VehicleId}", 
-            userId, subscription.Id, request.VehicleId);
+        _logger.LogInformation("User {UserId} created subscription {SubscriptionId} for vehicle {VehicleId}, billing {Start} to {End}", 
+            userId, subscription.Id, request.VehicleId, billingStart.ToString("yyyy-MM-dd"), billingEnd.ToString("yyyy-MM-dd"));
 
         return new SubscriptionCreatedResponse
         {
             SubscriptionId = subscription.Id,
             Message = $"Đăng ký gói {subscriptionPlan.Name} thành công!",
-            RequiresDeposit = subscriptionPlan.DepositAmount > 0,
+            RequiresDeposit = subscriptionPlan.RequiresDeposit,  // ✅ Use new field
             DepositAmount = subscriptionPlan.DepositAmount,
+            MonthlyPrice = subscriptionPlan.MonthlyPrice,  // ✅ Add monthly price
+            MaxSwapsPerMonth = subscriptionPlan.MaxSwapsPerMonth,  // ✅ Add limit
             StartDate = startDate,
             BillingPeriodStart = billingStart,
             BillingPeriodEnd = billingEnd
@@ -119,23 +123,29 @@ public class SubscriptionService : ISubscriptionService
             IsActive = subscription.IsActive,
             CurrentBillingPeriodStart = subscription.CurrentBillingPeriodStart,
             CurrentBillingPeriodEnd = subscription.CurrentBillingPeriodEnd,
-            CurrentMonthKmUsed = subscription.CurrentMonthKmUsed,
+            
+            // ✅ SIMPLIFIED: Swap counter instead of km
+            CurrentMonthSwapCount = subscription.CurrentMonthSwapCount,
+            
             DepositPaid = subscription.DepositPaid,
             DepositPaidDate = subscription.DepositPaidDate,
-            ConsecutiveOverdueMonths = subscription.ConsecutiveOverdueMonths,
-            IsBlocked = subscription.IsBlocked,
-            ChargingLimitPercent = subscription.ChargingLimitPercent,
             LastPaymentDate = subscription.LastPaymentDate,
             CreatedAt = subscription.CreatedAt,
+            
             SubscriptionPlan = new SubscriptionPlanDto
             {
                 Id = subscription.SubscriptionPlan.Id,
                 Name = subscription.SubscriptionPlan.Name,
                 Description = subscription.SubscriptionPlan.Description,
-                MonthlyFeeUnder1500Km = subscription.SubscriptionPlan.MonthlyFeeUnder1500Km,
-                MonthlyFee1500To3000Km = subscription.SubscriptionPlan.MonthlyFee1500To3000Km,
-                MonthlyFeeOver3000Km = subscription.SubscriptionPlan.MonthlyFeeOver3000Km,
+                
+                // ✅ SIMPLIFIED PRICING
+                MonthlyPrice = subscription.SubscriptionPlan.MonthlyPrice,
+                MaxSwapsPerMonth = subscription.SubscriptionPlan.MaxSwapsPerMonth,
+                RequiresDeposit = subscription.SubscriptionPlan.RequiresDeposit,
                 DepositAmount = subscription.SubscriptionPlan.DepositAmount,
+                Benefits = subscription.SubscriptionPlan.Benefits,
+                RefundPolicy = subscription.SubscriptionPlan.RefundPolicy,
+                
                 BatteryModelId = subscription.SubscriptionPlan.BatteryModelId,
                 BatteryModelName = subscription.SubscriptionPlan.BatteryModel.Name,
                 IsActive = subscription.SubscriptionPlan.IsActive
@@ -223,15 +233,17 @@ public class SubscriptionService : ISubscriptionService
             .OrderBy(st => st.StartedAt)
             .ToListAsync();
 
-        // Calculate total statistics (simplified - using VehicleOdoAtSwap as proxy)
-        var totalKmUsed = swapTransactions.Count * 100; // Simplified calculation
+        // ✅ SIMPLIFIED: Count swaps instead of km
         var totalAmountPaid = await _context.Invoices
             .Where(i => i.UserSubscriptionId == subscription.Id && i.Status == Models.PaymentStatus.Completed)
             .SumAsync(i => i.TotalAmount);
 
-        // Get current month fee based on usage
-        var currentMonthFee = CalculateMonthlyFee(subscription.CurrentMonthKmUsed, subscription.SubscriptionPlan);
-        var usageTier = GetUsageTier(subscription.CurrentMonthKmUsed);
+        // ✅ FIXED PRICE - No tier calculation needed
+        var currentMonthFee = subscription.SubscriptionPlan.MonthlyPrice;
+        var plan = subscription.SubscriptionPlan;
+        var usageTier = plan.MaxSwapsPerMonth.HasValue 
+            ? $"{subscription.CurrentMonthSwapCount}/{plan.MaxSwapsPerMonth} lần"
+            : $"{subscription.CurrentMonthSwapCount} lần (không giới hạn)";
 
         // Calculate monthly breakdown for last 6 months
         var monthlyUsage = await CalculateMonthlyUsageAsync(subscription.Id, swapTransactions);
@@ -243,11 +255,14 @@ public class SubscriptionService : ISubscriptionService
             VehiclePlate = subscription.Vehicle.Plate,
             CurrentBillingPeriodStart = subscription.CurrentBillingPeriodStart,
             CurrentBillingPeriodEnd = subscription.CurrentBillingPeriodEnd,
-            CurrentMonthKmUsed = subscription.CurrentMonthKmUsed,
+            
+            // ✅ SIMPLIFIED: Swap count instead of km
+            CurrentMonthSwapCount = subscription.CurrentMonthSwapCount,
+            MaxSwapsPerMonth = plan.MaxSwapsPerMonth,
+            
             CurrentMonthFee = currentMonthFee,
             UsageTier = usageTier,
             TotalSwapTransactions = swapTransactions.Count,
-            TotalKmUsed = totalKmUsed,
             TotalAmountPaid = totalAmountPaid,
             MonthlyUsage = monthlyUsage
         };
@@ -274,30 +289,20 @@ public class SubscriptionService : ISubscriptionService
         return (billingStart, billingEnd);
     }
 
-    private static decimal CalculateMonthlyFee(int kmUsed, SubscriptionPlan plan)
-    {
-        return kmUsed switch
-        {
-            < 1500 => plan.MonthlyFeeUnder1500Km,
-            <= 3000 => plan.MonthlyFee1500To3000Km,
-            _ => plan.MonthlyFeeOver3000Km
-        };
-    }
-
-    private static string GetUsageTier(int kmUsed)
-    {
-        return kmUsed switch
-        {
-            < 1500 => "Under1500",
-            <= 3000 => "1500To3000",
-            _ => "Over3000"
-        };
-    }
+    // ✅ REMOVED: CalculateMonthlyFee() - No longer needed with fixed pricing
+    // ✅ REMOVED: GetUsageTier() - Usage tier now calculated inline based on swap count
 
     private async Task<List<MonthlyUsageDto>> CalculateMonthlyUsageAsync(Guid subscriptionId, List<SwapTransaction> swapTransactions)
     {
         var monthlyUsage = new List<MonthlyUsageDto>();
         var today = DateTime.UtcNow;
+
+        // Get subscription to access plan details
+        var subscription = await _context.UserSubscriptions
+            .Include(s => s.SubscriptionPlan)
+            .FirstOrDefaultAsync(s => s.Id == subscriptionId);
+        
+        if (subscription == null) return monthlyUsage;
 
         for (int i = 5; i >= 0; i--)
         {
@@ -308,7 +313,7 @@ public class SubscriptionService : ISubscriptionService
                 .Where(st => st.StartedAt >= periodStart && st.StartedAt <= periodEnd)
                 .ToList();
 
-            var kmUsed = monthTransactions.Count * 100; // Simplified calculation
+            var swapCount = monthTransactions.Count;
             
             // Get invoice for this period
             var invoice = await _context.Invoices
@@ -316,15 +321,20 @@ public class SubscriptionService : ISubscriptionService
                                          i.BillingPeriodStart == periodStart &&
                                          i.BillingPeriodEnd == periodEnd);
 
+            // ✅ SIMPLIFIED: Usage tier based on swap count
+            var maxSwaps = subscription.SubscriptionPlan.MaxSwapsPerMonth;
+            var usageTier = maxSwaps.HasValue 
+                ? $"{swapCount}/{maxSwaps} lần"
+                : $"{swapCount} lần (không giới hạn)";
+
             monthlyUsage.Add(new MonthlyUsageDto
             {
                 Year = periodEnd.Year,
                 Month = periodEnd.Month,
                 MonthName = CultureInfo.GetCultureInfo("vi-VN").DateTimeFormat.GetMonthName(targetMonth.Month),
-                KmUsed = kmUsed,
-                SwapCount = monthTransactions.Count,
+                SwapCount = swapCount,
                 MonthlyFee = invoice?.TotalAmount ?? 0,
-                UsageTier = GetUsageTier(kmUsed),
+                UsageTier = usageTier,
                 IsPaid = invoice?.Status == Models.PaymentStatus.Completed
             });
         }

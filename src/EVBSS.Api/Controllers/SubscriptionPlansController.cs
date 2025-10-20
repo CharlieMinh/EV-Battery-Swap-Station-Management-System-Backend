@@ -12,7 +12,7 @@ public class SubscriptionPlansController : ControllerBase
     public SubscriptionPlansController(AppDbContext db) => _db = db;
 
     /// <summary>
-    /// Get all subscription plans (VinFast-based pricing)
+    /// Get all subscription plans (Simplified fixed-price model)
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -22,19 +22,25 @@ public class SubscriptionPlansController : ControllerBase
             .AsNoTracking()
             .Include(sp => sp.BatteryModel)
             .Where(sp => sp.IsActive)
-            .OrderBy(sp => sp.MonthlyFeeUnder1500Km)
+            .OrderBy(sp => sp.MonthlyPrice)  // ✅ Sort by fixed price
             .Select(sp => new
             {
                 sp.Id,
                 sp.Name,
                 sp.Description,
-                Pricing = new
-                {
-                    Under1500Km = sp.MonthlyFeeUnder1500Km,
-                    From1500To3000Km = sp.MonthlyFee1500To3000Km,
-                    Over3000Km = sp.MonthlyFeeOver3000Km,
-                    DepositRequired = sp.DepositAmount
-                },
+                
+                // ✅ SIMPLIFIED PRICING
+                MonthlyPrice = sp.MonthlyPrice,
+                MaxSwapsPerMonth = sp.MaxSwapsPerMonth,
+                
+                // ✅ NO DEPOSIT
+                RequiresDeposit = sp.RequiresDeposit,  // Always false
+                DepositAmount = sp.DepositAmount,      // Always 0
+                
+                // ✅ BENEFITS & REFUND
+                Benefits = sp.Benefits,
+                RefundPolicy = sp.RefundPolicy,
+                
                 BatteryModel = new
                 {
                     sp.BatteryModel.Id,
@@ -42,12 +48,10 @@ public class SubscriptionPlansController : ControllerBase
                     sp.BatteryModel.Voltage,
                     sp.BatteryModel.CapacityWh
                 },
-                BusinessRules = new
-                {
-                    BillingDay = sp.BillingCycleDay,
-                    OverdueInterestRate = sp.OverdueInterestRate,
-                    MaxOverdueMonths = sp.MaxOverdueMonths
-                },
+                
+                // ✅ SIMPLIFIED INFO
+                BillingCycleDays = 30,  // Fixed 30-day cycle
+                
                 sp.CreatedAt
             })
             .ToListAsync();
@@ -72,13 +76,19 @@ public class SubscriptionPlansController : ControllerBase
                 sp.Id,
                 sp.Name,
                 sp.Description,
-                Pricing = new
-                {
-                    Under1500Km = sp.MonthlyFeeUnder1500Km,
-                    From1500To3000Km = sp.MonthlyFee1500To3000Km,
-                    Over3000Km = sp.MonthlyFeeOver3000Km,
-                    DepositRequired = sp.DepositAmount
-                },
+                
+                // ✅ SIMPLIFIED PRICING
+                MonthlyPrice = sp.MonthlyPrice,
+                MaxSwapsPerMonth = sp.MaxSwapsPerMonth,
+                
+                // ✅ NO DEPOSIT
+                RequiresDeposit = sp.RequiresDeposit,
+                DepositAmount = sp.DepositAmount,
+                
+                // ✅ BENEFITS & REFUND
+                Benefits = sp.Benefits,
+                RefundPolicy = sp.RefundPolicy,
+                
                 BatteryModel = new
                 {
                     sp.BatteryModel.Id,
@@ -86,12 +96,9 @@ public class SubscriptionPlansController : ControllerBase
                     sp.BatteryModel.Voltage,
                     sp.BatteryModel.CapacityWh
                 },
-                BusinessRules = new
-                {
-                    BillingDay = sp.BillingCycleDay,
-                    OverdueInterestRate = sp.OverdueInterestRate,
-                    MaxOverdueMonths = sp.MaxOverdueMonths
-                },
+                
+                BillingCycleDays = 30,
+                
                 sp.CreatedAt
             })
             .FirstOrDefaultAsync();
@@ -103,52 +110,38 @@ public class SubscriptionPlansController : ControllerBase
     }
 
     /// <summary>
-    /// Calculate monthly fee based on km usage
+    /// ❌ DEPRECATED - No longer calculate by km, use fixed monthly price
+    /// Get plan pricing info
     /// </summary>
-    [HttpPost("{id:guid}/calculate-fee")]
+    [HttpGet("{id:guid}/pricing")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> CalculateFee(Guid id, [FromBody] CalculateFeeRequest request)
+    public async Task<IActionResult> GetPricing(Guid id)
     {
         var plan = await _db.SubscriptionPlans.FindAsync(id);
         if (plan == null || !plan.IsActive)
             return NotFound(new { error = new { code = "PLAN_NOT_FOUND", message = "Subscription plan not found" } });
 
-        decimal monthlyFee;
-        string feeCategory;
-
-        if (request.KmUsed < 1500)
-        {
-            monthlyFee = plan.MonthlyFeeUnder1500Km;
-            feeCategory = "Under 1500km";
-        }
-        else if (request.KmUsed <= 3000)
-        {
-            monthlyFee = plan.MonthlyFee1500To3000Km;
-            feeCategory = "1500-3000km";
-        }
-        else
-        {
-            monthlyFee = plan.MonthlyFeeOver3000Km;
-            feeCategory = "Over 3000km";
-        }
-
+        // ✅ SIMPLIFIED: Fixed price, no calculation needed
         var result = new
         {
             PlanName = plan.Name,
-            KmUsed = request.KmUsed,
-            FeeCategory = feeCategory,
-            MonthlyFee = monthlyFee,
-            VATAmount = monthlyFee * 0.1m, // 10% VAT
-            TotalAmount = monthlyFee * 1.1m,
-            CalculatedAt = DateTime.UtcNow
+            MonthlyPrice = plan.MonthlyPrice,
+            MaxSwapsPerMonth = plan.MaxSwapsPerMonth,
+            PricePerSwap = plan.MaxSwapsPerMonth.HasValue 
+                ? Math.Round(plan.MonthlyPrice / plan.MaxSwapsPerMonth.Value, 0)
+                : 0,
+            
+            // ✅ NO TAX
+            TaxAmount = 0m,
+            TotalAmount = plan.MonthlyPrice,
+            
+            Benefits = plan.Benefits,
+            RefundPolicy = plan.RefundPolicy,
+            
+            Note = "Giá đã bao gồm tất cả, không có thuế hoặc phí bổ sung"
         };
 
         return Ok(result);
     }
-}
-
-public class CalculateFeeRequest
-{
-    public int KmUsed { get; set; }
 }

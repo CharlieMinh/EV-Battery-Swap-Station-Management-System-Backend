@@ -6,11 +6,70 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace EVBSS.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class AddPaymentInvoiceSystem : Migration
+    public partial class InitialMigrationWithSimplifiedSubscription : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateTable(
+                name: "BatteryModels",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Voltage = table.Column<int>(type: "int", nullable: false),
+                    CapacityWh = table.Column<int>(type: "int", nullable: false),
+                    Manufacturer = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_BatteryModels", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Stations",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DisplayId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Address = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    City = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    Lat = table.Column<double>(type: "float", nullable: false),
+                    Lng = table.Column<double>(type: "float", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    OpenTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    CloseTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    PhoneNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    PrimaryImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Stations", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Users",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    PasswordHash = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Phone = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Role = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LastLogin = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    AuthMethod = table.Column<int>(type: "int", nullable: false),
+                    GoogleId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ProfilePictureUrl = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Users", x => x.Id);
+                });
+
             migrationBuilder.CreateTable(
                 name: "SubscriptionPlans",
                 columns: table => new
@@ -18,17 +77,16 @@ namespace EVBSS.Api.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     Description = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    MonthlyFeeUnder1500Km = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
-                    MonthlyFee1500To3000Km = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
-                    MonthlyFeeOver3000Km = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    MonthlyPrice = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    MaxSwapsPerMonth = table.Column<int>(type: "int", nullable: true),
+                    RequiresDeposit = table.Column<bool>(type: "bit", nullable: false),
                     DepositAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    RefundPolicy = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Benefits = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     BatteryModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    BillingCycleDay = table.Column<int>(type: "int", nullable: false),
-                    OverdueInterestRate = table.Column<decimal>(type: "decimal(5,4)", precision: 5, scale: 4, nullable: false),
-                    MaxOverdueMonths = table.Column<int>(type: "int", nullable: false)
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -39,6 +97,208 @@ namespace EVBSS.Api.Migrations
                         principalTable: "BatteryModels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "VehicleModels",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    FullName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Brand = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    CompatibleBatteryModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ImageUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VehicleModels", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_VehicleModels_BatteryModels_CompatibleBatteryModelId",
+                        column: x => x.CompatibleBatteryModelId,
+                        principalTable: "BatteryModels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "BatteryInventories",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    BatteryModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    StationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    Quantity = table.Column<int>(type: "int", nullable: false, defaultValue: 0),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false, defaultValueSql: "GETUTCDATE()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_BatteryInventories", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_BatteryInventories_BatteryModels_BatteryModelId",
+                        column: x => x.BatteryModelId,
+                        principalTable: "BatteryModels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_BatteryInventories_Stations_StationId",
+                        column: x => x.StationId,
+                        principalTable: "Stations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "BatteryUnits",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Serial = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    BatteryModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    StationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsReserved = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_BatteryUnits", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_BatteryUnits_BatteryModels_BatteryModelId",
+                        column: x => x.BatteryModelId,
+                        principalTable: "BatteryModels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_BatteryUnits_Stations_StationId",
+                        column: x => x.StationId,
+                        principalTable: "Stations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PasswordResetTokens",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    OtpHash = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsUsed = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    UsedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    RequestIpAddress = table.Column<string>(type: "nvarchar(45)", maxLength: 45, nullable: true),
+                    RequestUserAgent = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    AttemptCount = table.Column<int>(type: "int", nullable: false, defaultValue: 0)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PasswordResetTokens", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PasswordResetTokens_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Vehicles",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    VIN = table.Column<string>(type: "nvarchar(17)", maxLength: 17, nullable: false),
+                    Plate = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    VehicleModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    CompatibleBatteryModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    PhotoUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    RegistrationPhotoUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Vehicles", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Vehicles_BatteryModels_CompatibleBatteryModelId",
+                        column: x => x.CompatibleBatteryModelId,
+                        principalTable: "BatteryModels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Vehicles_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Vehicles_VehicleModels_VehicleModelId",
+                        column: x => x.VehicleModelId,
+                        principalTable: "VehicleModels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Reservations",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    StationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    BatteryModelId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    BatteryUnitId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    SlotDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    SlotStartTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    SlotEndTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    QRCode = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CheckedInAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    VerifiedByStaffId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    CancelReason = table.Column<int>(type: "int", nullable: true),
+                    CancelNote = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CancelledAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Reservations", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Reservations_BatteryModels_BatteryModelId",
+                        column: x => x.BatteryModelId,
+                        principalTable: "BatteryModels",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Reservations_BatteryUnits_BatteryUnitId",
+                        column: x => x.BatteryUnitId,
+                        principalTable: "BatteryUnits",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Reservations_Stations_StationId",
+                        column: x => x.StationId,
+                        principalTable: "Stations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Reservations_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Reservations_Users_VerifiedByStaffId",
+                        column: x => x.VerifiedByStaffId,
+                        principalTable: "Users",
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -54,12 +314,9 @@ namespace EVBSS.Api.Migrations
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     CurrentBillingPeriodStart = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CurrentBillingPeriodEnd = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CurrentMonthKmUsed = table.Column<int>(type: "int", nullable: false),
+                    CurrentMonthSwapCount = table.Column<int>(type: "int", nullable: false),
                     DepositPaid = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
                     DepositPaidDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    ConsecutiveOverdueMonths = table.Column<int>(type: "int", nullable: false),
-                    IsBlocked = table.Column<bool>(type: "bit", nullable: false),
-                    ChargingLimitPercent = table.Column<int>(type: "int", nullable: false),
                     LastPaymentDate = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
@@ -219,7 +476,10 @@ namespace EVBSS.Api.Migrations
                     CompletedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CancelledAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     Notes = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    CancellationReason = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    CancellationReason = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Rating = table.Column<int>(type: "int", nullable: true),
+                    Feedback = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    RatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -295,6 +555,38 @@ namespace EVBSS.Api.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_BatteryInventories_BatteryModelId_StationId_Status",
+                table: "BatteryInventories",
+                columns: new[] { "BatteryModelId", "StationId", "Status" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BatteryInventories_StationId",
+                table: "BatteryInventories",
+                column: "StationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BatteryUnits_BatteryModelId",
+                table: "BatteryUnits",
+                column: "BatteryModelId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BatteryUnits_Serial",
+                table: "BatteryUnits",
+                column: "Serial",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BatteryUnits_StationId_Status",
+                table: "BatteryUnits",
+                columns: new[] { "StationId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BatteryUnits_StationId_Status_IsReserved",
+                table: "BatteryUnits",
+                columns: new[] { "StationId", "Status", "IsReserved" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Invoices_InvoiceNumber",
                 table: "Invoices",
                 column: "InvoiceNumber",
@@ -309,6 +601,21 @@ namespace EVBSS.Api.Migrations
                 name: "IX_Invoices_UserSubscriptionId",
                 table: "Invoices",
                 column: "UserSubscriptionId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PasswordResetTokens_ExpiresAt",
+                table: "PasswordResetTokens",
+                column: "ExpiresAt");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PasswordResetTokens_UserId",
+                table: "PasswordResetTokens",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PasswordResetTokens_UserId_IsUsed_ExpiresAt",
+                table: "PasswordResetTokens",
+                columns: new[] { "UserId", "IsUsed", "ExpiresAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Payments_InvoiceId",
@@ -335,6 +642,36 @@ namespace EVBSS.Api.Migrations
                 name: "IX_Payments_UserId",
                 table: "Payments",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_BatteryModelId",
+                table: "Reservations",
+                column: "BatteryModelId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_BatteryUnitId",
+                table: "Reservations",
+                column: "BatteryUnitId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_StationId_Status",
+                table: "Reservations",
+                columns: new[] { "StationId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_UserId_CreatedAt",
+                table: "Reservations",
+                columns: new[] { "UserId", "CreatedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_VerifiedByStaffId",
+                table: "Reservations",
+                column: "VerifiedByStaffId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Stations_City_IsActive",
+                table: "Stations",
+                columns: new[] { "City", "IsActive" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_SubscriptionPlans_BatteryModelId",
@@ -414,6 +751,12 @@ namespace EVBSS.Api.Migrations
                 column: "VehicleId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Users_Email",
+                table: "Users",
+                column: "Email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_UserSubscriptions_SubscriptionPlanId",
                 table: "UserSubscriptions",
                 column: "SubscriptionPlanId");
@@ -427,11 +770,50 @@ namespace EVBSS.Api.Migrations
                 name: "IX_UserSubscriptions_VehicleId",
                 table: "UserSubscriptions",
                 column: "VehicleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VehicleModels_CompatibleBatteryModelId",
+                table: "VehicleModels",
+                column: "CompatibleBatteryModelId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_VehicleModels_Name",
+                table: "VehicleModels",
+                column: "Name",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Vehicles_CompatibleBatteryModelId",
+                table: "Vehicles",
+                column: "CompatibleBatteryModelId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Vehicles_UserId_Plate",
+                table: "Vehicles",
+                columns: new[] { "UserId", "Plate" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Vehicles_UserId_VIN",
+                table: "Vehicles",
+                columns: new[] { "UserId", "VIN" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Vehicles_VehicleModelId",
+                table: "Vehicles",
+                column: "VehicleModelId");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "BatteryInventories");
+
+            migrationBuilder.DropTable(
+                name: "PasswordResetTokens");
+
             migrationBuilder.DropTable(
                 name: "Payments");
 
@@ -442,10 +824,31 @@ namespace EVBSS.Api.Migrations
                 name: "Invoices");
 
             migrationBuilder.DropTable(
+                name: "Reservations");
+
+            migrationBuilder.DropTable(
                 name: "UserSubscriptions");
 
             migrationBuilder.DropTable(
+                name: "BatteryUnits");
+
+            migrationBuilder.DropTable(
                 name: "SubscriptionPlans");
+
+            migrationBuilder.DropTable(
+                name: "Vehicles");
+
+            migrationBuilder.DropTable(
+                name: "Stations");
+
+            migrationBuilder.DropTable(
+                name: "Users");
+
+            migrationBuilder.DropTable(
+                name: "VehicleModels");
+
+            migrationBuilder.DropTable(
+                name: "BatteryModels");
         }
     }
 }

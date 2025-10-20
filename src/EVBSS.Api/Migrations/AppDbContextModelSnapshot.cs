@@ -468,8 +468,8 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("BatteryModelId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("BillingCycleDay")
-                        .HasColumnType("int");
+                    b.Property<string>("Benefits")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -485,18 +485,10 @@ namespace EVBSS.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<int>("MaxOverdueMonths")
+                    b.Property<int?>("MaxSwapsPerMonth")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("MonthlyFee1500To3000Km")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("MonthlyFeeOver3000Km")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("MonthlyFeeUnder1500Km")
+                    b.Property<decimal>("MonthlyPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
@@ -505,9 +497,11 @@ namespace EVBSS.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<decimal>("OverdueInterestRate")
-                        .HasPrecision(5, 4)
-                        .HasColumnType("decimal(5,4)");
+                    b.Property<string>("RefundPolicy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RequiresDeposit")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -727,12 +721,6 @@ namespace EVBSS.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("ChargingLimitPercent")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ConsecutiveOverdueMonths")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -742,7 +730,7 @@ namespace EVBSS.Api.Migrations
                     b.Property<DateTime>("CurrentBillingPeriodStart")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("CurrentMonthKmUsed")
+                    b.Property<int>("CurrentMonthSwapCount")
                         .HasColumnType("int");
 
                     b.Property<decimal>("DepositPaid")
@@ -756,9 +744,6 @@ namespace EVBSS.Api.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsBlocked")
                         .HasColumnType("bit");
 
                     b.Property<DateTime?>("LastPaymentDate")

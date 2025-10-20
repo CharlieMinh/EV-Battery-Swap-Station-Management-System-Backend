@@ -15,16 +15,13 @@ public class UserSubscriptionDto
     // Billing info
     public DateTime CurrentBillingPeriodStart { get; set; }
     public DateTime CurrentBillingPeriodEnd { get; set; }
-    public int CurrentMonthKmUsed { get; set; }
+    
+    // ✅ SIMPLIFIED: Swap counter instead of km tracking
+    public int CurrentMonthSwapCount { get; set; }
     
     // Payment info
     public decimal DepositPaid { get; set; }
     public DateTime? DepositPaidDate { get; set; }
-    public int ConsecutiveOverdueMonths { get; set; }
-    
-    // Status
-    public bool IsBlocked { get; set; }
-    public int ChargingLimitPercent { get; set; }
     public DateTime? LastPaymentDate { get; set; }
     
     public DateTime CreatedAt { get; set; }
@@ -39,10 +36,15 @@ public class SubscriptionPlanDto
     public Guid Id { get; set; }
     public string Name { get; set; } = null!;
     public string Description { get; set; } = null!;
-    public decimal MonthlyFeeUnder1500Km { get; set; }
-    public decimal MonthlyFee1500To3000Km { get; set; }
-    public decimal MonthlyFeeOver3000Km { get; set; }
+    
+    // ✅ SIMPLIFIED PRICING
+    public decimal MonthlyPrice { get; set; }
+    public int? MaxSwapsPerMonth { get; set; }
+    public bool RequiresDeposit { get; set; }
     public decimal DepositAmount { get; set; }
+    public string? Benefits { get; set; }
+    public string? RefundPolicy { get; set; }
+    
     public Guid BatteryModelId { get; set; }
     public string BatteryModelName { get; set; } = null!;
     public bool IsActive { get; set; }
