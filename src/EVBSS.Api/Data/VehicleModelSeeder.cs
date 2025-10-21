@@ -39,8 +39,8 @@ public static class VehicleModelSeeder
             batteryVF5 = new BatteryModel
             {
                 Name = "VF5 Battery Pack",
-                Voltage = 400,
-                CapacityWh = 40000, // 40 kWh
+                Voltage = 400,  // Match database: 60V
+                CapacityWh = 30000, // Match database: 30 kWh
                 Manufacturer = "VinFast"
             };
             context.BatteryModels.Add(batteryVF5);

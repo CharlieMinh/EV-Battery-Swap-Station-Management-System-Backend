@@ -6,30 +6,31 @@
 
 @baseUrl = http://localhost:5000/api/v1
 @adminEmail = admin@evbss.local
-@adminPassword = Admin123!@#
+@adminPassword = 12345678Swp@
 @staffEmail = staff@evbss.local
-@staffPassword = Staff123!@#
+@staffPassword = 12345678Swp@
 
 # Variables will be set after running requests
-@accessToken = 
-@userId = 
-@stationId = 
-@vehicleId = 
-@batteryModelId = 
-@batteryUnitId = 
-@subscriptionPlanId = 
-@subscriptionId = 
-@reservationId = 
-@swapTransactionId = 
-@invoiceId = 
-@paymentId =
+@accessToken = YOUR_TOKEN_HERE
+@userId = 00000000-0000-0000-0000-000000000000
+@stationId = 00000000-0000-0000-0000-000000000000
+@vehicleId = 00000000-0000-0000-0000-000000000000
+@vehicleModelId = 00000000-0000-0000-0000-000000000000
+@batteryModelId = 00000000-0000-0000-0000-000000000000
+@batteryUnitId = 00000000-0000-0000-0000-000000000000
+@subscriptionPlanId = 00000000-0000-0000-0000-000000000000
+@subscriptionId = 00000000-0000-0000-0000-000000000000
+@reservationId = 00000000-0000-0000-0000-000000000000
+@swapTransactionId = 00000000-0000-0000-0000-000000000000
+@invoiceId = 00000000-0000-0000-0000-000000000000
+@paymentId = 00000000-0000-0000-0000-000000000000
 
 ###############################################################################
 # 1. AUTHENTICATION & USER MANAGEMENT
 ###############################################################################
 
 ### 1.1. Health Check
-GET {{baseUrl}}/health
+GET http://localhost:5000/api/health
 Content-Type: application/json
 
 ### 1.2. Register New User (Driver)
@@ -146,16 +147,16 @@ Content-Type: application/json
 ###############################################################################
 
 ### 3.1. Get All Battery Models
-GET {{baseUrl}}/battery-models
+GET http://localhost:5000/api/batterymodels
 Content-Type: application/json
 
 ### 3.2. Get Battery Model by ID
-GET {{baseUrl}}/battery-models/{{batteryModelId}}
+GET http://localhost:5000/api/batterymodels/{{batteryModelId}}
 Content-Type: application/json
 
 ### 3.3. Create Battery Model (Admin Only)
 # @name createBatteryModel
-POST {{baseUrl}}/battery-models
+POST http://localhost:5000/api/batterymodels
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -168,18 +169,18 @@ Content-Type: application/json
 }
 
 ### 3.4. Get Battery Units by Station
-GET {{baseUrl}}/battery-units?stationId={{stationId}}
+GET http://localhost:5000/api/batteryunits?stationId={{stationId}}
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 ### 3.5. Get Available Batteries at Station
-GET {{baseUrl}}/battery-units/available?stationId={{stationId}}&batteryModelId={{batteryModelId}}
+GET http://localhost:5000/api/batteryunits/available?stationId={{stationId}}&batteryModelId={{batteryModelId}}
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 ### 3.6. Create Battery Unit (Admin Only)
 # @name createBatteryUnit
-POST {{baseUrl}}/battery-units
+POST http://localhost:5000/api/batteryunits
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -191,7 +192,7 @@ Content-Type: application/json
 }
 
 ### 3.7. Update Battery Unit Status
-PUT {{baseUrl}}/battery-units/{{batteryUnitId}}/status
+PUT http://localhost:5000/api/batteryunits/{{batteryUnitId}}/status
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -201,7 +202,7 @@ Content-Type: application/json
 }
 
 ### 3.8. Assign Battery to Station (Admin Only)
-POST {{baseUrl}}/battery-units/{{batteryUnitId}}/assign-station
+POST http://localhost:5000/api/batteryunits/{{batteryUnitId}}/assign-station
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
