@@ -110,6 +110,7 @@ builder.Services.AddScoped<IBatteryInventoryService, BatteryInventoryService>();
 
 // File Storage Service
 builder.Services.AddHttpContextAccessor(); // Cần thiết để lấy base URL
+builder.Services.AddScoped<IImageWatermarkService, ImageWatermarkService>();
 builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
 
 // AWS Rekognition Service
