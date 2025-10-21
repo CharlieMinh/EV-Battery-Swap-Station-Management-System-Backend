@@ -10,7 +10,8 @@ public interface IInvoiceService
     Task<IEnumerable<InvoiceDto>> GetUserInvoicesAsync(Guid userId);
     Task<InvoiceDto?> GetInvoiceByIdAsync(Guid invoiceId, Guid userId);
     Task<Invoice> CreateSubscriptionDepositInvoiceAsync(Guid userId, UserSubscription subscription);
-    Task<Invoice> CreateMonthlySubscriptionInvoiceAsync(UserSubscription subscription, DateTime billingPeriodStart, DateTime billingPeriodEnd, int kmUsed);
+    // ✅ SIMPLIFIED: No km parameter
+    Task<Invoice> CreateMonthlySubscriptionInvoiceAsync(UserSubscription subscription, DateTime billingPeriodStart, DateTime billingPeriodEnd);
 }
 
 public class InvoiceService : IInvoiceService
@@ -86,7 +87,8 @@ public class InvoiceService : IInvoiceService
         return invoice;
     }
 
-    public async Task<Invoice> CreateMonthlySubscriptionInvoiceAsync(UserSubscription subscription, DateTime billingPeriodStart, DateTime billingPeriodEnd, int kmUsed)
+    // ✅ SIMPLIFIED: No km parameter, fixed monthly price
+    public async Task<Invoice> CreateMonthlySubscriptionInvoiceAsync(UserSubscription subscription, DateTime billingPeriodStart, DateTime billingPeriodEnd)
     {
         var subscriptionPlan = await _context.SubscriptionPlans
             .FirstOrDefaultAsync(sp => sp.Id == subscription.SubscriptionPlanId);
@@ -96,10 +98,9 @@ public class InvoiceService : IInvoiceService
             throw new InvalidOperationException("Subscription plan not found");
         }
 
-        // Calculate monthly fee based on km usage
-        var monthlyFee = CalculateMonthlyFee(subscriptionPlan, kmUsed);
-        var taxAmount = monthlyFee * 0.1m; // 10% VAT
-        var totalAmount = monthlyFee + taxAmount;
+        // ✅ FIXED PRICE - No calculation needed!
+        var monthlyFee = subscriptionPlan.MonthlyPrice;
+        var totalAmount = monthlyFee;  // ✅ NO TAX
 
         var invoice = new Invoice
         {
@@ -108,34 +109,23 @@ public class InvoiceService : IInvoiceService
             Type = InvoiceType.SubscriptionMonthly,
             InvoiceNumber = await GenerateInvoiceNumberAsync(),
             IssueDate = DateTime.UtcNow,
-            DueDate = DateTime.UtcNow.AddDays(15), // 15 days to pay monthly fee
+            DueDate = DateTime.UtcNow,  // ✅ PAY IMMEDIATELY!
             BillingPeriodStart = billingPeriodStart,
             BillingPeriodEnd = billingPeriodEnd,
-            KmUsedInPeriod = kmUsed,
             SubtotalAmount = monthlyFee,
-            TaxAmount = taxAmount,
+            TaxAmount = 0,  // ✅ NO TAX
             TotalAmount = totalAmount,
-            Notes = $"Phí thuê pin tháng {billingPeriodStart:MM/yyyy} - Sử dụng {kmUsed}km",
+            Notes = $"Gói {subscriptionPlan.Name} - Từ {billingPeriodStart:dd/MM/yyyy} đến {billingPeriodEnd:dd/MM/yyyy}",
             Status = PaymentStatus.Pending
         };
 
         _context.Invoices.Add(invoice);
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Created monthly invoice {InvoiceId} for subscription {SubscriptionId}, period {Start}-{End}, km {Km}, amount {Amount}", 
-            invoice.Id, subscription.Id, billingPeriodStart.ToString("yyyy-MM-dd"), billingPeriodEnd.ToString("yyyy-MM-dd"), kmUsed, invoice.TotalAmount);
+        _logger.LogInformation("Created subscription invoice {InvoiceId} for subscription {SubscriptionId}, period {Start}-{End}, amount {Amount}", 
+            invoice.Id, subscription.Id, billingPeriodStart.ToString("yyyy-MM-dd"), billingPeriodEnd.ToString("yyyy-MM-dd"), invoice.TotalAmount);
 
         return invoice;
-    }
-
-    private decimal CalculateMonthlyFee(SubscriptionPlan plan, int kmUsed)
-    {
-        return kmUsed switch
-        {
-            < 1500 => plan.MonthlyFeeUnder1500Km,
-            >= 1500 and < 3000 => plan.MonthlyFee1500To3000Km,
-            _ => plan.MonthlyFeeOver3000Km
-        };
     }
 
     private async Task<string> GenerateInvoiceNumberAsync()

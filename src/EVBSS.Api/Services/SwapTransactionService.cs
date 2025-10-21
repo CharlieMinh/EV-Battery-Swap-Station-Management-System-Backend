@@ -9,11 +9,16 @@ public class SwapTransactionService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<SwapTransactionService> _logger;
+    private readonly IBatteryInventoryService _inventoryService;
 
-    public SwapTransactionService(AppDbContext context, ILogger<SwapTransactionService> logger)
+    public SwapTransactionService(
+        AppDbContext context, 
+        ILogger<SwapTransactionService> logger,
+        IBatteryInventoryService inventoryService)
     {
         _context = context;
         _logger = logger;
+        _inventoryService = inventoryService;
     }
 
     public async Task<SwapTransaction> StartSwapAsync(Guid userId, StartSwapRequest request)
@@ -146,10 +151,30 @@ public class SwapTransactionService
             if (swap.Status != SwapTransactionStatus.CheckedIn && swap.Status != SwapTransactionStatus.BatteryReturned)
                 throw new InvalidOperationException($"Swap status is {swap.Status}, cannot complete");
 
+            // 2. Check subscription swap limit BEFORE completing (if user has subscription)
+            if (swap.UserSubscriptionId.HasValue)
+            {
+                var subscription = await _context.UserSubscriptions
+                    .Include(us => us.SubscriptionPlan)
+                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
+
+                if (subscription != null && subscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
+                {
+                    // Kiểm tra ĐÃ ĐẠT giới hạn chưa (TRƯỚC khi tăng counter)
+                    if (subscription.CurrentMonthSwapCount >= subscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
+                    {
+                        throw new InvalidOperationException(
+                            $"Đã đạt giới hạn {subscription.SubscriptionPlan.MaxSwapsPerMonth} lần đổi pin trong tháng này. " +
+                            $"Hiện tại: {subscription.CurrentMonthSwapCount}/{subscription.SubscriptionPlan.MaxSwapsPerMonth} lần. " +
+                            $"Vui lòng nâng cấp gói hoặc chờ đến chu kỳ thanh toán tiếp theo.");
+                    }
+                }
+            }
+
             // Pin trả về là pin cũ của khách hàng (không có trong database trạm)
             // Chỉ cần lưu thông tin serial và sức khỏe pin
             
-            // 4. Update swap transaction
+            // 3. Update swap transaction
             if (swap.Status == SwapTransactionStatus.CheckedIn)
             {
                 // Driver complete trực tiếp từ CheckedIn (không qua Staff workflow)
@@ -163,6 +188,26 @@ public class SwapTransactionService
             swap.Status = SwapTransactionStatus.Completed;
             swap.CompletedAt = DateTime.UtcNow;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
+
+            // 4. Increment swap counter for subscription users
+            if (swap.UserSubscriptionId.HasValue)
+            {
+                var subscription = await _context.UserSubscriptions
+                    .Include(us => us.SubscriptionPlan)
+                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
+
+                if (subscription != null)
+                {
+                    subscription.CurrentMonthSwapCount++;
+                    
+                    _logger.LogInformation(
+                        "Incremented swap count for user {UserId}, subscription {SubscriptionId}: {CurrentCount}/{MaxCount}",
+                        userId,
+                        subscription.Id,
+                        subscription.CurrentMonthSwapCount,
+                        subscription.SubscriptionPlan.MaxSwapsPerMonth?.ToString() ?? "Unlimited");
+                }
+            }
 
             // 5. Update battery statuses
             // Issued battery goes to charging/maintenance
@@ -286,10 +331,29 @@ public class SwapTransactionService
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
             // Update battery status
+            var oldStatus = battery.Status; // Store old status for inventory sync
             battery.Status = BatteryStatus.Issued;
             battery.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            // HYBRID SOLUTION: Sync inventory count (Full -> Issued)
+            // This maintains consistency between BatteryUnit and BatteryInventory tables
+            try
+            {
+                await _inventoryService.UpdateInventoryCountAsync(
+                    battery.BatteryModelId, 
+                    battery.StationId, 
+                    oldStatus, 
+                    BatteryStatus.Issued, 
+                    quantity: 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to sync inventory for battery {BatterySerial}. Manual reconciliation may be needed.", battery.Serial);
+                // Continue - don't fail the main transaction if inventory sync fails
+            }
+
             await transaction.CommitAsync();
 
             _logger.LogInformation("Battery {BatterySerial} issued for swap {TransactionNumber} by staff {StaffId}", 

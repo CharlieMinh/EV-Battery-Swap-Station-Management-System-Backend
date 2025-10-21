@@ -7,5 +7,5 @@ namespace EVBSS.Api.Controllers;
 public class HealthController : ControllerBase
 {
     [HttpGet("ping")]
-    public IActionResult Ping() => Ok(new { message = "pong", time = DateTime.UtcNow });
+    public IActionResult Ping() => Ok(new { message = "ok", time = DateTime.UtcNow });
 }

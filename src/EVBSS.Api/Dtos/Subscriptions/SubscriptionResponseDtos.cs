@@ -6,6 +6,11 @@ public class SubscriptionCreatedResponse
     public string Message { get; set; } = null!;
     public bool RequiresDeposit { get; set; }
     public decimal DepositAmount { get; set; }
+    
+    // ✅ NEW FIELDS FOR SIMPLIFIED MODEL
+    public decimal MonthlyPrice { get; set; }
+    public int? MaxSwapsPerMonth { get; set; }
+    
     public DateTime StartDate { get; set; }
     public DateTime BillingPeriodStart { get; set; }
     public DateTime BillingPeriodEnd { get; set; }

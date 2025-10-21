@@ -12,19 +12,16 @@ public class UserSubscription
     public DateTime? EndDate { get; set; }                       // Ngày kết thúc (null = vô thời hạn)
     public bool IsActive { get; set; } = true;
 
-    // VinFast billing cycle (26th to 25th)
-    public DateTime CurrentBillingPeriodStart { get; set; }      // 26/tháng trước
-    public DateTime CurrentBillingPeriodEnd { get; set; }        // 25/tháng hiện tại
-    public int CurrentMonthKmUsed { get; set; } = 0;             // Km đã sử dụng trong tháng
+    // ✅ SIMPLIFIED: 30-day billing period (từ ngày đăng ký)
+    public DateTime CurrentBillingPeriodStart { get; set; }      // VD: 2025-10-20
+    public DateTime CurrentBillingPeriodEnd { get; set; }        // VD: 2025-11-19 (30 ngày)
     
-    // Deposit & Payment tracking
-    public decimal DepositPaid { get; set; } = 0;                // Tiền cọc đã đóng
-    public DateTime? DepositPaidDate { get; set; }
-    public int ConsecutiveOverdueMonths { get; set; } = 0;       // Số tháng nợ liên tiếp
+    // ✅ SWAP COUNTER (thay vì tracking km)
+    public int CurrentMonthSwapCount { get; set; } = 0;          // Số lần đổi pin trong tháng
     
-    // Status & restrictions (VinFast penalty system)
-    public bool IsBlocked { get; set; } = false;                 // Có bị chặn không?
-    public int ChargingLimitPercent { get; set; } = 100;         // Giới hạn sạc (100%, 50%, 30%)
+    // Deposit & Payment tracking (không dùng cọc nữa)
+    public decimal DepositPaid { get; set; } = 0;                // Luôn = 0
+    public DateTime? DepositPaidDate { get; set; }               // Luôn = null
     public DateTime? LastPaymentDate { get; set; }
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
