@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251008032901_UpdateReservationToSlotBased2")]
-    partial class UpdateReservationToSlotBased2
+    [Migration("20251020172509_InitialMigrationWithSimplifiedSubscription")]
+    partial class InitialMigrationWithSimplifiedSubscription
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,41 @@ namespace EVBSS.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.Entity("EVBSS.Api.Models.BatteryInventory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BatteryModelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Quantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("StationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StationId");
+
+                    b.HasIndex("BatteryModelId", "StationId", "Status")
+                        .IsUnique();
+
+                    b.ToTable("BatteryInventories");
+                });
 
             modelBuilder.Entity("EVBSS.Api.Models.BatteryModel", b =>
                 {
@@ -173,6 +208,58 @@ namespace EVBSS.Api.Migrations
                     b.ToTable("Invoices");
                 });
 
+            modelBuilder.Entity("EVBSS.Api.Models.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsUsed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("OtpHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("RequestIpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<string>("RequestUserAgent")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "IsUsed", "ExpiresAt");
+
+                    b.ToTable("PasswordResetTokens");
+                });
+
             modelBuilder.Entity("EVBSS.Api.Models.Payment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -285,8 +372,8 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("QRCode")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("SlotDate")
-                        .HasColumnType("datetime2");
+                    b.Property<DateOnly>("SlotDate")
+                        .HasColumnType("date");
 
                     b.Property<TimeSpan>("SlotEndTime")
                         .HasColumnType("time");
@@ -340,6 +427,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<TimeSpan>("CloseTime")
                         .HasColumnType("time");
 
+                    b.Property<string>("DisplayId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -381,8 +471,8 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("BatteryModelId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("BillingCycleDay")
-                        .HasColumnType("int");
+                    b.Property<string>("Benefits")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -398,18 +488,10 @@ namespace EVBSS.Api.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<int>("MaxOverdueMonths")
+                    b.Property<int?>("MaxSwapsPerMonth")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("MonthlyFee1500To3000Km")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("MonthlyFeeOver3000Km")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("MonthlyFeeUnder1500Km")
+                    b.Property<decimal>("MonthlyPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
@@ -418,9 +500,11 @@ namespace EVBSS.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<decimal>("OverdueInterestRate")
-                        .HasPrecision(5, 4)
-                        .HasColumnType("decimal(5,4)");
+                    b.Property<string>("RefundPolicy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RequiresDeposit")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -477,6 +561,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid?>("CompletedByStaffId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Feedback")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid?>("InvoiceId")
                         .HasColumnType("uniqueidentifier");
 
@@ -498,6 +585,12 @@ namespace EVBSS.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("PaymentType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("Rating")
                         .HasColumnType("int");
 
                     b.Property<Guid?>("ReservationId")
@@ -581,6 +674,9 @@ namespace EVBSS.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("AuthMethod")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -588,6 +684,9 @@ namespace EVBSS.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("GoogleId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("LastLogin")
                         .HasColumnType("datetime2");
@@ -602,7 +701,13 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ProfilePictureUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -619,12 +724,6 @@ namespace EVBSS.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("ChargingLimitPercent")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ConsecutiveOverdueMonths")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -634,7 +733,7 @@ namespace EVBSS.Api.Migrations
                     b.Property<DateTime>("CurrentBillingPeriodStart")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("CurrentMonthKmUsed")
+                    b.Property<int>("CurrentMonthSwapCount")
                         .HasColumnType("int");
 
                     b.Property<decimal>("DepositPaid")
@@ -648,9 +747,6 @@ namespace EVBSS.Api.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsBlocked")
                         .HasColumnType("bit");
 
                     b.Property<DateTime?>("LastPaymentDate")
@@ -702,6 +798,9 @@ namespace EVBSS.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RegistrationPhotoUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -781,6 +880,25 @@ namespace EVBSS.Api.Migrations
                     b.ToTable("VehicleModels");
                 });
 
+            modelBuilder.Entity("EVBSS.Api.Models.BatteryInventory", b =>
+                {
+                    b.HasOne("EVBSS.Api.Models.BatteryModel", "BatteryModel")
+                        .WithMany()
+                        .HasForeignKey("BatteryModelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EVBSS.Api.Models.Station", "Station")
+                        .WithMany()
+                        .HasForeignKey("StationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BatteryModel");
+
+                    b.Navigation("Station");
+                });
+
             modelBuilder.Entity("EVBSS.Api.Models.BatteryUnit", b =>
                 {
                     b.HasOne("EVBSS.Api.Models.BatteryModel", "Model")
@@ -816,6 +934,17 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("User");
 
                     b.Navigation("UserSubscription");
+                });
+
+            modelBuilder.Entity("EVBSS.Api.Models.PasswordResetToken", b =>
+                {
+                    b.HasOne("EVBSS.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.Payment", b =>

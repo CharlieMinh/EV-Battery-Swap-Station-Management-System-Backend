@@ -241,64 +241,61 @@ using (var scope = app.Services.CreateScope())
         var bm72V = db.BatteryModels.First(x => x.Name == "BM-72V-40Ah");
         var vf5Battery = db.BatteryModels.First(x => x.Name == "VF5 Battery Pack");
         
+        // ✅ NEW SIMPLIFIED SUBSCRIPTION PLANS
         db.SubscriptionPlans.AddRange(
-            // VF3 equivalent plans (48V battery)
+            // BASIC PLAN - 10 swaps/month (48V battery)
             new SubscriptionPlan 
             { 
-                Name = "FF3-Basic", 
-                Description = "Gói cơ bản dành cho xe nhỏ - tương đương FF3",
-                MonthlyFeeUnder1500Km = 1100000,
-                MonthlyFee1500To3000Km = 1400000, 
-                MonthlyFeeOver3000Km = 3000000,
-                DepositAmount = 7000000,
+                Name = "Gói Basic - 10 lần/tháng", 
+                Description = "Phù hợp cho người dùng thỉnh thoảng, xe nhỏ 48V",
+                MonthlyPrice = 450000m,              // 450k/tháng (tiết kiệm 10%)
+                MaxSwapsPerMonth = 10,               // Tối đa 10 lần
+                RequiresDeposit = false,
+                DepositAmount = 0,
+                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                Benefits = "✓ Tiết kiệm 10% so với trả lẻ\n✓ Hủy bất cứ lúc nào\n✓ Phù hợp xe máy điện 48V",
                 BatteryModelId = bm48V.Id
             },
             
-            // VF5 plans (VF5 Battery Pack)
+            // STANDARD PLAN - 20 swaps/month (48V battery)
             new SubscriptionPlan 
             { 
-                Name = "VF5-Standard", 
-                Description = "Gói tiêu chuẩn dành cho VinFast VF5 - Pin chính hãng VF5",
-                MonthlyFeeUnder1500Km = 1500000,
-                MonthlyFee1500To3000Km = 2000000,
-                MonthlyFeeOver3000Km = 3500000,
-                DepositAmount = 18000000,
+                Name = "Gói Standard - 20 lần/tháng", 
+                Description = "Phù hợp cho người dùng thường xuyên, xe compact",
+                MonthlyPrice = 850000m,              // 850k/tháng (tiết kiệm 15%)
+                MaxSwapsPerMonth = 20,               // Tối đa 20 lần
+                RequiresDeposit = false,
+                DepositAmount = 0,
+                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                Benefits = "✓ Tiết kiệm 15% so với trả lẻ\n✓ Ưu tiên đặt chỗ\n✓ Hủy bất cứ lúc nào\n✓ Phù hợp xe máy/ô tô điện nhỏ",
+                BatteryModelId = bm48V.Id
+            },
+            
+            // PREMIUM PLAN - Unlimited (VF5 Battery Pack)
+            new SubscriptionPlan 
+            { 
+                Name = "Gói Premium - Không giới hạn", 
+                Description = "Phù hợp cho doanh nghiệp, taxi, VinFast VF5",
+                MonthlyPrice = 1500000m,             // 1.5tr/tháng (tiết kiệm 25%)
+                MaxSwapsPerMonth = null,             // Không giới hạn!
+                RequiresDeposit = false,
+                DepositAmount = 0,
+                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                Benefits = "✓ KHÔNG GIỚI HẠN đổi pin\n✓ Hỗ trợ 24/7\n✓ Ưu tiên cao nhất\n✓ Phù hợp VinFast VF5 & doanh nghiệp",
                 BatteryModelId = vf5Battery.Id
             },
             
-            // VF5 equivalent plans (48V battery) 
+            // VIP PLAN - Unlimited (72V battery)
             new SubscriptionPlan 
             { 
-                Name = "FF5-Standard", 
-                Description = "Gói tiêu chuẩn dành cho xe compact - tương đương FF5",
-                MonthlyFeeUnder1500Km = 1400000,
-                MonthlyFee1500To3000Km = 1900000,
-                MonthlyFeeOver3000Km = 3200000,
-                DepositAmount = 15000000,
-                BatteryModelId = bm48V.Id
-            },
-            
-            // VF7 equivalent plans (72V battery)
-            new SubscriptionPlan 
-            { 
-                Name = "FF7-Premium", 
-                Description = "Gói cao cấp dành cho xe SUV - tương đương FF7",
-                MonthlyFeeUnder1500Km = 2000000,
-                MonthlyFee1500To3000Km = 3500000,
-                MonthlyFeeOver3000Km = 5800000,
-                DepositAmount = 41000000,
-                BatteryModelId = bm72V.Id
-            },
-            
-            // VF9 equivalent plans (72V battery)
-            new SubscriptionPlan 
-            { 
-                Name = "FF9-Luxury", 
-                Description = "Gói siêu cao cấp dành cho xe hạng sang - tương đương FF9",
-                MonthlyFeeUnder1500Km = 3200000,
-                MonthlyFee1500To3000Km = 5400000,
-                MonthlyFeeOver3000Km = 8300000,
-                DepositAmount = 60000000,
+                Name = "Gói VIP - Không giới hạn SUV", 
+                Description = "Phù hợp cho xe điện hạng sang 72V, taxi cao cấp",
+                MonthlyPrice = 2500000m,             // 2.5tr/tháng
+                MaxSwapsPerMonth = null,             // Không giới hạn!
+                RequiresDeposit = false,
+                DepositAmount = 0,
+                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                Benefits = "✓ KHÔNG GIỚI HẠN đổi pin\n✓ Hỗ trợ 24/7 VIP\n✓ Ưu tiên tuyệt đối\n✓ Pin 72V cao cấp\n✓ Phù hợp xe SUV điện",
                 BatteryModelId = bm72V.Id
             }
         );

@@ -163,16 +163,11 @@ public class AppDbContext : DbContext
             .HasIndex(sp => sp.Name).IsUnique();
         b.Entity<SubscriptionPlan>()
             .Property(sp => sp.Name).HasMaxLength(200);
+        // ✅ SIMPLIFIED PRICING
         b.Entity<SubscriptionPlan>()
-            .Property(sp => sp.MonthlyFeeUnder1500Km).HasPrecision(18, 2);
-        b.Entity<SubscriptionPlan>()
-            .Property(sp => sp.MonthlyFee1500To3000Km).HasPrecision(18, 2);
-        b.Entity<SubscriptionPlan>()
-            .Property(sp => sp.MonthlyFeeOver3000Km).HasPrecision(18, 2);
+            .Property(sp => sp.MonthlyPrice).HasPrecision(18, 2);
         b.Entity<SubscriptionPlan>()
             .Property(sp => sp.DepositAmount).HasPrecision(18, 2);
-        b.Entity<SubscriptionPlan>()
-            .Property(sp => sp.OverdueInterestRate).HasPrecision(5, 4);
         b.Entity<SubscriptionPlan>()
             .HasOne(sp => sp.BatteryModel)
             .WithMany()
