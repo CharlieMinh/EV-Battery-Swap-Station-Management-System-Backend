@@ -35,12 +35,15 @@ public class LocalFileStorageService : IFileStorageService
         if (subFolder == "registrations" && IsImageFile(fileExtension))
         {
             // Thêm watermark cho ảnh cà vẹt xe
+            Console.WriteLine($"Adding watermark to registration image: {file.FileName}");
             using var originalStream = file.OpenReadStream();
             fileStream = await _watermarkService.AddWatermarkToRegistrationImageAsync(originalStream);
+            Console.WriteLine($"Watermark added successfully to: {file.FileName}");
         }
         else
         {
             // File thường, không cần watermark
+            Console.WriteLine($"Skipping watermark for file: {file.FileName} in folder: {subFolder}");
             fileStream = file.OpenReadStream();
         }
 
