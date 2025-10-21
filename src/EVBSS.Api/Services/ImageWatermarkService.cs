@@ -58,54 +58,42 @@ public class ImageWatermarkService : IImageWatermarkService
 
     private async Task AddTextWatermarkAsync(Graphics graphics, string watermarkText, int imageWidth, int imageHeight)
     {
-        // Tính toán kích thước font dựa trên kích thước ảnh
-        var fontSize = Math.Max(imageWidth, imageHeight) / 15; // Font size lớn hơn để dễ thấy
-        var font = new Font("Arial", fontSize, FontStyle.Bold);
-        
-        // Màu watermark (đỏ với độ trong suốt để dễ thấy)
-        var brush = new SolidBrush(Color.FromArgb(150, 255, 0, 0)); // Đỏ với độ trong suốt 59%
-        
-        // Tính toán kích thước text
-        var textSize = graphics.MeasureString(watermarkText, font);
-        
-        // Tính toán khoảng cách giữa các watermark
-        var spacingX = textSize.Width * 2f; // Khoảng cách lớn hơn
-        var spacingY = textSize.Height * 2f;
-        
-        // Tính toán số lượng watermark theo chiều ngang và dọc
-        var numberOfWatermarksX = (int)(imageWidth / spacingX) + 1;
-        var numberOfWatermarksY = (int)(imageHeight / spacingY) + 1;
-        
-        // Tạo watermark chéo qua toàn bộ ảnh
-        for (int row = 0; row < numberOfWatermarksY; row++)
+        try
         {
-            for (int col = 0; col < numberOfWatermarksX; col++)
-            {
-                // Tính toán vị trí cho watermark
-                var x = col * spacingX;
-                var y = row * spacingY;
-                
-                // Kiểm tra xem watermark có nằm trong phạm vi ảnh không
-                if (x + textSize.Width < imageWidth && y + textSize.Height < imageHeight)
-                {
-                    // Lưu trạng thái graphics hiện tại
-                    var state = graphics.Save();
-                    
-                    // Xoay graphics để tạo watermark chéo
-                    graphics.RotateTransform(-45f); // Xoay -45 độ
-                    
-                    // Vẽ watermark
-                    graphics.DrawString(watermarkText, font, brush, x, y);
-                    
-                    // Khôi phục trạng thái graphics
-                    graphics.Restore(state);
-                }
-            }
+            // Tính toán kích thước font dựa trên kích thước ảnh
+            var fontSize = Math.Max(imageWidth, imageHeight) / 10; // Font size rất lớn để test
+            var font = new Font("Arial", fontSize, FontStyle.Bold);
+            
+            // Màu watermark (đỏ đậm để dễ thấy)
+            var brush = new SolidBrush(Color.FromArgb(200, 255, 0, 0)); // Đỏ với độ trong suốt 78%
+            
+            // Tính toán kích thước text
+            var textSize = graphics.MeasureString(watermarkText, font);
+            
+            // Vẽ watermark đơn giản ở giữa ảnh trước
+            var centerX = (imageWidth - textSize.Width) / 2;
+            var centerY = (imageHeight - textSize.Height) / 2;
+            
+            // Vẽ watermark ở giữa ảnh
+            graphics.DrawString(watermarkText, font, brush, centerX, centerY);
+            
+            // Vẽ thêm một vài watermark ở các góc
+            graphics.DrawString(watermarkText, font, brush, 50, 50); // Góc trên trái
+            graphics.DrawString(watermarkText, font, brush, imageWidth - textSize.Width - 50, 50); // Góc trên phải
+            graphics.DrawString(watermarkText, font, brush, 50, imageHeight - textSize.Height - 50); // Góc dưới trái
+            graphics.DrawString(watermarkText, font, brush, imageWidth - textSize.Width - 50, imageHeight - textSize.Height - 50); // Góc dưới phải
+            
+            // Cleanup
+            font.Dispose();
+            brush.Dispose();
+            
+            Console.WriteLine($"Watermark drawn successfully: {watermarkText} on {imageWidth}x{imageHeight} image");
         }
-        
-        // Cleanup
-        font.Dispose();
-        brush.Dispose();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error drawing watermark: {ex.Message}");
+            throw;
+        }
         
         await Task.CompletedTask; // Để method async
     }
