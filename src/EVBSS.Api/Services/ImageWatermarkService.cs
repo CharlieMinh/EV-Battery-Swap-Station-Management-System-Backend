@@ -61,11 +61,11 @@ public class ImageWatermarkService : IImageWatermarkService
         try
         {
             // Tính toán kích thước font dựa trên kích thước ảnh
-            var fontSize = Math.Max(imageWidth, imageHeight) / 10; // Font size rất lớn để test
+            var fontSize = Math.Max(imageWidth, imageHeight) / 20; // Font size vừa phải
             var font = new Font("Arial", fontSize, FontStyle.Bold);
             
-            // Màu watermark (đỏ đậm để dễ thấy)
-            var brush = new SolidBrush(Color.FromArgb(200, 255, 0, 0)); // Đỏ với độ trong suốt 78%
+            // Màu watermark (trắng với độ trong suốt)
+            var brush = new SolidBrush(Color.FromArgb(80, 255, 255, 255)); // Trắng với độ trong suốt 31%
             
             // Tính toán kích thước text
             var textSize = graphics.MeasureString(watermarkText, font);
