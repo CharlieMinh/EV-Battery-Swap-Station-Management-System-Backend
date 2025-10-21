@@ -59,28 +59,47 @@ public class ImageWatermarkService : IImageWatermarkService
     private async Task AddTextWatermarkAsync(Graphics graphics, string watermarkText, int imageWidth, int imageHeight)
     {
         // Tính toán kích thước font dựa trên kích thước ảnh
-        var fontSize = Math.Max(imageWidth, imageHeight) / 20; // Font size tỷ lệ với ảnh
+        var fontSize = Math.Max(imageWidth, imageHeight) / 25; // Font size nhỏ hơn để phù hợp với watermark chéo
         var font = new Font("Arial", fontSize, FontStyle.Bold);
         
-        // Màu watermark (trắng với độ trong suốt)
-        var brush = new SolidBrush(Color.FromArgb(120, 255, 255, 255)); // 120/255 = ~47% opacity
+        // Màu watermark (trắng với độ trong suốt thấp hơn)
+        var brush = new SolidBrush(Color.FromArgb(60, 255, 255, 255)); // 60/255 = ~23% opacity
         
-        // Tính toán vị trí watermark (góc dưới bên phải)
+        // Tính toán góc xoay và khoảng cách giữa các watermark
         var textSize = graphics.MeasureString(watermarkText, font);
-        var x = imageWidth - textSize.Width - 20; // Cách lề phải 20px
-        var y = imageHeight - textSize.Height - 20; // Cách lề dưới 20px
+        var spacing = Math.Max(textSize.Width, textSize.Height) * 1.5f; // Khoảng cách giữa các watermark
         
-        // Thêm shadow effect
-        var shadowBrush = new SolidBrush(Color.FromArgb(80, 0, 0, 0));
-        graphics.DrawString(watermarkText, font, shadowBrush, x + 2, y + 2);
+        // Tính toán số lượng watermark cần thiết để phủ toàn bộ ảnh
+        var diagonalLength = Math.Sqrt(imageWidth * imageWidth + imageHeight * imageHeight);
+        var numberOfWatermarks = (int)(diagonalLength / spacing) + 2;
         
-        // Vẽ watermark chính
-        graphics.DrawString(watermarkText, font, brush, x, y);
+        // Tạo watermark chéo qua toàn bộ ảnh
+        for (int i = 0; i < numberOfWatermarks; i++)
+        {
+            // Tính toán vị trí cho watermark thứ i
+            var x = (float)(i * spacing * Math.Cos(Math.PI / 4)) - textSize.Width / 2;
+            var y = (float)(i * spacing * Math.Sin(Math.PI / 4)) - textSize.Height / 2;
+            
+            // Kiểm tra xem watermark có nằm trong phạm vi ảnh không
+            if (x + textSize.Width > 0 && x < imageWidth && y + textSize.Height > 0 && y < imageHeight)
+            {
+                // Lưu trạng thái graphics hiện tại
+                var state = graphics.Save();
+                
+                // Xoay graphics để tạo watermark chéo
+                graphics.RotateTransform(-45f); // Xoay -45 độ
+                
+                // Vẽ watermark
+                graphics.DrawString(watermarkText, font, brush, x, y);
+                
+                // Khôi phục trạng thái graphics
+                graphics.Restore(state);
+            }
+        }
         
         // Cleanup
         font.Dispose();
         brush.Dispose();
-        shadowBrush.Dispose();
         
         await Task.CompletedTask; // Để method async
     }
