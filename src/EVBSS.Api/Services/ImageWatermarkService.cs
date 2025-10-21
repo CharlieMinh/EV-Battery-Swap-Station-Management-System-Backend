@@ -61,7 +61,7 @@ public class ImageWatermarkService : IImageWatermarkService
         try
         {
             // Sử dụng text "EVBSS" thay vì text mặc định
-            var displayText = "EVBSS";
+            var displayText = "EVBSS System";
             
             // Tính toán kích thước font dựa trên kích thước ảnh (lớn hơn để nổi bật)
             var fontSize = Math.Max(imageWidth, imageHeight) / 8; // Font size lớn như code mẫu
