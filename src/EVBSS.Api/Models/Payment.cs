@@ -4,7 +4,9 @@ public class Payment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string PaymentReference { get; set; } = null!;        // Mã giao dịch (VNPay, etc.)
-    public Guid InvoiceId { get; set; }
+    
+    // ✅ REFACTORED: Link to Subscription instead of Invoice
+    public Guid? UserSubscriptionId { get; set; }                // Thanh toán cho gói subscription
     public Guid UserId { get; set; }
 
     // Payment details
@@ -12,6 +14,8 @@ public class Payment
     public PaymentType Type { get; set; }
     public decimal Amount { get; set; }
     public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+    
+    public string Description { get; set; } = null!;             // Mô tả thanh toán
 
     // VNPay integration fields
     public string? VnpTxnRef { get; set; }                       // Mã giao dịch VNPay
@@ -34,7 +38,7 @@ public class Payment
     public string? FailureReason { get; set; }                   // Lý do thất bại
 
     // Navigation properties
-    public Invoice Invoice { get; set; } = null!;
+    public UserSubscription? UserSubscription { get; set; }
     public User User { get; set; } = null!;
     public User? ProcessedByStaff { get; set; }
     public Station? Station { get; set; }

@@ -12,6 +12,7 @@ public interface ISubscriptionService
     Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId);
     Task<CancelSubscriptionResponse> CancelSubscriptionAsync(Guid userId);
     Task<SubscriptionUsageDto?> GetSubscriptionUsageAsync(Guid userId);
+    Task CheckAndExpireSubscriptionsAsync(); // ⭐ NEW: Auto-expire logic
 }
 
 public class SubscriptionService : ISubscriptionService
@@ -23,6 +24,38 @@ public class SubscriptionService : ISubscriptionService
     {
         _context = context;
         _logger = logger;
+    }
+    
+    // ⭐ NEW: Check and expire subscriptions that passed their billing end date
+    // Called automatically by middleware on each request, no background job needed
+    public async Task CheckAndExpireSubscriptionsAsync()
+    {
+        var now = DateTime.UtcNow;
+        
+        // Find active subscriptions that have passed their billing end date
+        var expiredSubscriptions = await _context.UserSubscriptions
+            .Where(us => us.IsActive && us.CurrentBillingPeriodEnd < now)
+            .ToListAsync();
+        
+        if (!expiredSubscriptions.Any())
+            return;
+        
+        foreach (var subscription in expiredSubscriptions)
+        {
+            subscription.IsActive = false;
+            subscription.UpdatedAt = now;
+            
+            _logger.LogInformation(
+                "Auto-expired subscription {SubscriptionId} for user {UserId}. " +
+                "Billing period ended on {EndDate}",
+                subscription.Id, subscription.UserId, subscription.CurrentBillingPeriodEnd);
+        }
+        
+        await _context.SaveChangesAsync();
+        
+        _logger.LogInformation(
+            "Auto-expired {Count} subscriptions that passed their billing end date", 
+            expiredSubscriptions.Count);
     }
 
     public async Task<SubscriptionCreatedResponse> CreateSubscriptionAsync(Guid userId, CreateSubscriptionRequest request)
@@ -179,19 +212,18 @@ public class SubscriptionService : ISubscriptionService
             };
         }
 
-        // Check for outstanding payments
-        var outstandingInvoices = await _context.Invoices
-            .Where(i => i.UserSubscriptionId == subscription.Id && 
-                       i.Status != Models.PaymentStatus.Completed && 
-                       i.Status != Models.PaymentStatus.Cancelled)
+        // ✅ Check for outstanding payments (refactored to use Payment table)
+        var outstandingPayments = await _context.Payments
+            .Where(p => p.UserSubscriptionId == subscription.Id && 
+                       p.Status == Models.PaymentStatus.Pending)
             .CountAsync();
 
-        if (outstandingInvoices > 0)
+        if (outstandingPayments > 0)
         {
             return new CancelSubscriptionResponse
             {
                 Success = false,
-                Message = $"Không thể hủy gói. Bạn còn {outstandingInvoices} hóa đơn chưa thanh toán."
+                Message = $"Không thể hủy gói. Bạn còn {outstandingPayments} thanh toán đang chờ xử lý."
             };
         }
 
@@ -233,10 +265,10 @@ public class SubscriptionService : ISubscriptionService
             .OrderBy(st => st.StartedAt)
             .ToListAsync();
 
-        // ✅ SIMPLIFIED: Count swaps instead of km
-        var totalAmountPaid = await _context.Invoices
-            .Where(i => i.UserSubscriptionId == subscription.Id && i.Status == Models.PaymentStatus.Completed)
-            .SumAsync(i => i.TotalAmount);
+        // ✅ Calculate total amount paid from Payments table
+        var totalAmountPaid = await _context.Payments
+            .Where(p => p.UserSubscriptionId == subscription.Id && p.Status == Models.PaymentStatus.Completed)
+            .SumAsync(p => p.Amount);
 
         // ✅ FIXED PRICE - No tier calculation needed
         var currentMonthFee = subscription.SubscriptionPlan.MonthlyPrice;
@@ -315,11 +347,12 @@ public class SubscriptionService : ISubscriptionService
 
             var swapCount = monthTransactions.Count;
             
-            // Get invoice for this period
-            var invoice = await _context.Invoices
-                .FirstOrDefaultAsync(i => i.UserSubscriptionId == subscriptionId &&
-                                         i.BillingPeriodStart == periodStart &&
-                                         i.BillingPeriodEnd == periodEnd);
+            // ✅ Get payment for this period (refactored from invoice)
+            var payment = await _context.Payments
+                .FirstOrDefaultAsync(p => p.UserSubscriptionId == subscriptionId &&
+                                         p.CreatedAt >= periodStart &&
+                                         p.CreatedAt <= periodEnd &&
+                                         p.Status == Models.PaymentStatus.Completed);
 
             // ✅ SIMPLIFIED: Usage tier based on swap count
             var maxSwaps = subscription.SubscriptionPlan.MaxSwapsPerMonth;
@@ -328,14 +361,14 @@ public class SubscriptionService : ISubscriptionService
                 : $"{swapCount} lần (không giới hạn)";
 
             monthlyUsage.Add(new MonthlyUsageDto
-            {
+{
                 Year = periodEnd.Year,
                 Month = periodEnd.Month,
                 MonthName = CultureInfo.GetCultureInfo("vi-VN").DateTimeFormat.GetMonthName(targetMonth.Month),
                 SwapCount = swapCount,
-                MonthlyFee = invoice?.TotalAmount ?? 0,
+                MonthlyFee = payment?.Amount ?? subscription.SubscriptionPlan.MonthlyPrice,
                 UsageTier = usageTier,
-                IsPaid = invoice?.Status == Models.PaymentStatus.Completed
+                IsPaid = payment?.Status == Models.PaymentStatus.Completed
             });
         }
 

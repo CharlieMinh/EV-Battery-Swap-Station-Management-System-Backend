@@ -220,8 +220,7 @@ public class SwapTransactionService
             // 6. Keep reservation status as Confirmed when swap completes
             // Reservation remains Confirmed to show it was successfully used
 
-            // 7. Create invoice if needed
-            await CreateInvoiceIfNeededAsync(swap);
+            // ✅ INVOICE REMOVED: Payment tracking handled separately via Payment model
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -575,66 +574,5 @@ public class SwapTransactionService
         return Task.FromResult(50000m); // 50,000 VND per swap
     }
 
-    private async Task CreateInvoiceIfNeededAsync(SwapTransaction swap)
-    {
-        if (swap.TotalAmount > 0 && !swap.IsPaid)
-        {
-            // Generate invoice number
-            var invoiceNumber = await GenerateInvoiceNumberAsync();
-            
-            // Ensure invoice number is not null or empty
-            if (string.IsNullOrEmpty(invoiceNumber))
-            {
-                throw new InvalidOperationException("Failed to generate invoice number");
-            }
-            
-            var invoice = new Invoice
-            {
-                Id = Guid.NewGuid(),
-                UserId = swap.UserId,
-                UserSubscriptionId = swap.UserSubscriptionId,
-                InvoiceNumber = invoiceNumber,
-                Type = InvoiceType.SwapTransaction,
-                TotalAmount = swap.TotalAmount,
-                SubtotalAmount = swap.TotalAmount,
-                TaxAmount = 0m,
-                PaidAmount = 0m,
-                OverdueFeeAmount = 0m,
-                Status = PaymentStatus.Pending,
-                IssueDate = DateTime.UtcNow,
-                DueDate = DateTime.UtcNow.AddDays(7), // 7 days to pay
-                Notes = $"Battery swap fee - {swap.TransactionNumber}",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            _context.Invoices.Add(invoice);
-            swap.InvoiceId = invoice.Id;
-        }
-    }
-
-    private async Task<string> GenerateInvoiceNumberAsync()
-    {
-        var today = DateTime.UtcNow;
-        var prefix = $"INV-{today:yyyyMMdd}";
-        
-        // Lấy invoice cuối cùng trong ngày
-        var lastInvoice = await _context.Invoices
-            .Where(i => i.InvoiceNumber.StartsWith(prefix))
-            .OrderByDescending(i => i.InvoiceNumber)
-            .FirstOrDefaultAsync();
-
-        int sequenceNumber = 1;
-        if (lastInvoice != null)
-        {
-            // Extract sequence number from last invoice
-            var lastSequence = lastInvoice.InvoiceNumber.Substring(prefix.Length);
-            if (int.TryParse(lastSequence, out int lastSeq))
-            {
-                sequenceNumber = lastSeq + 1;
-            }
-        }
-
-        return $"{prefix}{sequenceNumber:D4}"; // INV-20251010001
-    }
+    // ✅ INVOICE METHODS REMOVED: Using simplified Payment model instead
 }

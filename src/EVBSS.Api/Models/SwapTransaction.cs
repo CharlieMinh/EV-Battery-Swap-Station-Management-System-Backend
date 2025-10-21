@@ -22,7 +22,6 @@ public class SwapTransaction
     public Guid StationId { get; set; }
     public Guid VehicleId { get; set; }
     public Guid? UserSubscriptionId { get; set; }               // Gói thuê đang sử dụng
-    public Guid? InvoiceId { get; set; }                         // Hóa đơn tương ứng
 
     // Battery swap details
     public Guid IssuedBatteryId { get; set; }                    // Pin cấp cho khách
@@ -72,7 +71,6 @@ public class SwapTransaction
     public Station Station { get; set; } = null!;
     public Vehicle Vehicle { get; set; } = null!;
     public UserSubscription? UserSubscription { get; set; }
-    public Invoice? Invoice { get; set; }
     
     public BatteryUnit IssuedBattery { get; set; } = null!;
     public BatteryUnit? ReturnedBattery { get; set; }

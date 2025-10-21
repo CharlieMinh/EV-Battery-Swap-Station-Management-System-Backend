@@ -31,5 +31,4 @@ public class UserSubscription
     public User User { get; set; } = null!;
     public SubscriptionPlan SubscriptionPlan { get; set; } = null!;
     public Vehicle Vehicle { get; set; } = null!;
-    public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 }
