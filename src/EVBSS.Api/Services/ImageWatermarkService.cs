@@ -60,34 +60,37 @@ public class ImageWatermarkService : IImageWatermarkService
     {
         try
         {
-            // Tính toán kích thước font dựa trên kích thước ảnh
-            var fontSize = Math.Max(imageWidth, imageHeight) / 20; // Font size vừa phải
-            var font = new Font("Arial", fontSize, FontStyle.Bold);
+            // Sử dụng text "EVBSS" thay vì text mặc định
+            var displayText = "EVBSS";
             
-            // Màu watermark (trắng với độ trong suốt)
-            var brush = new SolidBrush(Color.FromArgb(80, 255, 255, 255)); // Trắng với độ trong suốt 31%
+            // Tính toán kích thước font dựa trên kích thước ảnh (lớn hơn để nổi bật)
+            var fontSize = Math.Max(imageWidth, imageHeight) / 8; // Font size lớn như code mẫu
+            var font = new Font("Arial", fontSize, FontStyle.Italic, GraphicsUnit.Pixel);
             
-            // Tính toán kích thước text
-            var textSize = graphics.MeasureString(watermarkText, font);
+            // Màu watermark (trắng với độ trong suốt như code mẫu)
+            var brush = new SolidBrush(Color.FromArgb(120, 255, 255, 255)); // Trắng mờ (độ trong suốt 120)
             
-            // Vẽ watermark đơn giản ở giữa ảnh trước
-            var centerX = (imageWidth - textSize.Width) / 2;
-            var centerY = (imageHeight - textSize.Height) / 2;
+            // Đo kích thước text để căn giữa
+            var textSize = graphics.MeasureString(displayText, font);
+            var x = (imageWidth - textSize.Width) / 2;
+            var y = (imageHeight - textSize.Height) / 2;
             
-            // Vẽ watermark ở giữa ảnh
-            graphics.DrawString(watermarkText, font, brush, centerX, centerY);
+            // Xoay nhẹ 10 độ cho watermark nghiêng (như code mẫu)
+            graphics.TranslateTransform(x + textSize.Width / 2, y + textSize.Height / 2);
+            graphics.RotateTransform(-10);
+            graphics.TranslateTransform(-(x + textSize.Width / 2), -(y + textSize.Height / 2));
             
-            // Vẽ thêm một vài watermark ở các góc
-            graphics.DrawString(watermarkText, font, brush, 50, 50); // Góc trên trái
-            graphics.DrawString(watermarkText, font, brush, imageWidth - textSize.Width - 50, 50); // Góc trên phải
-            graphics.DrawString(watermarkText, font, brush, 50, imageHeight - textSize.Height - 50); // Góc dưới trái
-            graphics.DrawString(watermarkText, font, brush, imageWidth - textSize.Width - 50, imageHeight - textSize.Height - 50); // Góc dưới phải
+            // Vẽ text ở giữa ảnh
+            graphics.DrawString(displayText, font, brush, x, y);
+            
+            // Reset transform
+            graphics.ResetTransform();
             
             // Cleanup
             font.Dispose();
             brush.Dispose();
             
-            Console.WriteLine($"Watermark drawn successfully: {watermarkText} on {imageWidth}x{imageHeight} image");
+            Console.WriteLine($"Watermark drawn successfully: {displayText} on {imageWidth}x{imageHeight} image");
         }
         catch (Exception ex)
         {
