@@ -35,13 +35,13 @@ public class PaymentsController : ControllerBase
             
             if (result.Success)
             {
-                _logger.LogInformation("Created VNPay payment for user {UserId}, invoice {InvoiceId}", userId, request.InvoiceId);
+                _logger.LogInformation("Created VNPay payment for user {UserId}, subscription {SubscriptionId}", userId, request.SubscriptionId);
                 return Ok(result);
             }
             else
             {
-                _logger.LogWarning("Failed to create VNPay payment for user {UserId}, invoice {InvoiceId}: {Message}", 
-                    userId, request.InvoiceId, result.Message);
+                _logger.LogWarning("Failed to create VNPay payment for user {UserId}, subscription {SubscriptionId}: {Message}", 
+                    userId, request.SubscriptionId, result.Message);
                 return BadRequest(result);
             }
         }

@@ -16,6 +16,12 @@ public class UserSubscriptionDto
     public DateTime CurrentBillingPeriodStart { get; set; }
     public DateTime CurrentBillingPeriodEnd { get; set; }
     
+    // ⭐ NEW: Check if subscription has expired
+    public bool IsExpired => DateTime.UtcNow > CurrentBillingPeriodEnd;
+    
+    // ⭐ NEW: Days remaining until expiration (null if already expired)
+    public int? DaysRemaining => IsExpired ? null : (int)(CurrentBillingPeriodEnd - DateTime.UtcNow).TotalDays;
+    
     // ✅ SIMPLIFIED: Swap counter instead of km tracking
     public int CurrentMonthSwapCount { get; set; }
     

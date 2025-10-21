@@ -100,7 +100,7 @@ builder.Services.AddScoped<SlotReservationService>(); // New slot-based service
 builder.Services.AddScoped<ReservationService>(); // Legacy wrapper service
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
-builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+// ✅ INVOICE SERVICE REMOVED: Using simplified Payment model
 builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for OTP
 builder.Services.AddScoped<PasswordResetService>(); // Password reset service for Auth
@@ -322,6 +322,10 @@ app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// ⭐ AUTO-EXPIRE SUBSCRIPTIONS: Check every 5 minutes on any request
+// No background job needed - expires subscriptions when users interact with system
+app.UseMiddleware<SubscriptionExpirationMiddleware>();
 
 app.MapControllers();
 

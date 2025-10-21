@@ -10,6 +10,10 @@ public class SubscriptionUsageDto
     public DateTime CurrentBillingPeriodStart { get; set; }
     public DateTime CurrentBillingPeriodEnd { get; set; }
     
+    // ⭐ NEW: Expiration info
+    public bool IsExpired => DateTime.UtcNow > CurrentBillingPeriodEnd;
+    public int? DaysRemaining => IsExpired ? null : (int)(CurrentBillingPeriodEnd - DateTime.UtcNow).TotalDays;
+    
     // ✅ SIMPLIFIED: Swap count instead of km
     public int CurrentMonthSwapCount { get; set; }
     public int? MaxSwapsPerMonth { get; set; }

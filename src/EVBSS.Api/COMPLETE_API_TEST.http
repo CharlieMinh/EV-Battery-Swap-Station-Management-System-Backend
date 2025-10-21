@@ -1,7 +1,8 @@
 ###############################################################################
 # COMPLETE API TESTING - EV Battery Swap Station Management System
 # Simplified Subscription Model (Fixed Monthly Price + Swap Limits)
-# Created: October 21, 2025
+# ✅ Invoice System Removed - Using Direct Payment Model
+# Updated: October 21, 2025
 ###############################################################################
 
 @baseUrl = http://localhost:5000/api/v1
@@ -22,7 +23,6 @@
 @subscriptionId = 00000000-0000-0000-0000-000000000000
 @reservationId = 00000000-0000-0000-0000-000000000000
 @swapTransactionId = 00000000-0000-0000-0000-000000000000
-@invoiceId = 00000000-0000-0000-0000-000000000000
 @paymentId = 00000000-0000-0000-0000-000000000000
 
 ###############################################################################
@@ -461,41 +461,27 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 ###############################################################################
-# 9. INVOICES & PAYMENTS
+# 9. PAYMENTS (✅ Invoice system removed)
 ###############################################################################
 
-### 9.1. Get My Invoices
-GET {{baseUrl}}/invoices/my-invoices?page=1&pageSize=10
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-### 9.2. Get Invoice by ID
-GET {{baseUrl}}/invoices/{{invoiceId}}
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-### 9.3. Get Unpaid Invoices
-GET {{baseUrl}}/invoices/my-invoices?isPaid=false
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-### 9.4. Create VNPay Payment URL
+### 9.1. Create VNPay Payment for Subscription
 # @name createVnPayPayment
-POST {{baseUrl}}/payments/vnpay/create-payment-url
+POST {{baseUrl}}/payments/vnpay/create
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "invoiceId": "{{invoiceId}}",
+  "subscriptionId": "{{subscriptionId}}",
+  "orderInfo": "Thanh toán gói Basic",
   "returnUrl": "http://localhost:3000/payment/callback"
 }
 
-### 9.5. Get Payment by ID
+### 9.2. Get Payment by ID
 GET {{baseUrl}}/payments/{{paymentId}}
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
-### 9.6. Get My Payment History
+### 9.3. Get My Payment History
 GET {{baseUrl}}/payments/my-payments?page=1&pageSize=10
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json

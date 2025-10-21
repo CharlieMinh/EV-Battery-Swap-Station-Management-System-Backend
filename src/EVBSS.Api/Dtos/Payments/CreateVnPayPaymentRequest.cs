@@ -4,8 +4,9 @@ namespace EVBSS.Api.Dtos.Payments;
 
 public class CreateVnPayPaymentRequest
 {
+    // ✅ REFACTORED: Payment for subscription directly (no invoice)
     [Required]
-    public Guid InvoiceId { get; set; }
+    public Guid SubscriptionId { get; set; }
     
     public string? OrderInfo { get; set; }  // Mô tả đơn hàng
     

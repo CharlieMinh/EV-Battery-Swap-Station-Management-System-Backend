@@ -17,10 +17,9 @@ public class AppDbContext : DbContext
     public DbSet<BatteryInventory> BatteryInventories => Set<BatteryInventory>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
 
-    // Payment & Invoice System
+    // Payment & Subscription System (✅ Invoice removed)
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
-    public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<SwapTransaction> SwapTransactions => Set<SwapTransaction>();
     
@@ -195,44 +194,20 @@ public class AppDbContext : DbContext
             .HasForeignKey(us => us.VehicleId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Invoice
-        b.Entity<Invoice>()
-            .HasIndex(i => i.InvoiceNumber).IsUnique();
-        b.Entity<Invoice>()
-            .Property(i => i.InvoiceNumber).HasMaxLength(50);
-        b.Entity<Invoice>()
-            .Property(i => i.SubtotalAmount).HasPrecision(18, 2);
-        b.Entity<Invoice>()
-            .Property(i => i.TaxAmount).HasPrecision(18, 2);
-        b.Entity<Invoice>()
-            .Property(i => i.TotalAmount).HasPrecision(18, 2);
-        b.Entity<Invoice>()
-            .Property(i => i.PaidAmount).HasPrecision(18, 2);
-        b.Entity<Invoice>()
-            .Property(i => i.OverdueFeeAmount).HasPrecision(18, 2);
-        b.Entity<Invoice>()
-            .HasOne(i => i.User)
-            .WithMany()
-            .HasForeignKey(i => i.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
-        b.Entity<Invoice>()
-            .HasOne(i => i.UserSubscription)
-            .WithMany(us => us.Invoices)
-            .HasForeignKey(i => i.UserSubscriptionId)
-            .OnDelete(DeleteBehavior.SetNull);
-
-        // Payment
+        // Payment (✅ Refactored to link with Subscription)
         b.Entity<Payment>()
             .HasIndex(p => p.PaymentReference).IsUnique();
         b.Entity<Payment>()
             .Property(p => p.PaymentReference).HasMaxLength(100);
         b.Entity<Payment>()
+            .Property(p => p.Description).HasMaxLength(500);
+        b.Entity<Payment>()
             .Property(p => p.Amount).HasPrecision(18, 2);
         b.Entity<Payment>()
-            .HasOne(p => p.Invoice)
-            .WithMany(i => i.Payments)
-            .HasForeignKey(p => p.InvoiceId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasOne(p => p.UserSubscription)
+            .WithMany()
+            .HasForeignKey(p => p.UserSubscriptionId)
+            .OnDelete(DeleteBehavior.SetNull);
         b.Entity<Payment>()
             .HasOne(p => p.User)
             .WithMany()
@@ -284,11 +259,6 @@ public class AppDbContext : DbContext
             .HasOne(st => st.UserSubscription)
             .WithMany()
             .HasForeignKey(st => st.UserSubscriptionId)
-            .OnDelete(DeleteBehavior.SetNull);
-        b.Entity<SwapTransaction>()
-            .HasOne(st => st.Invoice)
-            .WithMany(i => i.SwapTransactions)
-            .HasForeignKey(st => st.InvoiceId)
             .OnDelete(DeleteBehavior.SetNull);
         b.Entity<SwapTransaction>()
             .HasOne(st => st.IssuedBattery)

@@ -35,56 +35,49 @@ public class VnPayService : IVnPayService
     {
         try
         {
-            // 1. Validate invoice exists and belongs to user
-            var invoice = await _context.Invoices
-                .Include(i => i.UserSubscription)
-                    .ThenInclude(us => us!.Vehicle)
-                .Include(i => i.UserSubscription)
-                    .ThenInclude(us => us!.SubscriptionPlan)
-                .FirstOrDefaultAsync(i => i.Id == request.InvoiceId && i.UserId == userId);
+            // ✅ REFACTORED: Payment for subscription directly (no invoice)
+            // 1. Validate subscription exists and belongs to user
+            var subscription = await _context.UserSubscriptions
+                .Include(us => us.Vehicle)
+                .Include(us => us.SubscriptionPlan)
+                .FirstOrDefaultAsync(us => us.Id == request.SubscriptionId && us.UserId == userId);
 
-            if (invoice == null)
+            if (subscription == null)
             {
                 return new VnPayPaymentResponse 
                 { 
                     Success = false, 
-                    Message = "Hóa đơn không tồn tại hoặc không thuộc về bạn." 
+                    Message = "Gói subscription không tồn tại hoặc không thuộc về bạn." 
                 };
             }
 
-            if (invoice.Status == PaymentStatus.Completed)
-            {
-                return new VnPayPaymentResponse 
-                { 
-                    Success = false, 
-                    Message = "Hóa đơn này đã được thanh toán." 
-                };
-            }
-
-            // 2. Check if payment already exists for this invoice
+            // 2. Check if payment already exists for this billing period
             var existingPayment = await _context.Payments
-                .FirstOrDefaultAsync(p => p.InvoiceId == request.InvoiceId && p.Status == PaymentStatus.Pending);
+                .FirstOrDefaultAsync(p => p.UserSubscriptionId == request.SubscriptionId 
+                    && p.Status == PaymentStatus.Pending
+                    && p.CreatedAt >= subscription.CurrentBillingPeriodStart);
 
             if (existingPayment != null)
             {
                 return new VnPayPaymentResponse 
                 { 
                     Success = false, 
-                    Message = "Đã có giao dịch thanh toán đang chờ xử lý cho hóa đơn này." 
+                    Message = "Đã có giao dịch thanh toán đang chờ xử lý cho chu kỳ này." 
                 };
             }
 
             // 3. Create payment record
             var payment = new Payment
             {
-                InvoiceId = request.InvoiceId,
+                UserSubscriptionId = request.SubscriptionId,
                 UserId = userId,
                 Method = PaymentMethod.VNPay,
-                Type = GetPaymentType(invoice.Type),
-                Amount = invoice.RemainingAmount,
+                Type = PaymentType.Subscription,
+                Amount = subscription.SubscriptionPlan.MonthlyPrice,
                 Status = PaymentStatus.Pending,
                 VnpTxnRef = GenerateTransactionReference(),
                 PaymentReference = GenerateTransactionReference(),
+                Description = $"Thanh toán {subscription.SubscriptionPlan.Name} - {subscription.CurrentBillingPeriodStart:dd/MM/yyyy}",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -92,10 +85,11 @@ public class VnPayService : IVnPayService
             await _context.SaveChangesAsync();
 
             // 4. Generate VNPay payment URL
-            var paymentUrl = GenerateVnPayUrl(payment, invoice, request.OrderInfo ?? GetDefaultOrderInfo(invoice), ipAddress);
+            var orderInfo = request.OrderInfo ?? $"{subscription.SubscriptionPlan.Name} - {subscription.Vehicle.Plate}";
+            var paymentUrl = GenerateVnPayUrl(payment, subscription, orderInfo, ipAddress);
 
-            _logger.LogInformation("Created VNPay payment {PaymentId} for invoice {InvoiceId}, user {UserId}", 
-                payment.Id, invoice.Id, userId);
+            _logger.LogInformation("Created VNPay payment {PaymentId} for subscription {SubscriptionId}, user {UserId}", 
+                payment.Id, subscription.Id, userId);
 
             return new VnPayPaymentResponse
             {
@@ -108,7 +102,7 @@ public class VnPayService : IVnPayService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating VNPay payment for user {UserId}, invoice {InvoiceId}", userId, request.InvoiceId);
+            _logger.LogError(ex, "Error creating VNPay payment for user {UserId}, subscription {SubscriptionId}", userId, request.SubscriptionId);
             return new VnPayPaymentResponse 
             { 
                 Success = false, 
@@ -136,7 +130,7 @@ public class VnPayService : IVnPayService
 
             // 2. Find payment by TxnRef
             var payment = await _context.Payments
-                .Include(p => p.Invoice)
+                .Include(p => p.UserSubscription)
                 .FirstOrDefaultAsync(p => p.VnpTxnRef == callback.vnp_TxnRef);
 
             if (payment == null)
@@ -173,18 +167,17 @@ public class VnPayService : IVnPayService
 
             if (isSuccess && amount == payment.Amount)
             {
-                // Payment successful
+                // ✅ Payment successful - activate subscription
                 payment.Status = PaymentStatus.Completed;
                 payment.CompletedAt = DateTime.UtcNow;
 
-                // Update invoice
-                payment.Invoice.PaidAmount += payment.Amount;
-                payment.Invoice.Status = payment.Invoice.RemainingAmount <= 0 ? PaymentStatus.Completed : PaymentStatus.PartiallyPaid;
-                if (payment.Invoice.Status == PaymentStatus.Completed)
+                // Update subscription's last payment date
+                if (payment.UserSubscription != null)
                 {
-                    payment.Invoice.PaidDate = DateTime.UtcNow;
+                    payment.UserSubscription.LastPaymentDate = DateTime.UtcNow;
+                    payment.UserSubscription.IsActive = true;
+                    payment.UserSubscription.UpdatedAt = DateTime.UtcNow;
                 }
-                payment.Invoice.UpdatedAt = DateTime.UtcNow;
 
                 _logger.LogInformation("Payment {PaymentId} completed successfully for amount {Amount}", payment.Id, amount);
             }
@@ -248,7 +241,7 @@ public class VnPayService : IVnPayService
         }
     }
 
-    private string GenerateVnPayUrl(Payment payment, Invoice invoice, string orderInfo, string ipAddress)
+    private string GenerateVnPayUrl(Payment payment, UserSubscription subscription, string orderInfo, string ipAddress)
     {
         var vnpParams = new Dictionary<string, string>
         {
@@ -293,28 +286,5 @@ public class VnPayService : IVnPayService
         return $"EVB{DateTime.Now:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
     }
 
-    private PaymentType GetPaymentType(InvoiceType invoiceType)
-    {
-        return invoiceType switch
-        {
-            InvoiceType.SubscriptionMonthly => PaymentType.Subscription,
-            InvoiceType.Deposit => PaymentType.Subscription,
-            InvoiceType.SwapTransaction => PaymentType.PayPerSwap,
-            InvoiceType.BatteryPurchase => PaymentType.BuyOutright,
-            InvoiceType.TradeInCredit => PaymentType.TradeIn,
-            _ => PaymentType.Subscription
-        };
-    }
-
-    private string GetDefaultOrderInfo(Invoice invoice)
-    {
-        return invoice.Type switch
-        {
-            InvoiceType.SubscriptionMonthly => $"Thanh toán thuê pin tháng {invoice.BillingPeriodStart:MM/yyyy}",
-            InvoiceType.Deposit => "Thanh toán tiền cọc thuê pin",
-            InvoiceType.SwapTransaction => "Thanh toán phí đổi pin",
-            InvoiceType.OverdueFee => "Thanh toán phí phạt trễ hạn",
-            _ => $"Thanh toán hóa đơn {invoice.InvoiceNumber}"
-        };
-    }
+    // ✅ INVOICE-RELATED HELPER METHODS REMOVED
 }
