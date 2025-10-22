@@ -60,39 +60,43 @@ public class SubscriptionService : ISubscriptionService
 
     public async Task<SubscriptionCreatedResponse> CreateSubscriptionAsync(Guid userId, CreateSubscriptionRequest request)
     {
-        // Check if user already has active subscription
-        var existingSubscription = await _context.UserSubscriptions
-            .Where(us => us.UserId == userId && us.IsActive)
-            .FirstOrDefaultAsync();
+        // Check if user already has active subscription for any vehicle
+        var existingSubscriptions = await _context.UserSubscriptions
+            .Where(us => us.UserId == userId && us.IsActive && request.VehicleIds.Contains(us.VehicleId))
+            .ToListAsync();
 
-        if (existingSubscription != null)
+        if (existingSubscriptions.Any())
         {
-            throw new InvalidOperationException("Bạn đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
+            throw new InvalidOperationException("Một hoặc nhiều xe đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
         }
 
         // Validate subscription plan exists and is active
         var subscriptionPlan = await _context.SubscriptionPlans
             .Include(sp => sp.BatteryModel)
             .FirstOrDefaultAsync(sp => sp.Id == request.SubscriptionPlanId && sp.IsActive);
-        
+
         if (subscriptionPlan == null)
         {
             throw new ArgumentException("Gói subscription không tồn tại hoặc đã bị vô hiệu hóa.");
         }
 
-        // Validate vehicle belongs to user and is compatible
-        var vehicle = await _context.Vehicles
+        // Validate all vehicles belong to user and are compatible
+        var vehicles = await _context.Vehicles
             .Include(v => v.CompatibleModel)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.UserId == userId);
-        
-        if (vehicle == null)
+            .Where(v => request.VehicleIds.Contains(v.Id) && v.UserId == userId)
+            .ToListAsync();
+
+        if (vehicles.Count != request.VehicleIds.Count)
         {
-            throw new ArgumentException("Xe không tồn tại hoặc không thuộc về bạn.");
+            throw new ArgumentException("Một hoặc nhiều xe không tồn tại hoặc không thuộc về bạn.");
         }
 
-        if (vehicle.CompatibleBatteryModelId != subscriptionPlan.BatteryModelId)
+        foreach (var vehicle in vehicles)
         {
-            throw new InvalidOperationException($"Xe {vehicle.Plate} không tương thích với gói pin {subscriptionPlan.Name}.");
+            if (vehicle.CompatibleBatteryModelId != subscriptionPlan.BatteryModelId)
+            {
+                throw new InvalidOperationException($"Xe {vehicle.Plate} không tương thích với gói pin {subscriptionPlan.Name}.");
+            }
         }
 
         // ✅ SIMPLIFIED: 30-day billing period (from start date)
@@ -100,29 +104,33 @@ public class SubscriptionService : ISubscriptionService
         var billingStart = startDate;
         var billingEnd = startDate.AddDays(30);  // 30 days from now
 
-        var subscription = new UserSubscription
+        var subscriptions = new List<UserSubscription>();
+        foreach (var vehicle in vehicles)
         {
-            UserId = userId,
-            SubscriptionPlanId = request.SubscriptionPlanId,
-            VehicleId = request.VehicleId,
-            StartDate = startDate,
-            CurrentBillingPeriodStart = billingStart,
-            CurrentBillingPeriodEnd = billingEnd,
-            CurrentMonthSwapCount = 0,  // ✅ Initialize swap counter
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.UserSubscriptions.Add(subscription);
+            var subscription = new UserSubscription
+            {
+                UserId = userId,
+                SubscriptionPlanId = request.SubscriptionPlanId,
+                VehicleId = vehicle.Id,
+                StartDate = startDate,
+                CurrentBillingPeriodStart = billingStart,
+                CurrentBillingPeriodEnd = billingEnd,
+                CurrentMonthSwapCount = 0,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            subscriptions.Add(subscription);
+            _context.UserSubscriptions.Add(subscription);
+        }
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("User {UserId} created subscription {SubscriptionId} for vehicle {VehicleId}, billing {Start} to {End}", 
-            userId, subscription.Id, request.VehicleId, billingStart.ToString("yyyy-MM-dd"), billingEnd.ToString("yyyy-MM-dd"));
+        _logger.LogInformation("User {UserId} created subscription {SubscriptionId} for vehicles [{VehicleIds}], billing {Start} to {End}",
+            userId, string.Join(",", subscriptions.Select(s => s.Id)), string.Join(",", request.VehicleIds), billingStart.ToString("yyyy-MM-dd"), billingEnd.ToString("yyyy-MM-dd"));
 
         return new SubscriptionCreatedResponse
         {
-            SubscriptionId = subscription.Id,
-            Message = $"Đăng ký gói {subscriptionPlan.Name} thành công!",
+            SubscriptionId = subscriptions.First().Id,
+            Message = $"Đăng ký gói {subscriptionPlan.Name} thành công cho {vehicles.Count} xe!",
             MonthlyPrice = subscriptionPlan.MonthlyPrice,
             MaxSwapsPerMonth = subscriptionPlan.MaxSwapsPerMonth,
             StartDate = startDate,
@@ -133,62 +141,56 @@ public class SubscriptionService : ISubscriptionService
 
     public async Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId)
     {
-        var subscription = await _context.UserSubscriptions
+        var subscriptions = await _context.UserSubscriptions
             .Include(us => us.SubscriptionPlan)
                 .ThenInclude(sp => sp.BatteryModel)
             .Include(us => us.Vehicle)
             .Where(us => us.UserId == userId && us.IsActive)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (subscription == null)
+        if (!subscriptions.Any())
             return null;
 
+        var firstSub = subscriptions.First();
         return new UserSubscriptionDto
         {
-            Id = subscription.Id,
-            UserId = subscription.UserId,
-            SubscriptionPlanId = subscription.SubscriptionPlanId,
-            VehicleId = subscription.VehicleId,
-            StartDate = subscription.StartDate,
-            EndDate = subscription.EndDate,
-            IsActive = subscription.IsActive,
-            CurrentBillingPeriodStart = subscription.CurrentBillingPeriodStart,
-            CurrentBillingPeriodEnd = subscription.CurrentBillingPeriodEnd,
-            
-            // ✅ SIMPLIFIED: Swap counter instead of km
-            CurrentMonthSwapCount = subscription.CurrentMonthSwapCount,
-            
-            DepositPaid = subscription.DepositPaid,
-            DepositPaidDate = subscription.DepositPaidDate,
-            LastPaymentDate = subscription.LastPaymentDate,
-            CreatedAt = subscription.CreatedAt,
-            
+            Id = firstSub.Id,
+            UserId = firstSub.UserId,
+            SubscriptionPlanId = firstSub.SubscriptionPlanId,
+            VehicleIds = subscriptions.Select(s => s.VehicleId).ToList(),
+            StartDate = firstSub.StartDate,
+            EndDate = firstSub.EndDate,
+            IsActive = firstSub.IsActive,
+            CurrentBillingPeriodStart = firstSub.CurrentBillingPeriodStart,
+            CurrentBillingPeriodEnd = firstSub.CurrentBillingPeriodEnd,
+            CurrentMonthSwapCount = firstSub.CurrentMonthSwapCount,
+            DepositPaid = firstSub.DepositPaid,
+            DepositPaidDate = firstSub.DepositPaidDate,
+            LastPaymentDate = firstSub.LastPaymentDate,
+            CreatedAt = firstSub.CreatedAt,
             SubscriptionPlan = new SubscriptionPlanDto
             {
-                Id = subscription.SubscriptionPlan.Id,
-                Name = subscription.SubscriptionPlan.Name,
-                Description = subscription.SubscriptionPlan.Description,
-                
-                // ✅ SIMPLIFIED PRICING - No deposit fields
-                MonthlyPrice = subscription.SubscriptionPlan.MonthlyPrice,
-                MaxSwapsPerMonth = subscription.SubscriptionPlan.MaxSwapsPerMonth,
-                Benefits = subscription.SubscriptionPlan.Benefits,
-                RefundPolicy = subscription.SubscriptionPlan.RefundPolicy,
-                
-                BatteryModelId = subscription.SubscriptionPlan.BatteryModelId,
-                BatteryModelName = subscription.SubscriptionPlan.BatteryModel.Name,
-                IsActive = subscription.SubscriptionPlan.IsActive
+                Id = firstSub.SubscriptionPlan.Id,
+                Name = firstSub.SubscriptionPlan.Name,
+                Description = firstSub.SubscriptionPlan.Description,
+                MonthlyPrice = firstSub.SubscriptionPlan.MonthlyPrice,
+                MaxSwapsPerMonth = firstSub.SubscriptionPlan.MaxSwapsPerMonth,
+                Benefits = firstSub.SubscriptionPlan.Benefits,
+                RefundPolicy = firstSub.SubscriptionPlan.RefundPolicy,
+                BatteryModelId = firstSub.SubscriptionPlan.BatteryModelId,
+                BatteryModelName = firstSub.SubscriptionPlan.BatteryModel.Name,
+                IsActive = firstSub.SubscriptionPlan.IsActive
             },
-            Vehicle = new SubscriptionVehicleDto
+            Vehicles = subscriptions.Select(s => new SubscriptionVehicleDto
             {
-                Id = subscription.Vehicle.Id,
-                Brand = "VinFast", // Default brand
-                Model = "Unknown", // Default model
-                VIN = subscription.Vehicle.VIN,
-                Plate = subscription.Vehicle.Plate,
-                Color = "Unknown", // Default color
-                Year = DateTime.UtcNow.Year // Default current year
-            }
+                Id = s.Vehicle.Id,
+                Brand = "VinFast",
+                Model = "Unknown",
+                VIN = s.Vehicle.VIN,
+                Plate = s.Vehicle.Plate,
+                Color = "Unknown",
+                Year = DateTime.UtcNow.Year
+            }).ToList()
         };
     }
 

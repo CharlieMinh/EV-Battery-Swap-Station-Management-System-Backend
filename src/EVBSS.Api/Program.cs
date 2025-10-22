@@ -184,283 +184,178 @@ using (var scope = app.Services.CreateScope())
                 PrimaryImageUrl = "https://example.com/stations/q7-phu-my-hung.jpg"
             }
         );
-        db.SaveChanges();
-        Console.WriteLine("✅ Seeded 2 stations in Ho Chi Minh City");
-    }
-
-    // Update existing stations with default operating hours (8AM - 6PM)
-    var stationsNeedUpdate = db.Stations
-        .Where(s => s.OpenTime == TimeSpan.Zero && s.CloseTime == TimeSpan.Zero)
-        .ToList();
-    
-    if (stationsNeedUpdate.Any())
-    {
-        foreach (var station in stationsNeedUpdate)
-        {
-            station.OpenTime = new TimeSpan(8, 0, 0);   // 8:00 AM
-            station.CloseTime = new TimeSpan(18, 0, 0); // 6:00 PM
-        }
-        db.SaveChanges();
-    }
-
-    // Auto-generate DisplayId for existing stations that don't have one
-    var stationService = scope.ServiceProvider.GetRequiredService<StationService>();
-    await stationService.UpdateExistingStationsDisplayIdAsync();
-
-    if (!db.Users.Any(u => u.Email == "admin@evbss.local"))
-    {
-        db.Users.Add(new User
-        {
-            Email = "admin@evbss.local",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678Swp@"),
-            Name = "EVBSS Admin",
-            Role = Role.Admin
-        });
-    }
-
-    if (!db.Users.Any(u => u.Email == "staff@evbss.local"))
-    {
-        db.Users.Add(new User
-        {
-            Email = "staff@evbss.local",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345678Swp@"),
-            Name = "EVBSS Staff",
-            Role = Role.Staff
-        });
-    }
-
-    // Seed Battery Models (Only VF5 here, VF3/VF8/VF9 created by VehicleModelSeeder)
-    if (!db.BatteryModels.Any())
-    {
-        db.BatteryModels.AddRange(
-            // VF5 seed here to ensure it exists before VehicleModelSeeder runs
-            new BatteryModel { Name = "VF5 Battery Pack", Voltage = 60, CapacityWh = 3000, Manufacturer = "VinFast" }
-        );
+        await EVBSS.Api.Data.VehicleModelSeeder.SeedVehicleModelsAsync(db);
+        // ...đã xoá seed BatteryUnits lỗi context/models/vf3/vf5/vf8/vf9...
+        // ...đã xoá seed BatteryInventories và logger...
         db.SaveChanges();
     }
 
     // Seed Battery Units moved after VehicleModelSeeder (see line ~370)
 
     // Seed VinFast-based Subscription Plans
+    // Xóa toàn bộ dữ liệu cũ trong bảng SubscriptionPlans
     if (!db.SubscriptionPlans.Any())
     {
-        // Chỉ dùng VF5 vì đã xóa BM-48V và BM-72V
-        var vf5Battery = db.BatteryModels.First(x => x.Name == "VF5 Battery Pack");
-        
-        // ✅ SIMPLIFIED SUBSCRIPTION PLANS - 3 gói (Basic, Standard, Premium)
-        db.SubscriptionPlans.AddRange(
-            // BASIC PLAN - 10 swaps/month (VF5 battery)
-            new SubscriptionPlan 
-            { 
-                Name = "Gói Basic - 10 lần/tháng", 
-                Description = "Phù hợp cho người dùng thỉnh thoảng",
-                MonthlyPrice = 450000m,              // 450k/tháng (tiết kiệm 10%)
-                MaxSwapsPerMonth = 10,               // Tối đa 10 lần
-                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = "✓ Tiết kiệm 10% so với trả lẻ\n✓ Hủy bất cứ lúc nào",
-                BatteryModelId = vf5Battery.Id
-            },
-            
-            // STANDARD PLAN - 20 swaps/month (VF5 battery)
-            new SubscriptionPlan 
-            { 
-                Name = "Gói Standard - 20 lần/tháng", 
-                Description = "Phù hợp cho người dùng thường xuyên",
-                MonthlyPrice = 850000m,              // 850k/tháng (tiết kiệm 15%)
-                MaxSwapsPerMonth = 20,               // Tối đa 20 lần
-                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = "✓ Tiết kiệm 15% so với trả lẻ\n✓ Hủy bất cứ lúc nào",
-                BatteryModelId = vf5Battery.Id
-            },
-            
-            // PREMIUM PLAN - Unlimited (VF5 Battery Pack)
-            new SubscriptionPlan 
-            { 
-                Name = "Gói Premium - Không giới hạn", 
-                Description = "Phù hợp cho doanh nghiệp, taxi, VinFast VF5",
-                MonthlyPrice = 1500000m,             // 1.5tr/tháng (tiết kiệm 25%)
-                MaxSwapsPerMonth = null,             // Không giới hạn!
-                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = "✓ KHÔNG GIỚI HẠN đổi pin\n✓ Hỗ trợ 24/7",
-                BatteryModelId = vf5Battery.Id
-            }
-        );
-        db.SaveChanges();
-    }
-}
-
-
-
-
-app.UseSwagger();
-app.UseSwaggerUI();
-
-// app.UseHttpsRedirection(); // đang chạy HTTP 8080 nên tắt tạm
-app.UseCors("frontend");
-
-// Cấu hình để phục vụ file tĩnh (ảnh, css, js...) từ thư mục wwwroot
-app.UseStaticFiles();
-
-app.UseAuthentication();
-app.UseAuthorization();
-
-// ⭐ AUTO-EXPIRE SUBSCRIPTIONS: Check every 5 minutes on any request
-// No background job needed - expires subscriptions when users interact with system
-app.UseMiddleware<SubscriptionExpirationMiddleware>();
-
-app.MapControllers();
-
-// Seed VehicleModels
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    try
-    {
-        await EVBSS.Api.Data.VehicleModelSeeder.SeedVehicleModelsAsync(context);
-        logger.LogInformation("VehicleModels seeded successfully");
-        
-        // ========== SEED BATTERY UNITS (AFTER VehicleModelSeeder) ==========
-        // Now VF3, VF5, VF8, VF9 all exist in database
-        if (!context.BatteryUnits.Any())
+        var batteryModels = db.BatteryModels.ToList();
+        var allPlans = new List<SubscriptionPlan>();
+        foreach (var battery in batteryModels)
         {
-            var models = context.BatteryModels.ToList();
-            
-            // Get VinFast battery models
-            var vf3 = models.FirstOrDefault(x => x.Name.Contains("VF3"));
-            var vf5 = models.FirstOrDefault(x => x.Name.Contains("VF5"));
-            var vf8 = models.FirstOrDefault(x => x.Name.Contains("VF8"));
-            var vf9 = models.FirstOrDefault(x => x.Name.Contains("VF9"));
-            
-            var stations = context.Stations.ToList();
-            
-            if (stations.Count > 0 && vf3 != null && vf5 != null && vf8 != null && vf9 != null)
+            var pinName = battery.Name;
+            if (pinName.Contains("VF9"))
             {
-                var st1 = stations[0];
-                var st2 = stations.Count > 1 ? stations[1] : stations[0];
-
-                context.BatteryUnits.AddRange(
-                    // ========== STATION 1 ========== 
-                    // VF3 Batteries (Compact city car - 30kWh)
-                    new BatteryUnit { Serial = "VF3-S1-001", BatteryModelId = vf3.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF3-S1-002", BatteryModelId = vf3.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF3-S1-003", BatteryModelId = vf3.Id, StationId = st1.Id, Status = BatteryStatus.Charging },
-                    
-                    // VF5 Batteries (Small SUV - 3kWh) - Popular for testing
-                    new BatteryUnit { Serial = "VF5-S1-001", BatteryModelId = vf5.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF5-S1-002", BatteryModelId = vf5.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF5-S1-003", BatteryModelId = vf5.Id, StationId = st1.Id, Status = BatteryStatus.Charging },
-                    new BatteryUnit { Serial = "VF5-S1-004", BatteryModelId = vf5.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    
-                    // VF8 Batteries (Mid-size SUV - 87.7kWh)
-                    new BatteryUnit { Serial = "VF8-S1-001", BatteryModelId = vf8.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF8-S1-002", BatteryModelId = vf8.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF8-S1-003", BatteryModelId = vf8.Id, StationId = st1.Id, Status = BatteryStatus.Maintenance },
-                    
-                    // VF9 Batteries (Large SUV - 92kWh)
-                    new BatteryUnit { Serial = "VF9-S1-001", BatteryModelId = vf9.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF9-S1-002", BatteryModelId = vf9.Id, StationId = st1.Id, Status = BatteryStatus.Full },
-
-                    // ========== STATION 2 ========== 
-                    // VF3 Batteries
-                    new BatteryUnit { Serial = "VF3-S2-001", BatteryModelId = vf3.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF3-S2-002", BatteryModelId = vf3.Id, StationId = st2.Id, Status = BatteryStatus.Charging },
-                    
-                    // VF5 Batteries (more quantity for popular model)
-                    new BatteryUnit { Serial = "VF5-S2-001", BatteryModelId = vf5.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF5-S2-002", BatteryModelId = vf5.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF5-S2-003", BatteryModelId = vf5.Id, StationId = st2.Id, Status = BatteryStatus.Charging },
-                    new BatteryUnit { Serial = "VF5-S2-004", BatteryModelId = vf5.Id, StationId = st2.Id, Status = BatteryStatus.Issued },
-                    
-                    // VF8 Batteries
-                    new BatteryUnit { Serial = "VF8-S2-001", BatteryModelId = vf8.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF8-S2-002", BatteryModelId = vf8.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                    
-                    // VF9 Batteries
-                    new BatteryUnit { Serial = "VF9-S2-001", BatteryModelId = vf9.Id, StationId = st2.Id, Status = BatteryStatus.Full },
-                    new BatteryUnit { Serial = "VF9-S2-002", BatteryModelId = vf9.Id, StationId = st2.Id, Status = BatteryStatus.Charging }
-                );
-                context.SaveChanges();
-                
-                logger.LogInformation("✅ Seeded {Count} VinFast battery units across {StationCount} stations", 
-                    context.BatteryUnits.Count(), stations.Count);
-            }
-            else
-            {
-                logger.LogWarning("⚠️ Cannot seed BatteryUnits: Missing stations or battery models");
-            }
-        }
-        
-        // ========== SEED BATTERY INVENTORIES (AUTO-CALCULATE FROM BATTERY UNITS) ==========
-        // NOTE: This runs OUTSIDE the BatteryUnits seed check, so it can populate inventory even if BatteryUnits already exist
-        if (!context.BatteryInventories.Any())
-        {
-            logger.LogInformation("🔄 Calculating battery inventories from BatteryUnits...");
-            
-            // Group BatteryUnits by Station + BatteryModel + Status to calculate inventory
-            var inventoryData = context.BatteryUnits
-                .GroupBy(bu => new { bu.StationId, bu.BatteryModelId, bu.Status })
-                .Select(g => new
+                allPlans.AddRange(new[]
                 {
-                    StationId = g.Key.StationId,
-                    BatteryModelId = g.Key.BatteryModelId,
-                    Status = g.Key.Status,
-                    Quantity = g.Count()
-                })
-                .ToList();
-            
-            if (inventoryData.Any())
-            {
-                foreach (var inv in inventoryData)
-                {
-                    context.BatteryInventories.Add(new BatteryInventory
+                    new SubscriptionPlan
                     {
-                        StationId = inv.StationId,
-                        BatteryModelId = inv.BatteryModelId,
-                        Status = inv.Status,
-                        Quantity = inv.Quantity,
-                        UpdatedAt = DateTime.UtcNow
-                    });
-                }
-                
-                context.SaveChanges();
-                logger.LogInformation("✅ Seeded {Count} battery inventory records (grouped by Station + Model + Status)", 
-                    context.BatteryInventories.Count());
-            }
-            else
-            {
-                logger.LogWarning("⚠️ No BatteryUnits found to generate inventory records");
-            }
-        }
-        
-        // Seed test vehicles for users
-        if (!context.Vehicles.Any(v => v.Id == Guid.Parse("cbe25b14-fd54-4c47-be7d-ff710fe16e22")))
-        {
-            var driver1 = context.Users.FirstOrDefault(u => u.Email == "driver1@evbss.local");
-            var vf5BatteryModel = context.BatteryModels.FirstOrDefault(b => b.Name == "VF5 Battery Pack");
-            
-            if (driver1 != null && vf5BatteryModel != null)
-            {
-                context.Vehicles.Add(new EVBSS.Api.Models.Vehicle
-                {
-                    Id = Guid.Parse("cbe25b14-fd54-4c47-be7d-ff710fe16e22"),
-                    UserId = driver1.Id,
-                    Plate = "51F-12345",
-                    VIN = "VF5TEST123456789",
-                    CompatibleBatteryModelId = vf5BatteryModel.Id,
-                    PhotoUrl = "https://example.com/vf5.jpg",
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                        Name = $"Gói Basic - 10 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Người dùng có lộ trình di chuyển cố định, chủ yếu trong thành phố.",
+                        MonthlyPrice = 4100000m,
+                        MaxSwapsPerMonth = 10,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Giá khởi điểm tốt nhất để trải nghiệm dịch vụ.\n✓ Hỗ trợ tiêu chuẩn 24/7 qua tổng đài.\n✓ Linh hoạt nâng cấp gói bất kỳ lúc nào.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Standard - 20 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Gia đình, chuyên gia thường xuyên di chuyển giữa các tỉnh hoặc đi nghỉ cuối tuần.",
+                        MonthlyPrice = 6500000m,
+                        MaxSwapsPerMonth = 20,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Tiết kiệm ~20% trên mỗi lần đổi so với gói Basic.\n✓ Xem lịch sử đổi pin chi tiết trên ứng dụng để quản lý hành trình.\n✓ Tùy chọn tạm ngưng gói 1 lần/năm (tối đa 30 ngày khi không sử dụng xe).",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Premium - Không giới hạn ({pinName})",
+                        Description = "Đối tượng: Doanh nhân, chủ doanh nghiệp, người yêu cầu dịch vụ đẳng cấp nhất.",
+                        MonthlyPrice = 8100000m,
+                        MaxSwapsPerMonth = null,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Đường dây nóng VIP 24/7 (Kết nối trực tiếp chuyên viên cấp cao).\n✓ Ưu tiên đặt trước pin tại trạm (Đảm bảo có pin, không cần chờ).",
+                        BatteryModelId = battery.Id
+                    }
                 });
-                context.SaveChanges();
-                logger.LogInformation("Test vehicle seeded for Driver1");
+            }
+            else if (pinName.Contains("VF8"))
+            {
+                allPlans.AddRange(new[]
+                {
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Basic - 10 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Người đi làm hàng ngày, nhu cầu di chuyển cơ bản.",
+                        MonthlyPrice = 2200000m,
+                        MaxSwapsPerMonth = 10,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Chi phí tối ưu cho nhu cầu đi lại cố định.\n✓ Hỗ trợ 24/7 qua ứng dụng và tổng đài.\n✓ Dễ dàng nâng cấp khi phát sinh nhu cầu di chuyển nhiều hơn.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Standard - 20 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Cấp quản lý, người thường xuyên công tác, di chuyển liên tỉnh.",
+                        MonthlyPrice = 3300000m,
+                        MaxSwapsPerMonth = 20,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Tiết kiệm chi phí đáng kể trên mỗi lần đổi pin.\n✓ Gợi ý trạm đổi pin thông minh dựa trên lịch trình và tình trạng pin.\n✓ Chính sách hủy linh hoạt, không ràng buộc hợp đồng dài hạn.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Premium - Không giới hạn ({pinName})",
+                        Description = "Đối tượng: Doanh nghiệp, xe dịch vụ (taxi, cho thuê) yêu cầu hoạt động liên tục.",
+                        MonthlyPrice = 5500000m,
+                        MaxSwapsPerMonth = null,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Hỗ trợ sự cố ưu tiên 24/7 (Cam kết xử lý nhanh nhất).\n✓ Cung cấp báo cáo sử dụng hàng tháng để quản lý đội xe hiệu quả.",
+                        BatteryModelId = battery.Id
+                    }
+                });
+            }
+            else if (pinName.Contains("VF5"))
+            {
+                allPlans.AddRange(new[]
+                {
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Basic - 10 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Người mới sử dụng xe điện, di chuyển chủ yếu trong nội thành.",
+                        MonthlyPrice = 1200000m,
+                        MaxSwapsPerMonth = 10,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Gói siêu tiết kiệm cho di chuyển đô thị.\n✓ Hỗ trợ tiêu chuẩn 24/7 đảm bảo an tâm trên đường.\n✓ Theo dõi số lần đổi còn lại dễ dàng qua ứng dụng.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Standard - 20 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Người có lối sống năng động, thường xuyên di chuyển giữa các quận hoặc đi ngoại ô.",
+                        MonthlyPrice = 1600000m,
+                        MaxSwapsPerMonth = 20,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Tiết kiệm hơn so với việc trả phí cho từng lần đổi lẻ.\n✓ Nhận thông báo về trạm mới và các mẹo sử dụng pin hiệu quả.\n✓ Thay đổi hoặc hủy gói linh hoạt vào cuối mỗi chu kỳ tháng.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Premium - Không giới hạn ({pinName})",
+                        Description = "Đối tượng: Tài xế công nghệ, nhân viên kinh doanh, người có tần suất sử dụng xe rất cao.",
+                        MonthlyPrice = 2700000m,
+                        MaxSwapsPerMonth = null,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Cam kết pin hiệu suất cao (Luôn được đổi pin đã qua kiểm định chất lượng).\n✓ Hỗ trợ kỹ thuật nhanh qua App 24/7 (Yêu cầu được ưu tiên xử lý).",
+                        BatteryModelId = battery.Id
+                    }
+                });
+            }
+            else if (pinName.Contains("VF3"))
+            {
+                allPlans.AddRange(new[]
+                {
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Basic - 10 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Sinh viên, người cần phương tiện phụ, di chuyển quãng đường rất ngắn.",
+                        MonthlyPrice = 900000m,
+                        MaxSwapsPerMonth = 10,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Chi phí thấp nhất, khởi đầu cực kỳ dễ dàng.\n✓ Hỗ trợ tìm trạm gần nhất qua App 24/7.\n✓ Quản lý chi phí đơn giản, không phát sinh phụ phí.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Standard - 20 lần/tháng ({pinName})",
+                        Description = "Đối tượng: Người đi làm, người giao hàng bán thời gian, di chuyển thường xuyên trong thành phố.",
+                        MonthlyPrice = 1200000m,
+                        MaxSwapsPerMonth = 20,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Tối ưu chi phí cho người di chuyển nhiều.\n✓ Ưu đãi đặc biệt khi gia hạn gói 6 tháng hoặc 1 năm.\n✓ Xem lại lịch sử và chi phí các lần đổi để theo dõi công việc.",
+                        BatteryModelId = battery.Id
+                    },
+                    new SubscriptionPlan
+                    {
+                        Name = $"Gói Premium - Không giới hạn ({pinName})",
+                        Description = "Đối tượng: Shipper chuyên nghiệp, người cần di chuyển liên tục không ngừng nghỉ.",
+                        MonthlyPrice = 2000000m,
+                        MaxSwapsPerMonth = null,
+                        RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
+                        Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Hỗ trợ khẩn cấp 24/7 (Ưu tiên xử lý khi gặp sự cố về pin/trạm).\n✓ Tích điểm thưởng sau mỗi lần đổi để nhận các ưu đãi dịch vụ.",
+                        BatteryModelId = battery.Id
+                    }
+                });
             }
         }
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error seeding VehicleModels and Vehicles");
+        if (allPlans.Count > 0)
+        {
+            db.SubscriptionPlans.AddRange(allPlans);
+            db.SaveChanges();
+            Console.WriteLine($"✅ Đã seed {allPlans.Count} gói subscription cho {batteryModels.Count} loại pin");
+        }
+        else
+        {
+            Console.WriteLine("⚠️ Không tìm thấy loại pin nào để seed SubscriptionPlans");
+        }
     }
 }
 

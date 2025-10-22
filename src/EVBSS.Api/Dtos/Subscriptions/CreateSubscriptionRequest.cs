@@ -8,7 +8,7 @@ public class CreateSubscriptionRequest
     public Guid SubscriptionPlanId { get; set; }
     
     [Required]
-    public Guid VehicleId { get; set; }
+    public List<Guid> VehicleIds { get; set; } = new();
     
     public DateTime? StartDate { get; set; } // Nếu null thì bắt đầu ngay
     

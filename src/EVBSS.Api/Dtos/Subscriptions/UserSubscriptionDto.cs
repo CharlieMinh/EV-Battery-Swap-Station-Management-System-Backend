@@ -5,7 +5,8 @@ public class UserSubscriptionDto
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
     public Guid SubscriptionPlanId { get; set; }
-    public Guid VehicleId { get; set; }
+    // Một subscription có thể có nhiều xe
+    public List<Guid> VehicleIds { get; set; } = new();
     
     // Subscription details
     public DateTime StartDate { get; set; }
@@ -34,7 +35,8 @@ public class UserSubscriptionDto
     
     // Related data
     public SubscriptionPlanDto SubscriptionPlan { get; set; } = null!;
-    public SubscriptionVehicleDto Vehicle { get; set; } = null!;
+    // Một subscription có thể có nhiều xe
+    public List<SubscriptionVehicleDto> Vehicles { get; set; } = new();
 }
 
 public class SubscriptionPlanDto

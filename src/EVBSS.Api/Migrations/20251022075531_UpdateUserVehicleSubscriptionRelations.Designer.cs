@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251022075531_UpdateUserVehicleSubscriptionRelations")]
+    partial class UpdateUserVehicleSubscriptionRelations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -654,20 +657,35 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("SubscriptionPlanId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("SubscriptionPlanId1")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("UserId1")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("VehicleId1")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
                     b.HasIndex("SubscriptionPlanId");
 
+                    b.HasIndex("SubscriptionPlanId1");
+
+                    b.HasIndex("UserId1");
+
                     b.HasIndex("VehicleId");
+
+                    b.HasIndex("VehicleId1");
 
                     b.HasIndex("UserId", "VehicleId", "IsActive");
 
@@ -704,6 +722,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("UserId1")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("VIN")
                         .IsRequired()
                         .HasMaxLength(17)
@@ -715,6 +736,8 @@ namespace EVBSS.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CompatibleBatteryModelId");
+
+                    b.HasIndex("UserId1");
 
                     b.HasIndex("VehicleModelId");
 
@@ -991,22 +1014,34 @@ namespace EVBSS.Api.Migrations
             modelBuilder.Entity("EVBSS.Api.Models.UserSubscription", b =>
                 {
                     b.HasOne("EVBSS.Api.Models.SubscriptionPlan", "SubscriptionPlan")
-                        .WithMany("UserSubscriptions")
+                        .WithMany()
                         .HasForeignKey("SubscriptionPlanId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("EVBSS.Api.Models.User", "User")
+                    b.HasOne("EVBSS.Api.Models.SubscriptionPlan", null)
                         .WithMany("UserSubscriptions")
+                        .HasForeignKey("SubscriptionPlanId1");
+
+                    b.HasOne("EVBSS.Api.Models.User", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("EVBSS.Api.Models.Vehicle", "Vehicle")
+                    b.HasOne("EVBSS.Api.Models.User", null)
                         .WithMany("UserSubscriptions")
+                        .HasForeignKey("UserId1");
+
+                    b.HasOne("EVBSS.Api.Models.Vehicle", "Vehicle")
+                        .WithMany()
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("EVBSS.Api.Models.Vehicle", null)
+                        .WithMany("UserSubscriptions")
+                        .HasForeignKey("VehicleId1");
 
                     b.Navigation("SubscriptionPlan");
 
@@ -1024,10 +1059,14 @@ namespace EVBSS.Api.Migrations
                         .IsRequired();
 
                     b.HasOne("EVBSS.Api.Models.User", "User")
-                        .WithMany("Vehicles")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("EVBSS.Api.Models.User", null)
+                        .WithMany("Vehicles")
+                        .HasForeignKey("UserId1");
 
                     b.HasOne("EVBSS.Api.Models.VehicleModel", "VehicleModel")
                         .WithMany()
