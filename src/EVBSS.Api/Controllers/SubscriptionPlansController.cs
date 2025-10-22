@@ -29,13 +29,9 @@ public class SubscriptionPlansController : ControllerBase
                 sp.Name,
                 sp.Description,
                 
-                // ✅ SIMPLIFIED PRICING
+                // ✅ SIMPLIFIED PRICING - No deposit fields
                 MonthlyPrice = sp.MonthlyPrice,
                 MaxSwapsPerMonth = sp.MaxSwapsPerMonth,
-                
-                // ✅ NO DEPOSIT
-                RequiresDeposit = sp.RequiresDeposit,  // Always false
-                DepositAmount = sp.DepositAmount,      // Always 0
                 
                 // ✅ BENEFITS & REFUND
                 Benefits = sp.Benefits,
@@ -77,13 +73,9 @@ public class SubscriptionPlansController : ControllerBase
                 sp.Name,
                 sp.Description,
                 
-                // ✅ SIMPLIFIED PRICING
+                // ✅ SIMPLIFIED PRICING - No deposit fields
                 MonthlyPrice = sp.MonthlyPrice,
                 MaxSwapsPerMonth = sp.MaxSwapsPerMonth,
-                
-                // ✅ NO DEPOSIT
-                RequiresDeposit = sp.RequiresDeposit,
-                DepositAmount = sp.DepositAmount,
                 
                 // ✅ BENEFITS & REFUND
                 Benefits = sp.Benefits,

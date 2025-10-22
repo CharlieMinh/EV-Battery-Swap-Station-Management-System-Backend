@@ -46,8 +46,6 @@ public class SubscriptionPlanDto
     // ✅ SIMPLIFIED PRICING
     public decimal MonthlyPrice { get; set; }
     public int? MaxSwapsPerMonth { get; set; }
-    public bool RequiresDeposit { get; set; }
-    public decimal DepositAmount { get; set; }
     public string? Benefits { get; set; }
     public string? RefundPolicy { get; set; }
     

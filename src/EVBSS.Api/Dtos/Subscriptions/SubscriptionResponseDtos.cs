@@ -4,10 +4,8 @@ public class SubscriptionCreatedResponse
 {
     public Guid SubscriptionId { get; set; }
     public string Message { get; set; } = null!;
-    public bool RequiresDeposit { get; set; }
-    public decimal DepositAmount { get; set; }
     
-    // ✅ NEW FIELDS FOR SIMPLIFIED MODEL
+    // ✅ SIMPLIFIED MODEL - No deposit fields needed
     public decimal MonthlyPrice { get; set; }
     public int? MaxSwapsPerMonth { get; set; }
     

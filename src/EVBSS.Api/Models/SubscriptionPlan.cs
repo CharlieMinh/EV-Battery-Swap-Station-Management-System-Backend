@@ -10,10 +10,6 @@ public class SubscriptionPlan
     public decimal MonthlyPrice { get; set; }                    // VD: 450,000 VND (giá đã bao gồm tất cả)
     public int? MaxSwapsPerMonth { get; set; }                   // VD: 10 lần (null = không giới hạn)
     
-    // ✅ NO DEPOSIT REQUIRED - Không cần cọc
-    public bool RequiresDeposit { get; set; } = false;           // Luôn false
-    public decimal DepositAmount { get; set; } = 0;              // Luôn 0
-    
     // ✅ REFUND & BENEFITS
     public string? RefundPolicy { get; set; }                    // "Hoàn tiền theo tỷ lệ ngày còn lại"
     public string? Benefits { get; set; }                        // "Tiết kiệm 10%, Ưu tiên đặt chỗ"
