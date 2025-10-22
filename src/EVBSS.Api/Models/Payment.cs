@@ -17,25 +17,19 @@ public class Payment
     
     public string Description { get; set; } = null!;             // Mô tả thanh toán
 
-    // VNPay integration fields
+    // VNPay integration fields (for security & audit)
     public string? VnpTxnRef { get; set; }                       // Mã giao dịch VNPay
     public string? VnpTransactionNo { get; set; }                // Mã GD tại VNPay
-    public string? VnpResponseCode { get; set; }                 // Mã phản hồi
-    public string? VnpSecureHash { get; set; }                   // Chữ ký điện tử
-    public DateTime? VnpPayDate { get; set; }                    // Thời gian thanh toán VNPay
+    public string? VnpResponseCode { get; set; }                 // Mã phản hồi (00=success, 24=cancelled, 51=insufficient)
+    public string? VnpSecureHash { get; set; }                   // Chữ ký điện tử (verify callback)
 
     // Cash payment fields (for staff)
     public Guid? ProcessedByStaffId { get; set; }                // Staff xử lý thanh toán
     public Guid? StationId { get; set; }                         // Trạm thanh toán
 
     // Timestamps
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? ProcessedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
-
-    // Additional info
-    public string? Notes { get; set; }
-    public string? FailureReason { get; set; }                   // Lý do thất bại
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;   // Thời điểm user BẮT ĐẦU thanh toán
+    public DateTime? CompletedAt { get; set; }                   // Thời điểm HOÀN TẤT thanh toán
 
     // Navigation properties
     public UserSubscription? UserSubscription { get; set; }
