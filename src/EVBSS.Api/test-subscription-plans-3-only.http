@@ -1,0 +1,35 @@
+### Test 1: Get all subscription plans (Should only have 3 plans now)
+GET https://localhost:7240/api/v1/subscription-plans
+Content-Type: application/json
+
+###
+
+### Test 2: Verify response structure (No RequiresDeposit or DepositAmount fields)
+# Expected response:
+# [
+#   {
+#     "id": "guid",
+#     "name": "Gói Basic - 10 lần/tháng",
+#     "description": "Phù hợp cho người dùng thỉnh thoảng",
+#     "monthlyPrice": 450000,
+#     "maxSwapsPerMonth": 10,
+#     "benefits": "✓ Tiết kiệm 10% so với trả lẻ\n✓ Hủy bất cứ lúc nào",
+#     "refundPolicy": "Hoàn tiền theo tỷ lệ ngày còn lại",
+#     "batteryModel": { ... }
+#   },
+#   {
+#     "name": "Gói Standard - 20 lần/tháng",
+#     "monthlyPrice": 850000,
+#     "maxSwapsPerMonth": 20
+#   },
+#   {
+#     "name": "Gói Premium - Không giới hạn",
+#     "monthlyPrice": 1500000,
+#     "maxSwapsPerMonth": null  // unlimited
+#   }
+# ]
+# 
+# ✅ NO "requiresDeposit" field
+# ✅ NO "depositAmount" field
+# ✅ ONLY 3 plans (Basic, Standard, Premium)
+# ❌ NO VIP plan anymore

@@ -247,7 +247,7 @@ using (var scope = app.Services.CreateScope())
         // Chỉ dùng VF5 vì đã xóa BM-48V và BM-72V
         var vf5Battery = db.BatteryModels.First(x => x.Name == "VF5 Battery Pack");
         
-        // ✅ NEW SIMPLIFIED SUBSCRIPTION PLANS
+        // ✅ SIMPLIFIED SUBSCRIPTION PLANS - 3 gói (Basic, Standard, Premium)
         db.SubscriptionPlans.AddRange(
             // BASIC PLAN - 10 swaps/month (VF5 battery)
             new SubscriptionPlan 
@@ -256,11 +256,9 @@ using (var scope = app.Services.CreateScope())
                 Description = "Phù hợp cho người dùng thỉnh thoảng",
                 MonthlyPrice = 450000m,              // 450k/tháng (tiết kiệm 10%)
                 MaxSwapsPerMonth = 10,               // Tối đa 10 lần
-                RequiresDeposit = false,
-                DepositAmount = 0,
                 RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = " Tiết kiệm 10% so với trả lẻ, Hủy bất cứ lúc nào",
-                BatteryModelId = vf5Battery.Id       // Đổi sang VF5
+                Benefits = "✓ Tiết kiệm 10% so với trả lẻ\n✓ Hủy bất cứ lúc nào",
+                BatteryModelId = vf5Battery.Id
             },
             
             // STANDARD PLAN - 20 swaps/month (VF5 battery)
@@ -270,11 +268,9 @@ using (var scope = app.Services.CreateScope())
                 Description = "Phù hợp cho người dùng thường xuyên",
                 MonthlyPrice = 850000m,              // 850k/tháng (tiết kiệm 15%)
                 MaxSwapsPerMonth = 20,               // Tối đa 20 lần
-                RequiresDeposit = false,
-                DepositAmount = 0,
                 RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = " Tiết kiệm 15% so với trả lẻ Hủy bất cứ lúc nào",
-                BatteryModelId = vf5Battery.Id       // Đổi sang VF5
+                Benefits = "✓ Tiết kiệm 15% so với trả lẻ\n✓ Hủy bất cứ lúc nào",
+                BatteryModelId = vf5Battery.Id
             },
             
             // PREMIUM PLAN - Unlimited (VF5 Battery Pack)
@@ -284,25 +280,9 @@ using (var scope = app.Services.CreateScope())
                 Description = "Phù hợp cho doanh nghiệp, taxi, VinFast VF5",
                 MonthlyPrice = 1500000m,             // 1.5tr/tháng (tiết kiệm 25%)
                 MaxSwapsPerMonth = null,             // Không giới hạn!
-                RequiresDeposit = false,
-                DepositAmount = 0,
                 RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = "✓ KHÔNG GIỚI HẠN đổi pin Hỗ trợ 24/7",
-                BatteryModelId = vf5Battery.Id       // VF5 (không đổi)
-            },
-            
-            // VIP PLAN - Unlimited (VF5 battery)
-            new SubscriptionPlan 
-            { 
-                Name = "Gói VIP - Không giới hạn SUV", 
-                Description = "Phù hợp cho xe điện hạng sang ",
-                MonthlyPrice = 2500000m,             // 2.5tr/tháng
-                MaxSwapsPerMonth = null,             // Không giới hạn!
-                RequiresDeposit = false,
-                DepositAmount = 0,
-                RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại",
-                Benefits = " KHÔNG GIỚI HẠN đổi pin Hỗ trợ 24/7 VIP Ưu tiên tuyệt đối",
-                BatteryModelId = vf5Battery.Id       // Đổi sang VF5
+                Benefits = "✓ KHÔNG GIỚI HẠN đổi pin\n✓ Hỗ trợ 24/7",
+                BatteryModelId = vf5Battery.Id
             }
         );
         db.SaveChanges();

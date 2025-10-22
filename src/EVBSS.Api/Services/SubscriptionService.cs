@@ -123,10 +123,8 @@ public class SubscriptionService : ISubscriptionService
         {
             SubscriptionId = subscription.Id,
             Message = $"Đăng ký gói {subscriptionPlan.Name} thành công!",
-            RequiresDeposit = subscriptionPlan.RequiresDeposit,  // ✅ Use new field
-            DepositAmount = subscriptionPlan.DepositAmount,
-            MonthlyPrice = subscriptionPlan.MonthlyPrice,  // ✅ Add monthly price
-            MaxSwapsPerMonth = subscriptionPlan.MaxSwapsPerMonth,  // ✅ Add limit
+            MonthlyPrice = subscriptionPlan.MonthlyPrice,
+            MaxSwapsPerMonth = subscriptionPlan.MaxSwapsPerMonth,
             StartDate = startDate,
             BillingPeriodStart = billingStart,
             BillingPeriodEnd = billingEnd
@@ -171,11 +169,9 @@ public class SubscriptionService : ISubscriptionService
                 Name = subscription.SubscriptionPlan.Name,
                 Description = subscription.SubscriptionPlan.Description,
                 
-                // ✅ SIMPLIFIED PRICING
+                // ✅ SIMPLIFIED PRICING - No deposit fields
                 MonthlyPrice = subscription.SubscriptionPlan.MonthlyPrice,
                 MaxSwapsPerMonth = subscription.SubscriptionPlan.MaxSwapsPerMonth,
-                RequiresDeposit = subscription.SubscriptionPlan.RequiresDeposit,
-                DepositAmount = subscription.SubscriptionPlan.DepositAmount,
                 Benefits = subscription.SubscriptionPlan.Benefits,
                 RefundPolicy = subscription.SubscriptionPlan.RefundPolicy,
                 

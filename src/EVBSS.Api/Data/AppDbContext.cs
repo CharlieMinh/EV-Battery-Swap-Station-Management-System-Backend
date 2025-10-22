@@ -162,11 +162,9 @@ public class AppDbContext : DbContext
             .HasIndex(sp => sp.Name).IsUnique();
         b.Entity<SubscriptionPlan>()
             .Property(sp => sp.Name).HasMaxLength(200);
-        // ✅ SIMPLIFIED PRICING
+        // ✅ SIMPLIFIED PRICING - No deposit fields
         b.Entity<SubscriptionPlan>()
             .Property(sp => sp.MonthlyPrice).HasPrecision(18, 2);
-        b.Entity<SubscriptionPlan>()
-            .Property(sp => sp.DepositAmount).HasPrecision(18, 2);
         b.Entity<SubscriptionPlan>()
             .HasOne(sp => sp.BatteryModel)
             .WithMany()
