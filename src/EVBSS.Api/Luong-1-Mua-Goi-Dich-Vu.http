@@ -1,0 +1,261 @@
+### ============================================================
+### LUỒNG 1: NGƯỜI DÙNG MUA GÓI DỊCH VỤ (SUBSCRIPTION)
+### Mục tiêu: Test flow mua gói "Gói 10 Lần Đổi/Tháng" trị giá 250.000 VND
+### ============================================================
+
+### SETUP: Variables
+@baseUrl = https://localhost:7126/api/v1
+@userToken = YOUR_USER_JWT_TOKEN_HERE
+@staffToken = YOUR_STAFF_JWT_TOKEN_HERE
+
+# Sẽ được lấy từ response của các request trước
+@subscriptionPlanId = 
+@vehicleId = 
+@paymentId = 
+@userSubscriptionId = 
+
+### ============================================================
+### BƯỚC 1: User xem danh sách gói dịch vụ
+### Frontend: Mở app → Vào mục "Gói Dịch Vụ"
+### ============================================================
+
+GET {{baseUrl}}/subscription-plans
+Accept: application/json
+
+### Expected Response:
+# [
+#   {
+#     "id": "guid",
+#     "name": "Gói Basic",
+#     "description": "...",
+#     "monthlyPrice": 250000,
+#     "maxSwapsPerMonth": 10,
+#     ...
+#   }
+# ]
+
+### ============================================================
+### BƯỚC 2: User chọn gói và tạo đơn hàng chờ (PENDING)
+### Frontend: User nhấn "Chọn Gói" → Backend tạo subscription chưa kích hoạt
+### ============================================================
+
+POST {{baseUrl}}/subscriptions/create-pending
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "subscriptionPlanId": "{{subscriptionPlanId}}",
+  "vehicleId": "{{vehicleId}}"
+}
+
+### Expected Response:
+# {
+#   "paymentId": "guid-111",
+#   "userSubscriptionId": "guid-222",
+#   "paymentUrl": "https://sandbox.vnpayment.vn/...",
+#   "amount": 250000,
+#   "planName": "Gói Basic",
+#   "planDescription": "10 lần đổi pin/tháng",
+#   "maxSwapsPerMonth": 10,
+#   "message": "Gói subscription đã được tạo. Vui lòng chọn phương thức thanh toán."
+# }
+
+### ✅ VERIFY DATABASE:
+# SELECT * FROM UserSubscriptions WHERE Id = 'userSubscriptionId'
+# → IsActive = 0 (false)
+# → StartDate = '0001-01-01' (MinValue)
+#
+# SELECT * FROM Payments WHERE Id = 'paymentId'
+# → Status = 0 (Pending)
+# → Type = 0 (Subscription)
+# → Method = 0 (VNPay - default)
+
+
+### ============================================================
+### LUỒNG 1A: USER CHỌN THANH TOÁN VNPAY
+### ============================================================
+
+### BƯỚC 3A: Frontend redirect user đến VNPay
+### Frontend code: window.location.href = paymentUrl
+### User nhập thông tin thẻ test trên VNPay và thanh toán
+
+### BƯỚC 4A: VNPay gọi IPN callback (Simulate)
+### IMPORTANT: Trong thực tế, VNPay sẽ gọi callback này tự động
+### Để test, bạn cần:
+### 1. Thanh toán thật trên VNPay sandbox
+### 2. Hoặc dùng VNPay test tool để simulate callback
+
+GET {{baseUrl}}/payments/vnpay/callback?vnp_TmnCode=VNPAY_TMN_CODE&vnp_Amount=25000000&vnp_BankCode=NCB&vnp_BankTranNo=VNP01234567&vnp_CardType=ATM&vnp_OrderInfo=Thanh%20toan%20goi%20subscription&vnp_PayDate=20251022120000&vnp_ResponseCode=00&vnp_TxnRef=EVB20251022120000123&vnp_TransactionNo=14012345&vnp_TransactionStatus=00&vnp_SecureHash=GENERATED_HASH_HERE
+
+### Expected: 
+# Response: "RspCode=00&Message="
+# 
+# ✅ VERIFY DATABASE:
+# SELECT * FROM UserSubscriptions WHERE Id = 'userSubscriptionId'
+# → IsActive = 1 (true) ✅
+# → StartDate = '2025-10-22 12:00:00' ✅
+# → EndDate = '2025-11-21 12:00:00' (today + 30 days) ✅
+# → CurrentMonthSwapCount = 0 ✅
+#
+# SELECT * FROM Payments WHERE Id = 'paymentId'
+# → Status = 2 (Completed) ✅
+# → CompletedAt IS NOT NULL ✅
+
+
+### ============================================================
+### LUỒNG 1B: USER CHỌN THANH TOÁN TIỀN MẶT
+### ============================================================
+
+### BƯỚC 3B: User chọn thanh toán tiền mặt
+### Frontend: User nhấn nút [Thanh toán Tiền mặt] thay vì VNPay
+
+POST {{baseUrl}}/payments/{{paymentId}}/select-cash
+Authorization: Bearer {{userToken}}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "message": "Đã chuyển sang phương thức thanh toán tiền mặt.",
+#   "paymentId": "guid-111",
+#   "amount": 250000,
+#   "instructions": "Vui lòng đến bất kỳ trạm đổi pin nào để thanh toán tiền mặt và kích hoạt gói. Xuất trình mã thanh toán cho nhân viên trạm."
+# }
+
+### ✅ VERIFY DATABASE:
+# SELECT * FROM Payments WHERE Id = 'paymentId'
+# → Method = 1 (Cash) ✅
+# → Status = 0 (Pending) - Vẫn chưa hoàn tất ✅
+#
+# SELECT * FROM UserSubscriptions WHERE Id = 'userSubscriptionId'
+# → IsActive = 0 (false) - Vẫn chưa kích hoạt ✅
+
+
+### BƯỚC 4B: Staff xác nhận đã nhận tiền mặt
+### User đến trạm → Trả tiền → Staff confirm trên hệ thống
+
+POST {{baseUrl}}/payments/{{paymentId}}/confirm-cash
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "notes": "Đã nhận 250.000 VND tiền mặt từ khách hàng"
+}
+
+### Expected Response:
+# {
+#   "success": true,
+#   "message": "Xác nhận thanh toán tiền mặt thành công. Gói subscription đã được kích hoạt!",
+#   "paymentId": "guid-111",
+#   "subscriptionActivated": true,
+#   "subscriptionId": "guid-222"
+# }
+
+### ✅ VERIFY DATABASE:
+# SELECT * FROM Payments WHERE Id = 'paymentId'
+# → Status = 2 (Completed) ✅
+# → CompletedAt IS NOT NULL ✅
+# → ProcessedByStaffId = 'staffId' ✅
+# → Description LIKE '%Ghi chú:%' ✅
+#
+# SELECT * FROM UserSubscriptions WHERE Id = 'userSubscriptionId'
+# → IsActive = 1 (true) ✅
+# → StartDate = '2025-10-22 14:30:00' ✅
+# → EndDate = '2025-11-21 14:30:00' ✅
+# → CurrentMonthSwapCount = 0 ✅
+
+
+### ============================================================
+### VERIFY: Kiểm tra user đã có gói active
+### ============================================================
+
+GET {{baseUrl}}/subscriptions/mine
+Authorization: Bearer {{userToken}}
+
+### Expected Response:
+# {
+#   "id": "guid-222",
+#   "userId": "...",
+#   "subscriptionPlanId": "...",
+#   "vehicleId": "...",
+#   "startDate": "2025-10-22T12:00:00Z",
+#   "endDate": "2025-11-21T12:00:00Z",
+#   "isActive": true,
+#   "currentBillingPeriodStart": "2025-10-22T12:00:00Z",
+#   "currentBillingPeriodEnd": "2025-11-21T12:00:00Z",
+#   "currentMonthSwapCount": 0,
+#   "subscriptionPlan": {
+#     "name": "Gói Basic",
+#     "monthlyPrice": 250000,
+#     "maxSwapsPerMonth": 10
+#   }
+# }
+
+
+### ============================================================
+### EDGE CASES: Test các trường hợp đặc biệt
+### ============================================================
+
+### TEST 1: User đã có gói active, không thể tạo gói mới
+POST {{baseUrl}}/subscriptions/create-pending
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "subscriptionPlanId": "{{subscriptionPlanId}}",
+  "vehicleId": "{{vehicleId}}"
+}
+
+### Expected: 409 Conflict
+# {
+#   "message": "Bạn đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới."
+# }
+
+
+### TEST 2: User không thể select-cash cho payment đã completed
+POST {{baseUrl}}/payments/{{paymentId}}/select-cash
+Authorization: Bearer {{userToken}}
+
+### Expected: 400 Bad Request
+# {
+#   "success": false,
+#   "message": "Payment đã được xử lý (Completed). Không thể thay đổi phương thức thanh toán."
+# }
+
+
+### TEST 3: User không thể confirm-cash cho payment của người khác
+POST {{baseUrl}}/payments/OTHER_USER_PAYMENT_ID/select-cash
+Authorization: Bearer {{userToken}}
+
+### Expected: 400 Bad Request
+# {
+#   "success": false,
+#   "message": "Payment này không thuộc về bạn."
+# }
+
+
+### ============================================================
+### 📝 HƯỚNG DẪN SỬ DỤNG FILE TEST NÀY
+### ============================================================
+### 
+### 1. Thay thế biến:
+###    - {{userToken}}: JWT token của user (sau khi login)
+###    - {{staffToken}}: JWT token của staff (sau khi login)
+###    - {{subscriptionPlanId}}: Copy từ response GET /subscription-plans
+###    - {{vehicleId}}: Copy từ vehicle của user
+###
+### 2. Test theo thứ tự:
+###    - Bước 1 → Bước 2 → Chọn LUỒNG 1A HOẶC 1B
+###    - LUỒNG 1A: VNPay (cần thanh toán thật trên sandbox)
+###    - LUỒNG 1B: Cash (test dễ hơn, chỉ cần call API)
+###
+### 3. Verify database sau mỗi step:
+###    - Dùng SQL queries được comment trong file
+###    - Hoặc dùng tool như Azure Data Studio / SQL Server Management Studio
+###
+### 4. Kết quả mong đợi:
+###    ✅ UserSubscription.IsActive chuyển từ false → true
+###    ✅ Payment.Status chuyển từ Pending → Completed
+###    ✅ StartDate và EndDate được set đúng
+###    ✅ SwapsUsed = 0
+###
+### ============================================================

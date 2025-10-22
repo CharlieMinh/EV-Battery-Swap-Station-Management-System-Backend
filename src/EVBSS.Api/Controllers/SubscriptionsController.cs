@@ -21,7 +21,44 @@ public class SubscriptionsController : ControllerBase
     }
 
     /// <summary>
-    /// Đăng ký gói subscription cho user
+    /// ⭐ NEW: Tạo subscription pending (chờ thanh toán) - FLOW FRONTEND YÊU CẦU
+    /// Tạo UserSubscription với IsActive=false + Payment pending + VNPay URL
+    /// </summary>
+    [HttpPost("create-pending")]
+    public async Task<ActionResult<CreatePendingSubscriptionResponse>> CreatePendingSubscription(CreatePendingSubscriptionRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var ipAddress = GetClientIpAddress();
+            
+            var result = await _subscriptionService.CreatePendingSubscriptionAsync(userId, request, ipAddress);
+            
+            _logger.LogInformation("User {UserId} created pending subscription {SubscriptionId}, payment {PaymentId}", 
+                userId, result.UserSubscriptionId, result.PaymentId);
+            
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Invalid request for creating pending subscription");
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Business rule violation for creating pending subscription");
+            return Conflict(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating pending subscription");
+            return StatusCode(500, new { message = "Có lỗi xảy ra khi tạo subscription." });
+        }
+    }
+
+    /// <summary>
+    /// Đăng ký gói subscription cho user (API cũ - dùng cho admin/special cases)
+    /// NOTE: User thường dùng /create-pending để tạo subscription với flow thanh toán
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<SubscriptionCreatedResponse>> CreateSubscription(CreateSubscriptionRequest request)
@@ -137,5 +174,18 @@ public class SubscriptionsController : ControllerBase
             throw new UnauthorizedAccessException("Invalid user ID in token");
         }
         return userId;
+    }
+
+    private string GetClientIpAddress()
+    {
+        // Try X-Forwarded-For header first (for proxies/load balancers)
+        var forwardedFor = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwardedFor))
+        {
+            return forwardedFor.Split(',')[0].Trim();
+        }
+
+        // Fallback to RemoteIpAddress
+        return HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
     }
 }
