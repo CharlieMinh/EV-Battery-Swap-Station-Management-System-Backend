@@ -154,16 +154,10 @@ public class VnPayService : IVnPayService
             var isSuccess = callback.vnp_ResponseCode == "00" && callback.vnp_TransactionStatus == "00";
             var amount = decimal.Parse(callback.vnp_Amount) / 100; // VNPay sends amount in cents
 
-            // 5. Update payment record
+            // 5. Update payment record with VNPay response
             payment.VnpTransactionNo = callback.vnp_TransactionNo;
             payment.VnpResponseCode = callback.vnp_ResponseCode;
             payment.VnpSecureHash = callback.vnp_SecureHash;
-            payment.ProcessedAt = DateTime.UtcNow;
-
-            if (DateTime.TryParseExact(callback.vnp_PayDate, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var payDate))
-            {
-                payment.VnpPayDate = payDate;
-            }
 
             if (isSuccess && amount == payment.Amount)
             {
@@ -183,11 +177,13 @@ public class VnPayService : IVnPayService
             }
             else
             {
-                // Payment failed
+                // ❌ Payment failed - reason stored in VnpResponseCode
+                // 24 = User cancelled, 51 = Insufficient balance, etc.
                 payment.Status = PaymentStatus.Failed;
-                payment.FailureReason = $"VNPay response: {callback.vnp_ResponseCode}";
+                payment.CompletedAt = DateTime.UtcNow; // Mark when it failed
                 
-                _logger.LogWarning("Payment {PaymentId} failed with response code {ResponseCode}", payment.Id, callback.vnp_ResponseCode);
+                _logger.LogWarning("Payment {PaymentId} failed with VNPay response code {ResponseCode}", 
+                    payment.Id, callback.vnp_ResponseCode);
             }
 
             await _context.SaveChangesAsync();
