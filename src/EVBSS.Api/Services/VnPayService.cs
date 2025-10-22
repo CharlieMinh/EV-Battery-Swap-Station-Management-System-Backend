@@ -161,16 +161,47 @@ public class VnPayService : IVnPayService
 
             if (isSuccess && amount == payment.Amount)
             {
-                // ✅ Payment successful - activate subscription
+                // ✅ Payment successful
                 payment.Status = PaymentStatus.Completed;
                 payment.CompletedAt = DateTime.UtcNow;
 
-                // Update subscription's last payment date
+                // ⭐ KÍCH HOẠT SUBSCRIPTION (nếu chưa active)
                 if (payment.UserSubscription != null)
                 {
-                    payment.UserSubscription.LastPaymentDate = DateTime.UtcNow;
-                    payment.UserSubscription.IsActive = true;
-                    payment.UserSubscription.UpdatedAt = DateTime.UtcNow;
+                    // Kịch bản 1: Subscription MỚI (pending) → Kích hoạt lần đầu
+                    if (!payment.UserSubscription.IsActive)
+                    {
+                        var now = DateTime.UtcNow;
+                        
+                        payment.UserSubscription.IsActive = true;
+                        payment.UserSubscription.StartDate = now;
+                        payment.UserSubscription.EndDate = now.AddDays(30);  // 30-day subscription
+                        payment.UserSubscription.CurrentBillingPeriodStart = now;
+                        payment.UserSubscription.CurrentBillingPeriodEnd = now.AddDays(30);
+                        payment.UserSubscription.CurrentMonthSwapCount = 0;  // Reset counter
+                        payment.UserSubscription.LastPaymentDate = now;
+                        payment.UserSubscription.UpdatedAt = now;
+
+                        _logger.LogInformation(
+                            "Subscription {SubscriptionId} ACTIVATED for user {UserId}. Valid from {Start} to {End}", 
+                            payment.UserSubscription.Id, 
+                            payment.UserSubscription.UserId,
+                            now.ToString("yyyy-MM-dd HH:mm:ss"),
+                            now.AddDays(30).ToString("yyyy-MM-dd HH:mm:ss")
+                        );
+                    }
+                    // Kịch bản 2: Subscription RENEWAL (đã active) → Chỉ update payment date
+                    else
+                    {
+                        payment.UserSubscription.LastPaymentDate = DateTime.UtcNow;
+                        payment.UserSubscription.UpdatedAt = DateTime.UtcNow;
+
+                        _logger.LogInformation(
+                            "Subscription {SubscriptionId} payment RENEWED for user {UserId}", 
+                            payment.UserSubscription.Id, 
+                            payment.UserSubscription.UserId
+                        );
+                    }
                 }
 
                 _logger.LogInformation("Payment {PaymentId} completed successfully for amount {Amount}", payment.Id, amount);

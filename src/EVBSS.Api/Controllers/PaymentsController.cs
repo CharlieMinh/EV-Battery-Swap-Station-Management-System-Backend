@@ -12,11 +12,16 @@ namespace EVBSS.Api.Controllers;
 public class PaymentsController : ControllerBase
 {
     private readonly IVnPayService _vnPayService;
+    private readonly IPaymentService _paymentService;
     private readonly ILogger<PaymentsController> _logger;
 
-    public PaymentsController(IVnPayService vnPayService, ILogger<PaymentsController> logger)
+    public PaymentsController(
+        IVnPayService vnPayService, 
+        IPaymentService paymentService,
+        ILogger<PaymentsController> logger)
     {
         _vnPayService = vnPayService;
+        _paymentService = paymentService;
         _logger = logger;
     }
 
@@ -140,5 +145,74 @@ public class PaymentsController : ControllerBase
 
         // Fallback to connection remote IP
         return Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    }
+
+    /// <summary>
+    /// User chọn thanh toán bằng tiền mặt
+    /// </summary>
+    [HttpPost("{paymentId:guid}/select-cash")]
+    public async Task<ActionResult<SelectCashMethodResponse>> SelectCashMethod(Guid paymentId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var result = await _paymentService.SelectCashMethodAsync(userId, paymentId);
+            
+            if (result.Success)
+            {
+                _logger.LogInformation("User {UserId} selected CASH for payment {PaymentId}", userId, paymentId);
+                return Ok(result);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to select CASH for payment {PaymentId}: {Message}", paymentId, result.Message);
+                return BadRequest(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error selecting cash method for payment {PaymentId}", paymentId);
+            return StatusCode(500, new SelectCashMethodResponse
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi chọn phương thức thanh toán."
+            });
+        }
+    }
+
+    /// <summary>
+    /// Staff xác nhận đã nhận tiền mặt
+    /// </summary>
+    [HttpPost("{paymentId:guid}/confirm-cash")]
+    [Authorize(Roles = "Staff,Admin")]
+    public async Task<ActionResult<ConfirmCashPaymentResponse>> ConfirmCashPayment(
+        Guid paymentId, 
+        [FromBody] ConfirmCashPaymentRequest request)
+    {
+        try
+        {
+            var staffId = GetCurrentUserId();
+            var result = await _paymentService.ConfirmCashPaymentAsync(staffId, paymentId, request);
+            
+            if (result.Success)
+            {
+                _logger.LogInformation("Staff {StaffId} confirmed CASH payment {PaymentId}", staffId, paymentId);
+                return Ok(result);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to confirm CASH payment {PaymentId}: {Message}", paymentId, result.Message);
+                return BadRequest(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error confirming cash payment {PaymentId}", paymentId);
+            return StatusCode(500, new ConfirmCashPaymentResponse
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi xác nhận thanh toán."
+            });
+        }
     }
 }

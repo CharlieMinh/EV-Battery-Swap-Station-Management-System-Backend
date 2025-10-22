@@ -1,14 +1,26 @@
+using EVBSS.Api.Configuration;
 using EVBSS.Api.Data;
 using EVBSS.Api.Dtos.Subscriptions;
 using EVBSS.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Web;
 
 namespace EVBSS.Api.Services;
 
 public interface ISubscriptionService
 {
     Task<SubscriptionCreatedResponse> CreateSubscriptionAsync(Guid userId, CreateSubscriptionRequest request);
+    
+    /// <summary>
+    /// Tạo subscription pending (chờ thanh toán) theo flow Frontend yêu cầu
+    /// Tạo UserSubscription với IsActive=false + Payment pending + VNPay URL
+    /// </summary>
+    Task<CreatePendingSubscriptionResponse> CreatePendingSubscriptionAsync(Guid userId, CreatePendingSubscriptionRequest request, string ipAddress);
+    
     Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId);
     Task<CancelSubscriptionResponse> CancelSubscriptionAsync(Guid userId);
     Task<SubscriptionUsageDto?> GetSubscriptionUsageAsync(Guid userId);
@@ -19,11 +31,13 @@ public class SubscriptionService : ISubscriptionService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<SubscriptionService> _logger;
+    private readonly VnPayConfig _vnPayConfig;
 
-    public SubscriptionService(AppDbContext context, ILogger<SubscriptionService> logger)
+    public SubscriptionService(AppDbContext context, ILogger<SubscriptionService> logger, IOptions<VnPayConfig> vnPayConfig)
     {
         _context = context;
         _logger = logger;
+        _vnPayConfig = vnPayConfig.Value;
     }
     
     // ⭐ NEW: Check and expire subscriptions that passed their billing end date
@@ -136,6 +150,108 @@ public class SubscriptionService : ISubscriptionService
             StartDate = startDate,
             BillingPeriodStart = billingStart,
             BillingPeriodEnd = billingEnd
+        };
+    }
+
+    /// <summary>
+    /// Tạo subscription pending (chờ thanh toán) - FLOW FRONTEND YÊU CẦU
+    /// 1. Tạo UserSubscription với IsActive = FALSE
+    /// 2. Tạo Payment với Status = Pending
+    /// 3. Generate VNPay payment URL
+    /// 4. Return tất cả thông tin cần thiết cho FE
+    /// </summary>
+    public async Task<CreatePendingSubscriptionResponse> CreatePendingSubscriptionAsync(
+        Guid userId, 
+        CreatePendingSubscriptionRequest request, 
+        string ipAddress)
+    {
+        // 1. Check if user already has active subscription
+        var existingSubscription = await _context.UserSubscriptions
+            .Where(us => us.UserId == userId && us.IsActive)
+            .FirstOrDefaultAsync();
+
+        if (existingSubscription != null)
+        {
+            throw new InvalidOperationException("Bạn đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
+        }
+
+        // 2. Validate subscription plan exists and is active
+        var subscriptionPlan = await _context.SubscriptionPlans
+            .Include(sp => sp.BatteryModel)
+            .FirstOrDefaultAsync(sp => sp.Id == request.SubscriptionPlanId && sp.IsActive);
+        
+        if (subscriptionPlan == null)
+        {
+            throw new ArgumentException("Gói subscription không tồn tại hoặc đã bị vô hiệu hóa.");
+        }
+
+        // 3. Validate vehicle belongs to user and is compatible
+        var vehicle = await _context.Vehicles
+            .Include(v => v.CompatibleModel)
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.UserId == userId);
+        
+        if (vehicle == null)
+        {
+            throw new ArgumentException("Xe không tồn tại hoặc không thuộc về bạn.");
+        }
+
+        if (vehicle.CompatibleBatteryModelId != subscriptionPlan.BatteryModelId)
+        {
+            throw new InvalidOperationException($"Xe {vehicle.Plate} không tương thích với gói pin {subscriptionPlan.Name}.");
+        }
+
+        // 4. ⭐ Tạo UserSubscription với IsActive = FALSE (chờ thanh toán)
+        var subscription = new UserSubscription
+        {
+            UserId = userId,
+            SubscriptionPlanId = request.SubscriptionPlanId,
+            VehicleId = request.VehicleId,
+            IsActive = false,  // ⭐ QUAN TRỌNG: Chưa kích hoạt
+            StartDate = DateTime.MinValue,  // Placeholder, sẽ set khi thanh toán
+            CurrentBillingPeriodStart = DateTime.MinValue,
+            CurrentBillingPeriodEnd = DateTime.MinValue,
+            CurrentMonthSwapCount = 0,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.UserSubscriptions.Add(subscription);
+        await _context.SaveChangesAsync();
+
+        // 5. ⭐ Tạo Payment record với Status = Pending
+        var payment = new Payment
+        {
+            UserSubscriptionId = subscription.Id,
+            UserId = userId,
+            Method = PaymentMethod.VNPay,  // Default VNPay, user có thể đổi sang Cash sau
+            Type = PaymentType.Subscription,
+            Amount = subscriptionPlan.MonthlyPrice,
+            Status = PaymentStatus.Pending,
+            VnpTxnRef = GenerateTransactionReference(),
+            PaymentReference = GenerateTransactionReference(),
+            Description = $"Thanh toán gói {subscriptionPlan.Name} - {vehicle.Plate}",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Payments.Add(payment);
+        await _context.SaveChangesAsync();
+
+        // 6. ⭐ Generate VNPay payment URL
+        var paymentUrl = GenerateVnPayUrl(payment, subscription, subscriptionPlan, vehicle, ipAddress);
+
+        _logger.LogInformation("User {UserId} created PENDING subscription {SubscriptionId}, payment {PaymentId}", 
+            userId, subscription.Id, payment.Id);
+
+        // 7. Return full response with all info FE needs
+        return new CreatePendingSubscriptionResponse
+        {
+            PaymentId = payment.Id,
+            UserSubscriptionId = subscription.Id,
+            PaymentUrl = paymentUrl,
+            Amount = subscriptionPlan.MonthlyPrice,
+            PlanName = subscriptionPlan.Name,
+            PlanDescription = subscriptionPlan.Description,
+            MaxSwapsPerMonth = subscriptionPlan.MaxSwapsPerMonth ?? 0,
+            Message = "Gói subscription đã được tạo. Vui lòng chọn phương thức thanh toán."
         };
     }
 
@@ -371,5 +487,55 @@ public class SubscriptionService : ISubscriptionService
         }
 
         return monthlyUsage;
+    }
+
+    // ========== HELPER METHODS FOR VNPAY URL GENERATION ==========
+
+    private string GenerateTransactionReference()
+    {
+        return $"EVB{DateTime.Now:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
+    }
+
+    private string GenerateVnPayUrl(Payment payment, UserSubscription subscription, SubscriptionPlan plan, Vehicle vehicle, string ipAddress)
+    {
+        var orderInfo = $"{plan.Name} - {vehicle.Plate}";
+        
+        var vnpParams = new Dictionary<string, string>
+        {
+            {"vnp_Version", _vnPayConfig.Version},
+            {"vnp_Command", _vnPayConfig.Command},
+            {"vnp_TmnCode", _vnPayConfig.TmnCode},
+            {"vnp_Amount", ((long)(payment.Amount * 100)).ToString()}, // Convert to cents
+            {"vnp_CurrCode", _vnPayConfig.CurrCode},
+            {"vnp_TxnRef", payment.VnpTxnRef!},
+            {"vnp_OrderInfo", orderInfo},
+            {"vnp_OrderType", "billpayment"}, // Fixed value for subscription
+            {"vnp_Locale", _vnPayConfig.Locale},
+            {"vnp_ReturnUrl", _vnPayConfig.ReturnUrl},
+            {"vnp_IpAddr", ipAddress},
+            {"vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss")}
+        };
+
+        // Sort parameters and create query string
+        var sortedParams = vnpParams.OrderBy(x => x.Key).ToList();
+        var queryString = string.Join("&", sortedParams.Select(p => $"{p.Key}={HttpUtility.UrlEncode(p.Value)}"));
+
+        // Generate secure hash
+        var hashData = string.Join("&", sortedParams.Select(p => $"{p.Key}={p.Value}"));
+        var secureHash = ComputeHmacSha512(_vnPayConfig.HashSecret, hashData);
+
+        // Build final URL
+        return $"{_vnPayConfig.BaseUrl}?{queryString}&vnp_SecureHash={secureHash}";
+    }
+
+    private string ComputeHmacSha512(string key, string data)
+    {
+        var keyBytes = Encoding.UTF8.GetBytes(key);
+        var dataBytes = Encoding.UTF8.GetBytes(data);
+        
+        using var hmac = new HMACSHA512(keyBytes);
+        var hashBytes = hmac.ComputeHash(dataBytes);
+        
+        return Convert.ToHexString(hashBytes).ToLower();
     }
 }
