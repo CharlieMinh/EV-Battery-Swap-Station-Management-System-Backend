@@ -32,7 +32,13 @@ public class Vehicle
     public DateTime? UpdatedAt { get; set; }
 
     // Navigation properties
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(UserId))]
     public User User { get; set; } = null!;
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(VehicleModelId))]
     public VehicleModel VehicleModel { get; set; } = null!;
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(CompatibleBatteryModelId))]
     public BatteryModel CompatibleModel { get; set; } = null!;
+
+    // Navigation property: Một xe có thể có nhiều subscription (lịch sử)
+    public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
 }

@@ -75,15 +75,21 @@ public class AppDbContext : DbContext
         b.Entity<Vehicle>().HasIndex(v => new { v.UserId, v.Plate }).IsUnique();
 
         b.Entity<Vehicle>()
-            .HasOne(v => v.User).WithMany().HasForeignKey(v => v.UserId)
+            .HasOne(v => v.User)
+            .WithMany(u => u.Vehicles)
+            .HasForeignKey(v => v.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<Vehicle>()
-            .HasOne(v => v.VehicleModel).WithMany().HasForeignKey(v => v.VehicleModelId)
+            .HasOne(v => v.VehicleModel)
+            .WithMany()
+            .HasForeignKey(v => v.VehicleModelId)
             .OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<Vehicle>()
-            .HasOne(v => v.CompatibleModel).WithMany().HasForeignKey(v => v.CompatibleBatteryModelId)
+            .HasOne(v => v.CompatibleModel)
+            .WithMany()
+            .HasForeignKey(v => v.CompatibleBatteryModelId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // BatteryUnit
@@ -178,17 +184,17 @@ public class AppDbContext : DbContext
             .Property(us => us.DepositPaid).HasPrecision(18, 2);
         b.Entity<UserSubscription>()
             .HasOne(us => us.User)
-            .WithMany()
+            .WithMany(u => u.UserSubscriptions)
             .HasForeignKey(us => us.UserId)
             .OnDelete(DeleteBehavior.Restrict);
         b.Entity<UserSubscription>()
             .HasOne(us => us.SubscriptionPlan)
-            .WithMany()
+            .WithMany(sp => sp.UserSubscriptions)
             .HasForeignKey(us => us.SubscriptionPlanId)
             .OnDelete(DeleteBehavior.Restrict);
         b.Entity<UserSubscription>()
             .HasOne(us => us.Vehicle)
-            .WithMany()
+            .WithMany(v => v.UserSubscriptions)
             .HasForeignKey(us => us.VehicleId)
             .OnDelete(DeleteBehavior.Restrict);
 

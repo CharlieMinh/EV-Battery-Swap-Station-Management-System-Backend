@@ -26,4 +26,9 @@ public class User
     public AuthMethod AuthMethod { get; set; } = AuthMethod.Local;
     public string? GoogleId { get; set; }
     public string? ProfilePictureUrl { get; set; }
+    // Navigation property: Một user có nhiều xe
+    public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
+
+    // Navigation property: Một user có nhiều subscription
+    public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
 }

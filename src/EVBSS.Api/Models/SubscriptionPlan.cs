@@ -16,10 +16,14 @@ public class SubscriptionPlan
     
     // Battery compatibility
     public Guid BatteryModelId { get; set; }                     // Loại pin tương thích
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(BatteryModelId))]
     public BatteryModel BatteryModel { get; set; } = null!;
     
     // Plan settings
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
+
+    // Navigation property: Một gói có nhiều subscription
+    public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
 }

@@ -28,7 +28,10 @@ public class UserSubscription
     public DateTime? UpdatedAt { get; set; }
 
     // Navigation properties
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(UserId))]
     public User User { get; set; } = null!;
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(SubscriptionPlanId))]
     public SubscriptionPlan SubscriptionPlan { get; set; } = null!;
+    [System.ComponentModel.DataAnnotations.Schema.ForeignKey(nameof(VehicleId))]
     public Vehicle Vehicle { get; set; } = null!;
 }
