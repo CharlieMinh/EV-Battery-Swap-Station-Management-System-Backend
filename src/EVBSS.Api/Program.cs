@@ -100,6 +100,7 @@ builder.Services.AddScoped<SlotReservationService>(); // New slot-based service
 builder.Services.AddScoped<ReservationService>(); // Legacy wrapper service
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>(); // ⭐ NEW: Cash payment service
 // ✅ INVOICE SERVICE REMOVED: Using simplified Payment model
 builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddScoped<IEmailService, EmailService>(); // Email service for OTP
