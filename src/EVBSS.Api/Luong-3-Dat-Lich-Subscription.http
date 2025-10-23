@@ -1,0 +1,305 @@
+###############################################################################
+# KỊCH BẢN 3: Đặt Lịch Bằng Gói Đã Mua (Miễn phí)
+# Mục tiêu: User có "Gói 10 lần/tháng" đặt lịch MIỄN PHÍ (không thanh toán)
+###############################################################################
+
+# ===========================
+# 🔧 CONFIGURATION
+# ===========================
+@baseUrl = https://localhost:5001
+@apiVersion = v1
+
+# Auth tokens (replace with real tokens from login)
+@userToken = YOUR_USER_JWT_TOKEN_HERE
+@staffToken = YOUR_STAFF_JWT_TOKEN_HERE
+
+# Entity IDs (replace with real IDs from database)
+@userId = YOUR_USER_ID_HERE
+@stationId = YOUR_STATION_ID_HERE
+@batteryModelId = YOUR_BATTERY_MODEL_ID_HERE
+@vehicleId = YOUR_VEHICLE_ID_HERE
+@subscriptionPlanId = YOUR_SUBSCRIPTION_PLAN_ID_HERE
+
+# Test data
+@slotDate = 2025-10-25
+@slotStartTime = 09:00:00
+@slotEndTime = 10:00:00
+
+###############################################################################
+# 📚 PREREQUISITES: Setup Subscription
+# Trước khi test LUỒNG 3, user PHẢI có subscription active
+###############################################################################
+
+### STEP 0A: Check user's current subscriptions
+GET {{baseUrl}}/api/{{apiVersion}}/subscriptions/mine
+Authorization: Bearer {{userToken}}
+
+### STEP 0B: Create subscription if needed (via Payment flow - LUỒNG 1)
+# POST {{baseUrl}}/api/{{apiVersion}}/payments/create-subscription
+# See existing subscription creation flow
+
+### STEP 0C: Verify subscription details
+# Expected response from STEP 0A:
+# {
+#   "id": "...",
+#   "subscriptionPlanId": "...",
+#   "isActive": true,
+#   "currentMonthSwapCount": 2,  // Đã dùng 2 lần
+#   "subscriptionPlan": {
+#     "name": "Gói 10 lần/tháng",
+#     "maxSwapsPerMonth": 10
+#   }
+# }
+
+###############################################################################
+# 🎯 LUỒNG 3: USER ĐẶT LỊCH BẰNG GÓI (MIỄN PHÍ)
+# Flow: Frontend → POST /api/v1/slot-reservations → Backend validate subscription → Create Reservation (NO Payment)
+###############################################################################
+
+### ✅ BƯỚC 1: User đặt lịch (Frontend gọi API)
+POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryModelId": "{{batteryModelId}}",
+  "slotDate": "{{slotDate}}",
+  "slotStartTime": "{{slotStartTime}}",
+  "slotEndTime": "{{slotEndTime}}"
+}
+
+# Expected Response (201 Created):
+# {
+#   "id": "new-reservation-id",
+#   "userId": "...",
+#   "stationId": "...",
+#   "batteryModelId": "...",
+#   "slotDate": "2025-10-25",
+#   "slotStartTime": "09:00:00",
+#   "slotEndTime": "10:00:00",
+#   "status": 0,  // Pending
+#   "qrCode": "EVB_RES_20251023_XYZ123",
+#   "createdAt": "2025-10-23T10:30:00Z",
+#   "batteryUnitId": null,
+#   "checkedInAt": null,
+#   "verifiedByStaffId": null
+# }
+
+### 🔍 VERIFY: Check reservation created (no payment record)
+# Query database to verify:
+# 1. Reservation exists with Status=Pending
+# 2. NO Payment record linked to this reservation
+# 3. User's subscription CurrentMonthSwapCount NOT incremented yet (increments at check-in)
+
+###############################################################################
+# Database Verification Queries (run in SQL Server Management Studio)
+###############################################################################
+
+# -- Check created reservation
+# SELECT TOP 1 * FROM Reservations
+# WHERE UserId = '{{userId}}'
+# ORDER BY CreatedAt DESC;
+#
+# Expected: 1 row with Status=0 (Pending), QRCode generated
+#
+# -- Check NO payment record
+# SELECT * FROM Payments
+# WHERE ReservationId = 'new-reservation-id-from-above';
+#
+# Expected: 0 rows (no payment for subscription booking)
+#
+# -- Check user's subscription counter (not incremented yet)
+# SELECT * FROM UserSubscriptions
+# WHERE UserId = '{{userId}}' AND IsActive = 1;
+#
+# Expected: CurrentMonthSwapCount unchanged (increments at check-in, not booking)
+
+###############################################################################
+# 🎉 BƯỚC 2: User đến trạm → Staff check-in
+# Note: Check-in flow là CHUNG cho cả LUỒNG 2 và LUỒNG 3
+# Tham khảo: Luong-2-Dat-Lich-Le.http (Bước 3A hoặc 2B)
+###############################################################################
+
+### ✅ Staff check-in (assign battery unit)
+# POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations/{reservationId}/check-in
+# Authorization: Bearer {{staffToken}}
+# Body: { "staffId": "...", "batteryUnitId": "..." }
+#
+# Expected: 
+# - Reservation.Status = CheckedIn
+# - UserSubscription.CurrentMonthSwapCount += 1 (increment counter)
+# - No payment confirmation (because no payment was created)
+
+###############################################################################
+# 🚨 EDGE CASES: Error Scenarios
+###############################################################################
+
+### ❌ EC1: User không có subscription active
+POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryModelId": "{{batteryModelId}}",
+  "slotDate": "{{slotDate}}",
+  "slotStartTime": "14:00:00",
+  "slotEndTime": "15:00:00"
+}
+
+# Expected Response (400 Bad Request):
+# {
+#   "error": {
+#     "code": "NO_ACTIVE_SUBSCRIPTION",
+#     "message": "Bạn không có gói subscription hoạt động hoặc đã hết lượt sử dụng. Vui lòng mua gói mới hoặc thanh toán theo lần."
+#   }
+# }
+
+### ❌ EC2: User đã hết lượt sử dụng trong tháng
+# Setup: User's subscription has CurrentMonthSwapCount = MaxSwapsPerMonth (e.g. 10/10)
+POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryModelId": "{{batteryModelId}}",
+  "slotDate": "{{slotDate}}",
+  "slotStartTime": "16:00:00",
+  "slotEndTime": "17:00:00"
+}
+
+# Expected Response (400 Bad Request):
+# {
+#   "error": {
+#     "code": "NO_ACTIVE_SUBSCRIPTION",
+#     "message": "Bạn không có gói subscription hoạt động hoặc đã hết lượt sử dụng..."
+#   }
+# }
+
+### ❌ EC3: Subscription đã hết hạn (CurrentBillingPeriodEnd < now)
+POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryModelId": "{{batteryModelId}}",
+  "slotDate": "{{slotDate}}",
+  "slotStartTime": "18:00:00",
+  "slotEndTime": "19:00:00"
+}
+
+# Expected Response (400 Bad Request):
+# {
+#   "error": {
+#     "code": "NO_ACTIVE_SUBSCRIPTION",
+#     "message": "Bạn không có gói subscription hoạt động..."
+#   }
+# }
+
+### ❌ EC4: User đã có reservation đang active
+# Same as LUỒNG 2 EC1 (ActiveReservationExistsException)
+POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryModelId": "{{batteryModelId}}",
+  "slotDate": "{{slotDate}}",
+  "slotStartTime": "20:00:00",
+  "slotEndTime": "21:00:00"
+}
+
+# Expected Response (400 Bad Request):
+# {
+#   "error": {
+#     "code": "ACTIVE_RESERVATION_EXISTS",
+#     "message": "Bạn đã có lịch đặt đang hoạt động. Vui lòng hủy hoặc hoàn thành lịch cũ trước khi đặt mới."
+#   }
+# }
+
+### ❌ EC5: Slot đã đầy
+# Same as LUỒNG 2 EC2 (SlotNotAvailableException)
+POST {{baseUrl}}/api/{{apiVersion}}/slot-reservations
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "stationId": "{{stationId}}",
+  "batteryModelId": "{{batteryModelId}}",
+  "slotDate": "{{slotDate}}",
+  "slotStartTime": "08:00:00",
+  "slotEndTime": "09:00:00"
+}
+
+# Expected Response (400 Bad Request):
+# {
+#   "error": {
+#     "code": "SLOT_NOT_AVAILABLE",
+#     "message": "Slot này đã đầy. Vui lòng chọn slot khác."
+#   }
+# }
+
+###############################################################################
+# 🔍 HELPER ENDPOINTS: Data Inspection
+###############################################################################
+
+### Get user's active reservations
+GET {{baseUrl}}/api/{{apiVersion}}/slot-reservations/mine?status=0
+Authorization: Bearer {{userToken}}
+
+### Get subscription usage details
+GET {{baseUrl}}/api/{{apiVersion}}/subscriptions/mine/usage
+Authorization: Bearer {{userToken}}
+
+### Get available slots (check capacity)
+GET {{baseUrl}}/api/{{apiVersion}}/slot-reservations/available-slots?stationId={{stationId}}&date={{slotDate}}&batteryModelId={{batteryModelId}}
+Authorization: Bearer {{userToken}}
+
+###############################################################################
+# 📝 NOTES & TROUBLESHOOTING
+###############################################################################
+
+# ✅ Behavior Differences: LUỒNG 2 vs LUỒNG 3
+# 
+# | Aspect                | LUỒNG 2 (Pay-per-Swap)                      | LUỒNG 3 (Subscription)                |
+# |-----------------------|----------------------------------------------|---------------------------------------|
+# | **API Endpoint**      | POST /api/v1/payments/create-pay-per-swap   | POST /api/v1/slot-reservations        |
+# | **Payment Required**  | ✅ Yes (VNPay or Cash)                      | ❌ No (covered by subscription)       |
+# | **Payment Record**    | ✅ Creates Payment record                   | ❌ NO Payment record                  |
+# | **Validation**        | Check slot availability                     | Check subscription + slot             |
+# | **Response**          | PaymentUrl (VNPay) or QRCode (Cash)         | QRCode only                           |
+# | **Usage Counter**     | N/A                                         | Increments at check-in                |
+
+# ⚠️ Common Issues:
+# 1. NoActiveSubscriptionException
+#    - Cause: User has no subscription, subscription inactive, or limit reached
+#    - Fix: Buy new subscription or use LUỒNG 2 (pay-per-swap)
+#
+# 2. ActiveReservationExistsException
+#    - Cause: User already has Pending or CheckedIn reservation
+#    - Fix: Complete or cancel existing reservation first
+#
+# 3. CurrentMonthSwapCount not incrementing
+#    - Expected: Counter increments during CHECK-IN, not during booking
+#    - Verify: Check SwapTransactions table after check-in
+
+# 🔐 Security Notes:
+# - Endpoint requires [Authorize] - JWT token mandatory
+# - User can only book for themselves (userId extracted from JWT)
+# - Subscription validation prevents abuse (limit enforcement)
+
+# 🎯 Frontend Integration Checklist:
+# 1. ✅ Call GET /subscriptions/mine to check if user has active subscription
+# 2. ✅ If subscription exists: Use LUỒNG 3 (POST /slot-reservations) - no payment UI
+# 3. ✅ If no subscription: Show payment options → Use LUỒNG 2 (pay-per-swap)
+# 4. ✅ Display QR code from response
+# 5. ✅ Handle error codes: NO_ACTIVE_SUBSCRIPTION, ACTIVE_RESERVATION_EXISTS, SLOT_NOT_AVAILABLE
+# 6. ✅ Show swap usage (e.g. "3/10 lượt đã dùng") using GET /subscriptions/mine/usage
+
+###############################################################################
+# END OF TEST FILE
+###############################################################################

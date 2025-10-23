@@ -106,6 +106,10 @@ public class SlotReservationsController : ControllerBase
         {
             return BadRequest(new { error = new { code = "SLOT_NOT_AVAILABLE", message = ex.Message } });
         }
+        catch (NoActiveSubscriptionException ex)
+        {
+            return BadRequest(new { error = new { code = "NO_ACTIVE_SUBSCRIPTION", message = ex.Message } });
+        }
     }
 
     /// <summary>
