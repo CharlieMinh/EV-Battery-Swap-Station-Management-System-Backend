@@ -117,6 +117,68 @@ public class PaymentsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// ⭐ LUỒNG 2: Tạo đặt lịch lẻ (Pay-per-Swap) với thanh toán VNPay hoặc Cash
+    /// </summary>
+    [HttpPost("create-pay-per-swap-reservation")]
+    [Authorize] // Only authenticated users
+    public async Task<ActionResult<CreatePayPerSwapReservationResponse>> CreatePayPerSwapReservation(
+        [FromBody] CreatePayPerSwapReservationRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var ipAddress = GetClientIpAddress();
+            
+            var result = await _paymentService.CreatePayPerSwapReservationAsync(
+                userId, 
+                request, 
+                ipAddress);
+            
+            if (result.Success)
+            {
+                _logger.LogInformation(
+                    "Created pay-per-swap reservation for user {UserId}, station {StationId}, method {Method}, payment {PaymentId}", 
+                    userId, request.StationId, request.PaymentMethod, result.PaymentId);
+                return Ok(result);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Failed to create pay-per-swap reservation for user {UserId}: {Message}", 
+                    userId, result.Message);
+                return BadRequest(result);
+            }
+        }
+        catch (ActiveReservationExistsException ex)
+        {
+            _logger.LogWarning(ex, "User {UserId} already has active reservation", GetCurrentUserId());
+            return BadRequest(new CreatePayPerSwapReservationResponse
+            {
+                Success = false,
+                Message = ex.Message
+            });
+        }
+        catch (SlotNotAvailableException ex)
+        {
+            _logger.LogWarning(ex, "Slot not available for user {UserId}", GetCurrentUserId());
+            return BadRequest(new CreatePayPerSwapReservationResponse
+            {
+                Success = false,
+                Message = ex.Message
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating pay-per-swap reservation for user {UserId}", GetCurrentUserId());
+            return StatusCode(500, new CreatePayPerSwapReservationResponse
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi tạo đặt lịch. Vui lòng thử lại sau."
+            });
+        }
+    }
+
     private Guid GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

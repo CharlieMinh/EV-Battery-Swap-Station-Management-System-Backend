@@ -5,8 +5,9 @@ public class Payment
     public Guid Id { get; set; } = Guid.NewGuid();
     public string PaymentReference { get; set; } = null!;        // Mã giao dịch (VNPay, etc.)
     
-    // ✅ REFACTORED: Link to Subscription instead of Invoice
-    public Guid? UserSubscriptionId { get; set; }                // Thanh toán cho gói subscription
+    // ✅ REFACTORED: Link to either Subscription OR Reservation (mutual exclusive)
+    public Guid? UserSubscriptionId { get; set; }                // Thanh toán cho gói subscription (LUỒNG 1)
+    public Guid? ReservationId { get; set; }                     // Thanh toán cho đặt lịch lẻ (LUỒNG 2 - Pay-per-Swap)
     public Guid UserId { get; set; }
 
     // Payment details
@@ -33,6 +34,7 @@ public class Payment
 
     // Navigation properties
     public UserSubscription? UserSubscription { get; set; }
+    public Reservation? Reservation { get; set; }                // Link to Reservation for pay-per-swap
     public User User { get; set; } = null!;
     public User? ProcessedByStaff { get; set; }
     public Station? Station { get; set; }

@@ -27,6 +27,13 @@ public class ConfirmCashPaymentResponse
     
     /// <summary>
     /// ID của subscription đã được kích hoạt (nếu có)
+    /// Dùng cho LUỒNG 1 - Mua gói subscription
     /// </summary>
     public Guid? SubscriptionId { get; set; }
+    
+    /// <summary>
+    /// ID của reservation đã thanh toán (nếu có)
+    /// Dùng cho LUỒNG 2 - Đặt lịch lẻ pay-per-swap
+    /// </summary>
+    public Guid? ReservationId { get; set; }
 }
