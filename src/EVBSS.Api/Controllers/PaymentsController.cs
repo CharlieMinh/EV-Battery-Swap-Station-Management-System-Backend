@@ -178,37 +178,7 @@ public class PaymentsController : ControllerBase
             });
         }
     }
-
-    private Guid GetCurrentUserId()
-    {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-        {
-            throw new UnauthorizedAccessException("Invalid user ID in token");
-        }
-        return userId;
-    }
-
-    private string GetClientIpAddress()
-    {
-        // Try to get IP from X-Forwarded-For header (if behind proxy)
-        var forwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(forwardedFor))
-        {
-            return forwardedFor.Split(',')[0].Trim();
-        }
-
-        // Try to get IP from X-Real-IP header
-        var realIp = Request.Headers["X-Real-IP"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(realIp))
-        {
-            return realIp;
-        }
-
-        // Fallback to connection remote IP
-        return Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
-    }
-
+    
     /// <summary>
     /// User chọn thanh toán bằng tiền mặt
     /// </summary>
@@ -242,39 +212,75 @@ public class PaymentsController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Staff xác nhận đã nhận tiền mặt
-    /// </summary>
-    [HttpPost("{paymentId:guid}/confirm-cash")]
-    [Authorize(Roles = "Staff,Admin")]
-    public async Task<ActionResult<ConfirmCashPaymentResponse>> ConfirmCashPayment(
-        Guid paymentId, 
-        [FromBody] ConfirmCashPaymentRequest request)
+   // Trong file: Controllers/PaymentsController.cs
+
+/// <summary>
+/// ⭐ LUỒNG 4A: Staff xác nhận đã nhận tiền mặt cho một thanh toán đang chờ.
+/// </summary>
+[HttpPost("{paymentId:guid}/complete-cash")] // Đổi tên endpoint cho nhất quán
+[Authorize(Roles = "Staff,Admin")]
+[ProducesResponseType(typeof(CompleteCashPaymentResponse), StatusCodes.Status200OK)]
+[ProducesResponseType(StatusCodes.Status400BadRequest)]
+public async Task<ActionResult<CompleteCashPaymentResponse>> CompleteCashPayment(Guid paymentId) // Bỏ tham số request body
+{
+    try
     {
-        try
+        var staffId = GetCurrentUserId();
+        
+        // 1. Gọi đúng phương thức từ service
+        var result = await _paymentService.CompleteCashPaymentAsync(paymentId, staffId);
+        
+        _logger.LogInformation("Staff {StaffId} completed CASH payment {PaymentId}", staffId, paymentId);
+        
+        // 2. Tạo đối tượng response thành công
+        return Ok(new CompleteCashPaymentResponse { Success = true, PaymentId = result.Id, Status = result.Status.ToString() });
+    }
+    // 3. Bắt các exception cụ thể mà service ném ra
+    catch (KeyNotFoundException ex)
+    {
+        _logger.LogWarning("Failed to complete cash payment. Payment not found: {PaymentId}. Message: {Message}", paymentId, ex.Message);
+        return NotFound(new CompleteCashPaymentResponse { Success = false, Message = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        _logger.LogWarning("Failed to complete cash payment {PaymentId}: {Message}", paymentId, ex.Message);
+        return BadRequest(new CompleteCashPaymentResponse { Success = false, Message = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error completing cash payment {PaymentId}", paymentId);
+        return StatusCode(500, new CompleteCashPaymentResponse
         {
-            var staffId = GetCurrentUserId();
-            var result = await _paymentService.ConfirmCashPaymentAsync(staffId, paymentId, request);
-            
-            if (result.Success)
-            {
-                _logger.LogInformation("Staff {StaffId} confirmed CASH payment {PaymentId}", staffId, paymentId);
-                return Ok(result);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to confirm CASH payment {PaymentId}: {Message}", paymentId, result.Message);
-                return BadRequest(result);
-            }
-        }
-        catch (Exception ex)
+            Success = false,
+            Message = "Có lỗi xảy ra khi xác nhận thanh toán."
+        });
+    }
+}
+
+    private Guid GetCurrentUserId()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
         {
-            _logger.LogError(ex, "Error confirming cash payment {PaymentId}", paymentId);
-            return StatusCode(500, new ConfirmCashPaymentResponse
-            {
-                Success = false,
-                Message = "Có lỗi xảy ra khi xác nhận thanh toán."
-            });
+            throw new UnauthorizedAccessException("Invalid user ID in token");
         }
+        return userId;
+    }
+
+    private string GetClientIpAddress()
+    {
+        var forwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwardedFor))
+        {
+            return forwardedFor.Split(',')[0].Trim();
+        }
+
+        var realIp = Request.Headers["X-Real-IP"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(realIp))
+        {
+            return realIp;
+        }
+
+        return Request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
     }
 }

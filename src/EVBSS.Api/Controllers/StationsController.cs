@@ -73,8 +73,7 @@ public class StationsController : ControllerBase
             var stationsWithBattery = await _db.BatteryUnits
                 .Where(b => 
                     b.BatteryModelId == batteryModelId.Value &&
-                    b.Status == BatteryStatus.Full &&
-                    !b.IsReserved)
+                    b.Status == BatteryStatus.Full)
                 .Select(b => b.StationId)
                 .Distinct()
                 .ToListAsync();
@@ -126,7 +125,7 @@ public class StationsController : ControllerBase
                 g.Count(b => b.Status == BatteryStatus.Charging),
                 g.Count(b => b.Status == BatteryStatus.Maintenance),
                 g.Count(),
-                g.Count(b => b.Status == BatteryStatus.Full && !b.IsReserved)
+                g.Count(b => b.Status == BatteryStatus.Full)
             ))
             .FirstOrDefaultAsync();
 
@@ -139,7 +138,7 @@ public class StationsController : ControllerBase
                 g.Key.Name,
                 g.Count(),
                 g.Count(b => b.Status == BatteryStatus.Full),
-                g.Count(b => b.Status == BatteryStatus.Full && !b.IsReserved),
+                g.Count(b => b.Status == BatteryStatus.Full),
                 g.Count(b => b.Status == BatteryStatus.Charging),
                 g.Count(b => b.Status == BatteryStatus.Maintenance)
             ))
@@ -196,7 +195,7 @@ public class StationsController : ControllerBase
 
         var totalBatteries = await _db.BatteryUnits.CountAsync(b => b.StationId == stationId);
         var availableBatteries = await _db.BatteryUnits
-            .CountAsync(b => b.StationId == stationId && b.Status == BatteryStatus.Full && !b.IsReserved);
+            .CountAsync(b => b.StationId == stationId && b.Status == BatteryStatus.Full);
 
         return new
         {

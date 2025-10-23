@@ -88,7 +88,6 @@ public class BatteryInventoryService : IBatteryInventoryService
                     BatteryModelId = request.BatteryModelId,
                     StationId = request.StationId,
                     Status = request.Status,
-                    IsReserved = false,
                     UpdatedAt = DateTime.UtcNow
                 };
                 batteryUnits.Add(batteryUnit);
@@ -142,8 +141,7 @@ public class BatteryInventoryService : IBatteryInventoryService
                 .Where(bu => 
                     bu.BatteryModelId == request.BatteryModelId &&
                     bu.StationId == request.StationId &&
-                    bu.Status == request.Status &&
-                    !bu.IsReserved)
+                    bu.Status == request.Status)
                 .Take(request.Quantity)
                 .ToListAsync();
 
@@ -231,8 +229,7 @@ public class BatteryInventoryService : IBatteryInventoryService
                 .Where(bu => 
                     bu.BatteryModelId == request.BatteryModelId &&
                     bu.StationId == request.StationId &&
-                    bu.Status == request.FromStatus &&
-                    !bu.IsReserved)
+                    bu.Status == request.FromStatus)
                 .Take(request.Quantity)
                 .ToListAsync();
 
@@ -300,9 +297,11 @@ public class BatteryInventoryService : IBatteryInventoryService
                     ModelName = g.Key.ModelName,
                     TotalQuantity = g.Sum(bi => bi.Quantity),
                     FullQuantity = g.Where(bi => bi.Status == BatteryStatus.Full).Sum(bi => bi.Quantity),
+                    ReservedQuantity = g.Where(bi => bi.Status == BatteryStatus.Reserved).Sum(bi => bi.Quantity),
+                    InUseQuantity = g.Where(bi => bi.Status == BatteryStatus.InUse).Sum(bi => bi.Quantity),
                     ChargingQuantity = g.Where(bi => bi.Status == BatteryStatus.Charging).Sum(bi => bi.Quantity),
+                    DepletedQuantity = g.Where(bi => bi.Status == BatteryStatus.Depleted).Sum(bi => bi.Quantity),
                     MaintenanceQuantity = g.Where(bi => bi.Status == BatteryStatus.Maintenance).Sum(bi => bi.Quantity),
-                    IssuedQuantity = g.Where(bi => bi.Status == BatteryStatus.Issued).Sum(bi => bi.Quantity),
                     LastUpdated = g.Max(bi => bi.UpdatedAt)
                 })
                 .ToList();
