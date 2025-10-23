@@ -28,6 +28,11 @@ public class InvalidCheckInTimeException : Exception
     public InvalidCheckInTimeException(string message) : base(message) {}
 }
 
+public class NoActiveSubscriptionException : Exception
+{
+    public NoActiveSubscriptionException() : base("Bạn không có gói subscription hoạt động hoặc đã hết lượt sử dụng. Vui lòng mua gói mới hoặc thanh toán theo lần.") {}
+}
+
 /// <summary>
 /// Service xử lý logic slot-based reservation
 /// </summary>
@@ -96,7 +101,17 @@ public class SlotReservationService
     }
 
     /// <summary>
-    /// Tạo reservation mới theo slot
+    /// ⭐ LUỒNG 3: Tạo reservation mới theo slot (MIỄN PHÍ - dùng subscription)
+    /// <para>
+    /// - Dành cho user có gói subscription active và còn lượt sử dụng.
+    /// - KHÔNG tạo Payment record (vì thanh toán qua gói hàng tháng).
+    /// - Validate: User có subscription active, còn lượt swap, slot còn trống.
+    /// </para>
+    /// <para>
+    /// 🔄 So sánh với LUỒNG 2 (Pay-per-Swap):
+    /// - LUỒNG 2: PaymentService.CreatePayPerSwapReservationAsync → Tạo BOTH Reservation + Payment.
+    /// - LUỒNG 3: SlotReservationService.CreateReservationAsync → Chỉ tạo Reservation (no Payment).
+    /// </para>
     /// </summary>
     public async Task<Reservation> CreateReservationAsync(
         Guid userId,
@@ -116,6 +131,37 @@ public class SlotReservationService
         {
             throw new ActiveReservationExistsException();
         }
+        
+        // ⭐ LUỒNG 3: Validation subscription (required for free booking)
+        // Người dùng PHẢI có gói subscription active và còn lượt sử dụng
+        var activeSubscription = await _db.UserSubscriptions
+            .Include(s => s.SubscriptionPlan)
+            .FirstOrDefaultAsync(s => 
+                s.UserId == userId && 
+                s.IsActive &&
+                s.CurrentBillingPeriodEnd >= DateTime.UtcNow); // Gói chưa hết hạn
+        
+        if (activeSubscription == null)
+        {
+            throw new NoActiveSubscriptionException();
+        }
+        
+        // Check swap limit (null = unlimited)
+        if (activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
+        {
+            if (activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
+            {
+                throw new NoActiveSubscriptionException();
+            }
+        }
+        
+        var swapsRemaining = activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue
+            ? activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value - activeSubscription.CurrentMonthSwapCount
+            : int.MaxValue;
+            
+        _logger.LogInformation("User {UserId} has active subscription {SubscriptionId} ({PlanName}) with {SwapsRemaining} swaps remaining",
+            userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, 
+            swapsRemaining == int.MaxValue ? "unlimited" : swapsRemaining);
         
         // Validation 2: Slot phải trong tương lai (ít nhất 1 giờ trước) - TẠMĐỪNG
         // var slotDateTime = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
@@ -147,7 +193,8 @@ public class SlotReservationService
             throw new SlotNotAvailableException("Slot này đã đầy. Vui lòng chọn slot khác.");
         }
         
-        // Tạo reservation
+        // ⭐ LUỒNG 3: Tạo reservation (KHÔNG tạo Payment vì dùng gói subscription)
+        // Note: LUỒNG 2 (Pay-per-Swap) tạo cả Reservation + Payment trong PaymentService
         var reservation = new Reservation
         {
             UserId = userId,
@@ -167,7 +214,7 @@ public class SlotReservationService
         _db.Reservations.Add(reservation);
         await _db.SaveChangesAsync();
         
-        _logger.LogInformation("Created reservation {ReservationId} for user {UserId} at slot {SlotStart}-{SlotEnd}", 
+        _logger.LogInformation("✅ LUỒNG 3: Created subscription-based reservation {ReservationId} for user {UserId} at slot {SlotStart}-{SlotEnd} (no payment required)", 
             reservation.Id, userId, slotStartTime, slotEndTime);
         
         return reservation;

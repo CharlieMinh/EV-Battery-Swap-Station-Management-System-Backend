@@ -26,6 +26,23 @@ public class UserSubscriptionDto
     // ✅ SIMPLIFIED: Swap counter instead of km tracking
     public int CurrentMonthSwapCount { get; set; }
     
+    // ⭐ LUỒNG 3: Computed properties for Frontend compatibility
+    /// <summary>
+    /// Alias for CurrentMonthSwapCount (Frontend expects "swapsUsed")
+    /// </summary>
+    public int SwapsUsed => CurrentMonthSwapCount;
+    
+    /// <summary>
+    /// Swap limit from SubscriptionPlan (Frontend expects "swapsLimit" at root level)
+    /// Will be populated after SubscriptionPlan is loaded
+    /// </summary>
+    public int? SwapsLimit => SubscriptionPlan?.MaxSwapsPerMonth;
+    
+    /// <summary>
+    /// Remaining swaps in current billing period (null = unlimited)
+    /// </summary>
+    public int? SwapsRemaining => SwapsLimit.HasValue ? SwapsLimit.Value - SwapsUsed : null;
+    
     // Payment info
     public decimal DepositPaid { get; set; }
     public DateTime? DepositPaidDate { get; set; }
