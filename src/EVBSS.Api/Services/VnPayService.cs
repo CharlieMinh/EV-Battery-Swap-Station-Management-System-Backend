@@ -131,6 +131,7 @@ public class VnPayService : IVnPayService
             // 2. Find payment by TxnRef
             var payment = await _context.Payments
                 .Include(p => p.UserSubscription)
+                .Include(p => p.Reservation)  // ⭐ LUỒNG 2: Include Reservation for pay-per-swap
                 .FirstOrDefaultAsync(p => p.VnpTxnRef == callback.vnp_TxnRef);
 
             if (payment == null)
@@ -165,9 +166,10 @@ public class VnPayService : IVnPayService
                 payment.Status = PaymentStatus.Completed;
                 payment.CompletedAt = DateTime.UtcNow;
 
-                // ⭐ KÍCH HOẠT SUBSCRIPTION (nếu chưa active)
-                if (payment.UserSubscription != null)
+                // ⭐ Phân nhánh xử lý theo payment.Type
+                if (payment.Type == PaymentType.Subscription && payment.UserSubscription != null)
                 {
+                    // 🔹 LUỒNG 1: KÍCH HOẠT SUBSCRIPTION (nếu chưa active)
                     // Kịch bản 1: Subscription MỚI (pending) → Kích hoạt lần đầu
                     if (!payment.UserSubscription.IsActive)
                     {
@@ -202,6 +204,17 @@ public class VnPayService : IVnPayService
                             payment.UserSubscription.UserId
                         );
                     }
+                }
+                else if (payment.Type == PaymentType.PayPerSwap && payment.Reservation != null)
+                {
+                    // 🔹 LUỒNG 2: PAY-PER-SWAP - Chỉ log, không update reservation status
+                    // Reservation status sẽ được update khi user check-in tại trạm
+                    _logger.LogInformation(
+                        "Pay-per-swap payment {PaymentId} completed for reservation {ReservationId}. User {UserId} can now check-in at station.",
+                        payment.Id, 
+                        payment.Reservation.Id,
+                        payment.UserId
+                    );
                 }
 
                 _logger.LogInformation("Payment {PaymentId} completed successfully for amount {Amount}", payment.Id, amount);

@@ -263,9 +263,43 @@ public class SlotReservationService
         {
             throw new InvalidOperationException($"Reservation đã {reservation.Status}. Không thể check-in.");
         }
+
+        // ⭐ TASK 25 & 26: Validate and auto-confirm PayPerSwap payment (LUỒNG 2)
+        var now = DateTime.UtcNow;  // Move now declaration here to reuse
+        
+        var payment = await _db.Payments
+            .FirstOrDefaultAsync(p => p.ReservationId == reservationId && p.Type == PaymentType.PayPerSwap);
+        
+        if (payment != null)
+        {
+            // TASK 26: Auto-confirm cash payments (CÁCH 2)
+            if (payment.Status == PaymentStatus.Pending)
+            {
+                if (payment.Method == PaymentMethod.Cash)
+                {
+                    // Auto-confirm cash during check-in
+                    payment.Status = PaymentStatus.Completed;
+                    payment.ProcessedByStaffId = staffId;
+                    payment.CompletedAt = now;
+                    
+                    _logger.LogInformation(
+                        "Auto-confirmed cash payment {PaymentId} for reservation {ReservationId} during check-in by staff {StaffId}",
+                        payment.Id, reservationId, staffId);
+                }
+                else if (payment.Method == PaymentMethod.VNPay)
+                {
+                    throw new InvalidOperationException(
+                        "Thanh toán VNPay chưa hoàn tất. Vui lòng yêu cầu khách hàng hoàn tất thanh toán trực tuyến trước khi check-in.");
+                }
+            }
+            else if (payment.Status != PaymentStatus.Completed)
+            {
+                throw new InvalidOperationException(
+                    $"Thanh toán chưa hoàn tất (Status: {payment.Status}). Không thể check-in.");
+            }
+        }
         
         // Validation: Phải trong check-in window
-        var now = DateTime.UtcNow;
         if (!ReservationSlotConfig.IsWithinCheckInWindow(
             reservation.SlotDate, 
             reservation.SlotStartTime, 

@@ -104,6 +104,7 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<SlotReservationService>();
 builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();  // ⭐ LUỒNG 2: Required for CreatePayPerSwapReservationAsync
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddScoped<IEmailService, EmailService>();

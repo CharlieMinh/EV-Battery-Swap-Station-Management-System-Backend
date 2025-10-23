@@ -198,7 +198,7 @@ public class AppDbContext : DbContext
             .HasForeignKey(us => us.VehicleId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Payment (✅ Refactored to link with Subscription)
+        // Payment (✅ Refactored to link with Subscription OR Reservation)
         b.Entity<Payment>()
             .HasIndex(p => p.PaymentReference).IsUnique();
         b.Entity<Payment>()
@@ -212,6 +212,11 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(p => p.UserSubscriptionId)
             .OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Payment>()
+            .HasOne(p => p.Reservation)
+            .WithMany()
+            .HasForeignKey(p => p.ReservationId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.Entity<Payment>()
             .HasOne(p => p.User)
             .WithMany()
