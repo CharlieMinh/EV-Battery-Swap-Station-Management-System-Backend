@@ -17,6 +17,23 @@ public interface IPaymentService
     Task<Payment> CompleteCashPaymentAsync(Guid paymentId, Guid staffId);
 
     Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(Guid userId, CreatePayPerSwapReservationRequest request, string ipAddress);
+    
+    /// <summary>
+    /// Lấy danh sách payments (cho Staff/Admin dashboard)
+    /// </summary>
+    Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
+        int page, 
+        int pageSize, 
+        PaymentStatus? status = null, 
+        PaymentMethod? method = null,
+        PaymentType? type = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null);
+    
+    /// <summary>
+    /// Lấy chi tiết 1 payment
+    /// </summary>
+    Task<PaymentDetailResponse?> GetPaymentDetailAsync(Guid paymentId);
 }
 
 public class PaymentService : IPaymentService
@@ -251,5 +268,156 @@ public class PaymentService : IPaymentService
         var hashBytes = hmac.ComputeHash(dataBytes);
         
         return Convert.ToHexString(hashBytes).ToLower();
+    }
+
+    /// <summary>
+    /// Lấy danh sách payments với filtering và pagination (cho Staff/Admin)
+    /// </summary>
+    public async Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
+        int page, 
+        int pageSize, 
+        PaymentStatus? status = null, 
+        PaymentMethod? method = null,
+        PaymentType? type = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null)
+    {
+        var query = _context.Payments
+            .Include(p => p.User)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.SubscriptionPlan)
+            .Include(p => p.Reservation)
+            .AsQueryable();
+
+        // Apply filters
+        if (status.HasValue)
+            query = query.Where(p => p.Status == status.Value);
+
+        if (method.HasValue)
+            query = query.Where(p => p.Method == method.Value);
+
+        if (type.HasValue)
+            query = query.Where(p => p.Type == type.Value);
+
+        if (fromDate.HasValue)
+            query = query.Where(p => p.CreatedAt >= fromDate.Value);
+
+        if (toDate.HasValue)
+            query = query.Where(p => p.CreatedAt <= toDate.Value);
+
+        // Get total count
+        var totalCount = await query.CountAsync();
+
+        // Apply pagination and get results
+        var payments = await query
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new PaymentListResponse
+            {
+                Id = p.Id,
+                UserId = p.UserId,
+                UserName = p.User.Name,
+                UserEmail = p.User.Email,
+                UserPhone = p.User.Phone,
+                UserSubscriptionId = p.UserSubscriptionId,
+                SubscriptionPlanName = p.UserSubscription != null ? p.UserSubscription.SubscriptionPlan.Name : null,
+                ReservationId = p.ReservationId,
+                Method = p.Method.ToString(),
+                Type = p.Type.ToString(),
+                Amount = p.Amount,
+                Status = p.Status.ToString(),
+                Description = p.Description,
+                VnpTxnRef = p.VnpTxnRef,
+                PaymentReference = p.PaymentReference,
+                VnpResponseCode = p.VnpResponseCode,
+                VnpTransactionNo = p.VnpTransactionNo,
+                CreatedAt = p.CreatedAt,
+                CompletedAt = p.CompletedAt,
+                ProcessedByStaffId = p.ProcessedByStaffId,
+                ProcessedByStaffName = p.ProcessedByStaffId.HasValue 
+                    ? _context.Users.Where(u => u.Id == p.ProcessedByStaffId).Select(u => u.Name).FirstOrDefault()
+                    : null
+            })
+            .ToListAsync();
+
+        return (payments, totalCount);
+    }
+
+    /// <summary>
+    /// Lấy chi tiết 1 payment (cho Staff/Admin)
+    /// </summary>
+    public async Task<PaymentDetailResponse?> GetPaymentDetailAsync(Guid paymentId)
+    {
+        var payment = await _context.Payments
+            .Include(p => p.User)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.SubscriptionPlan)
+            .Include(p => p.Reservation)
+                .ThenInclude(r => r!.Station)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
+
+        if (payment == null)
+            return null;
+
+        var detail = new PaymentDetailResponse
+        {
+            Id = payment.Id,
+            UserId = payment.UserId,
+            UserName = payment.User.Name,
+            UserEmail = payment.User.Email,
+            UserPhone = payment.User.Phone,
+            UserSubscriptionId = payment.UserSubscriptionId,
+            SubscriptionPlanName = payment.UserSubscription?.SubscriptionPlan.Name,
+            ReservationId = payment.ReservationId,
+            Method = payment.Method.ToString(),
+            Type = payment.Type.ToString(),
+            Amount = payment.Amount,
+            Status = payment.Status.ToString(),
+            Description = payment.Description,
+            VnpTxnRef = payment.VnpTxnRef,
+            PaymentReference = payment.PaymentReference,
+            VnpResponseCode = payment.VnpResponseCode,
+            VnpTransactionNo = payment.VnpTransactionNo,
+            CreatedAt = payment.CreatedAt,
+            CompletedAt = payment.CompletedAt,
+            ProcessedByStaffId = payment.ProcessedByStaffId,
+            ProcessedByStaffName = payment.ProcessedByStaffId.HasValue 
+                ? await _context.Users.Where(u => u.Id == payment.ProcessedByStaffId).Select(u => u.Name).FirstOrDefaultAsync()
+                : null,
+            
+            // User info
+            User = new PaymentUserInfo
+            {
+                Id = payment.User.Id,
+                FullName = payment.User.Name ?? "N/A",
+                Email = payment.User.Email,
+                PhoneNumber = payment.User.Phone
+            },
+            
+            // Subscription info (if applicable)
+            Subscription = payment.UserSubscription != null ? new PaymentSubscriptionInfo
+            {
+                UserSubscriptionId = payment.UserSubscription.Id,
+                PlanName = payment.UserSubscription.SubscriptionPlan.Name,
+                Price = payment.UserSubscription.SubscriptionPlan.MonthlyPrice,
+                MaxSwapsPerMonth = payment.UserSubscription.SubscriptionPlan.MaxSwapsPerMonth,
+                StartDate = payment.UserSubscription.StartDate,
+                EndDate = payment.UserSubscription.EndDate
+            } : null,
+            
+            // Reservation info (if applicable)
+            Reservation = payment.Reservation != null ? new PaymentReservationInfo
+            {
+                ReservationId = payment.Reservation.Id,
+                StationName = payment.Reservation.Station.Name,
+                SlotDate = payment.Reservation.SlotDate,
+                SlotStartTime = payment.Reservation.SlotStartTime,
+                SlotEndTime = payment.Reservation.SlotEndTime,
+                Status = payment.Reservation.Status.ToString()
+            } : null
+        };
+
+        return detail;
     }
 }

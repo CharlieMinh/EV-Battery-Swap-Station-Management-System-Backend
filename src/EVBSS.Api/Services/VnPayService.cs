@@ -47,7 +47,7 @@ public class VnPayService : IVnPayService
                 return new VnPayPaymentResponse 
                 { 
                     Success = false, 
-                    Message = "Gói subscription không tồn tại hoặc không thuộc về bạn." 
+                    Message = "Gói dịch vụ không tồn tại hoặc không thuộc về bạn." 
                 };
             }
 
@@ -326,5 +326,5 @@ public class VnPayService : IVnPayService
         return $"EVB{DateTime.Now:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
     }
 
-    // ✅ INVOICE-RELATED HELPER METHODS REMOVED
+   
 }
