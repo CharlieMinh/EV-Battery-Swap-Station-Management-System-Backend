@@ -13,6 +13,10 @@ public class StaffDetailResponse
     public string Status { get; set; } = default!; // "Active" or "Locked"
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLogin { get; set; }
+
+    // Station assignment
+    public Guid? StationId { get; set; }
+    public string? StationName { get; set; }
     
     // Staff work statistics
     /// <summary>

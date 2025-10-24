@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251024092049_AddStationAssignmentToUser")]
+    partial class AddStationAssignmentToUser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -94,6 +97,11 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("BatteryModelId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("IsReserved")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("Serial")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -115,6 +123,8 @@ namespace EVBSS.Api.Migrations
                         .IsUnique();
 
                     b.HasIndex("StationId", "Status");
+
+                    b.HasIndex("StationId", "Status", "IsReserved");
 
                     b.ToTable("BatteryUnits");
                 });
@@ -240,9 +250,7 @@ namespace EVBSS.Api.Migrations
 
                     b.HasIndex("ProcessedByStaffId");
 
-                    b.HasIndex("ReservationId")
-                        .IsUnique()
-                        .HasFilter("[ReservationId] IS NOT NULL");
+                    b.HasIndex("ReservationId");
 
                     b.HasIndex("StationId");
 
@@ -841,8 +849,8 @@ namespace EVBSS.Api.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("EVBSS.Api.Models.Reservation", "Reservation")
-                        .WithOne("Payment")
-                        .HasForeignKey("EVBSS.Api.Models.Payment", "ReservationId")
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("EVBSS.Api.Models.Station", "Station")
@@ -1079,9 +1087,6 @@ namespace EVBSS.Api.Migrations
             modelBuilder.Entity("EVBSS.Api.Models.Station", b =>
                 {
                     b.Navigation("Staff");
-            modelBuilder.Entity("EVBSS.Api.Models.Reservation", b =>
-                {
-                    b.Navigation("Payment");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.SubscriptionPlan", b =>

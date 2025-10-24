@@ -45,6 +45,21 @@ public class UsersController : ControllerBase
             return BadRequest(new { error = "Cannot create Admin accounts through this endpoint. Please contact system administrator." });
         }
 
+        // Validate StationId for Staff role
+        if (req.Role == Role.Staff)
+        {
+            if (!req.StationId.HasValue)
+            {
+                return BadRequest(new { error = "StationId is required for Staff role." });
+            }
+
+            var stationExists = await _db.Stations.AnyAsync(s => s.Id == req.StationId.Value);
+            if (!stationExists)
+            {
+                return BadRequest(new { error = "Invalid StationId." });
+            }
+        }
+
         // Create new user
         var user = new User
         {
@@ -54,11 +69,15 @@ public class UsersController : ControllerBase
             Phone = req.PhoneNumber?.Trim(),
             Role = req.Role,
             Status = req.Status ?? UserStatus.Active, // Default to Active if not specified
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            StationId = req.Role == Role.Staff ? req.StationId : null
         };
 
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
+
+        // Load station details for the response
+        await _db.Entry(user).Reference(u => u.Station).LoadAsync();
 
         return CreatedAtAction(
             nameof(GetUserById), 
@@ -72,7 +91,9 @@ public class UsersController : ControllerBase
                 Role = user.Role.ToString(),
                 Status = user.Status.ToString(),
                 CreatedAt = user.CreatedAt,
-                LastLogin = user.LastLogin
+                LastLogin = user.LastLogin,
+                StationId = user.StationId,
+                StationName = user.Station?.Name
             });
     }
 
@@ -237,6 +258,7 @@ public class UsersController : ControllerBase
         var totalItems = await query.CountAsync();
 
         var staff = await query
+            .Include(u => u.Station) // Eager load station data
             .OrderByDescending(u => u.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -249,7 +271,9 @@ public class UsersController : ControllerBase
                 Role = u.Role.ToString(),
                 Status = u.Status.ToString(),
                 CreatedAt = u.CreatedAt,
-                LastLogin = u.LastLogin
+                LastLogin = u.LastLogin,
+                StationId = u.StationId,
+                StationName = u.Station != null ? u.Station.Name : null
             })
             .ToListAsync();
 
@@ -273,6 +297,7 @@ public class UsersController : ControllerBase
     {
         var staff = await _db.Users
             .AsNoTracking()
+            .Include(u => u.Station) // Eager load station data
             .FirstOrDefaultAsync(u => u.Id == id && u.Role == Role.Staff);
 
         if (staff == null)
@@ -314,6 +339,8 @@ public class UsersController : ControllerBase
             Status = staff.Status.ToString(),
             CreatedAt = staff.CreatedAt,
             LastLogin = staff.LastLogin,
+            StationId = staff.StationId,
+            StationName = staff.Station?.Name,
             TotalReservationsVerified = totalReservationsVerified,
             TotalSwapTransactions = totalSwapTransactions,
             RecentReservationsVerified = recentReservationsVerified,
@@ -447,7 +474,27 @@ public class UsersController : ControllerBase
             user.Status = req.Status.Value;
         }
 
+        // Only Admin can change the station
+        if (req.StationId.HasValue && currentUserRole == Role.Admin)
+        {
+            // Check if the station exists before assigning
+            var stationExists = await _db.Stations.AnyAsync(s => s.Id == req.StationId.Value);
+            if (!stationExists)
+            {
+                return BadRequest(new { error = "Invalid StationId." });
+            }
+            user.StationId = req.StationId.Value;
+        }
+        // Allow admin to un-assign a staff from a station
+        else if (!req.StationId.HasValue && currentUserRole == Role.Admin && user.Role == Role.Staff)
+        {
+            user.StationId = null;
+        }
+
         await _db.SaveChangesAsync();
+
+        // Load station details for the response
+        await _db.Entry(user).Reference(u => u.Station).LoadAsync();
 
         return Ok(new UserResponse
         {
@@ -458,7 +505,9 @@ public class UsersController : ControllerBase
             Role = user.Role.ToString(),
             Status = user.Status.ToString(),
             CreatedAt = user.CreatedAt,
-            LastLogin = user.LastLogin
+            LastLogin = user.LastLogin,
+            StationId = user.StationId,
+            StationName = user.Station?.Name
         });
     }
 

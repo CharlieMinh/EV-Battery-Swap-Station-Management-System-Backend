@@ -21,4 +21,9 @@ public class UpdateUserRequest
     /// User account status (Admin only)
     /// </summary>
     public UserStatus? Status { get; set; }
+
+    /// <summary>
+    /// Station ID to assign the staff member to (Admin only)
+    /// </summary>
+    public Guid? StationId { get; set; }
 }
