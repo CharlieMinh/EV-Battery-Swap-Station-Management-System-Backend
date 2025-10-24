@@ -110,12 +110,12 @@ public class VehiclesController : ControllerBase
         if (!vehicleModel.IsActive)
             return BadRequest(new { error = new { code = "VEHICLE_MODEL_INACTIVE", message = "This vehicle model is not supported for battery swap service." } });
 
-        // Không trùng trong phạm vi user
-        if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.VIN == vin))
-            return Conflict(new { error = new { code = "VIN_EXISTS", message = "VIN already exists." } });
+        // VIN và Plate phải là duy nhất trên toàn hệ thống
+        if (await _db.Vehicles.AnyAsync(v => v.VIN == vin))
+            return Conflict(new { error = new { code = "VIN_EXISTS", message = "VIN already exists in the system." } });
 
-        if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.Plate == plate))
-            return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists." } });
+        if (await _db.Vehicles.AnyAsync(v => v.Plate == plate))
+            return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists in the system." } });
 
         // Upload file ảnh xe
         string photoUrl;
@@ -187,12 +187,12 @@ public class VehiclesController : ControllerBase
         if (!vehicleModel.IsActive)
             return BadRequest(new { error = new { code = "VEHICLE_MODEL_INACTIVE", message = "This vehicle model is not supported for battery swap service." } });
 
-        // Không trùng trong phạm vi user
-        if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.VIN == vin))
-            return Conflict(new { error = new { code = "VIN_EXISTS", message = "VIN already exists." } });
+        // Kiểm tra trùng lặp trên toàn hệ thống
+        if (await _db.Vehicles.AnyAsync(v => v.VIN == vin))
+            return Conflict(new { error = new { code = "VIN_EXISTS", message = "VIN already exists in the system." } });
 
-        if (await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.Plate == plate))
-            return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists." } });
+        if (await _db.Vehicles.AnyAsync(v => v.Plate == plate))
+            return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists in the system." } });
 
         var entity = new Vehicle
         {
@@ -241,9 +241,9 @@ public class VehiclesController : ControllerBase
         {
             var plate = req.Plate.Trim().ToUpperInvariant();
             
-            // Check không trùng với xe khác của user
-            if (plate != vehicle.Plate && await _db.Vehicles.AnyAsync(v => v.UserId == userId && v.Plate == plate && v.Id != id))
-                return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists." } });
+            // Plate phải là duy nhất trên toàn hệ thống
+            if (plate != vehicle.Plate && await _db.Vehicles.AnyAsync(v => v.Plate == plate && v.Id != id))
+                return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists in the system." } });
 
             vehicle.Plate = plate;
         }
