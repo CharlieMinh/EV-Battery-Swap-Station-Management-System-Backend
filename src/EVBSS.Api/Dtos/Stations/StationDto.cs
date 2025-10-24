@@ -1,7 +1,9 @@
+
 namespace EVBSS.Api.Dtos.Stations;
 
 public record StationDto(
-    Guid Id, 
+    Guid Id,
+    string? DisplayId,
     string Name, 
     string Address, 
     string City, 
