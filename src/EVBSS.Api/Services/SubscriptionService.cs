@@ -322,7 +322,7 @@ public class SubscriptionService : ISubscriptionService
             return new CancelSubscriptionResponse
             {
                 Success = false,
-                Message = "Không tìm thấy gói subscription đang hoạt động."
+                Message = "Không tìm thấy gói dịch vụ đang hoạt động."
             };
         }
 
