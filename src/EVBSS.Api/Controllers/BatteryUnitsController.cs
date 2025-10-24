@@ -305,6 +305,106 @@ public class BatteryUnitsController : ControllerBase
     }
 
     /// <summary>
+    /// Tạo hàng loạt pin mới cho một trạm dựa trên số lượng
+    /// </summary>
+    [HttpPost("bulk-create")]
+    public async Task<ActionResult<ApiResponse<object>>> BulkCreateBatteryUnits(BulkCreateBatteryUnitsDto dto)
+    {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var station = await _context.Stations.FindAsync(dto.StationId);
+            if (station == null)
+            {
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Station not found" });
+            }
+
+            var batteryModel = await _context.BatteryModels.FindAsync(dto.BatteryModelId);
+            if (batteryModel == null)
+            {
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Battery model not found" });
+            }
+
+            // New serial generation logic starts here
+            var prefix = new string(batteryModel.Name.Take(3).ToArray()).ToUpper();
+            var searchPrefix = $"{prefix}-";
+
+            var lastBattery = await _context.BatteryUnits
+                .Where(b => b.Serial.StartsWith(searchPrefix))
+                .OrderByDescending(b => b.Serial)
+                .FirstOrDefaultAsync();
+
+            int nextNumber = 1;
+            if (lastBattery != null)
+            {
+                var lastNumberStr = lastBattery.Serial.Split('-').Last();
+                if (int.TryParse(lastNumberStr, out int lastNumber))
+                {
+                    nextNumber = lastNumber + 1;
+                }
+            }
+            // New serial generation logic ends here
+
+            var newBatteryUnits = new List<BatteryUnit>();
+            for (int i = 0; i < dto.Quantity; i++)
+            {
+                var newSerial = $"{prefix}-{(nextNumber + i):D3}";
+                newBatteryUnits.Add(new BatteryUnit
+                {
+                    Serial = newSerial, // Use new serial format
+                    BatteryModelId = dto.BatteryModelId,
+                    StationId = dto.StationId,
+                    Status = BatteryStatus.Full,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+            
+            // Check if any of the generated serials already exist (to handle race conditions)
+            var generatedSerials = newBatteryUnits.Select(b => b.Serial).ToList();
+            var existingSerials = await _context.BatteryUnits.Where(b => generatedSerials.Contains(b.Serial)).Select(b => b.Serial).ToListAsync();
+            if (existingSerials.Any())
+            {
+                return Conflict(new ApiResponse<object> { Success = false, Message = $"Could not generate unique serial numbers. The following already exist or were duplicated: {string.Join(", ", existingSerials)}. Please try again." });
+            }
+
+            _context.BatteryUnits.AddRange(newBatteryUnits);
+
+            // Update inventory
+            var inventory = await _context.BatteryInventories.FirstOrDefaultAsync(i => i.StationId == dto.StationId && i.BatteryModelId == dto.BatteryModelId);
+            if (inventory == null)
+            {
+                _context.BatteryInventories.Add(new BatteryInventory
+                {
+                    StationId = dto.StationId,
+                    BatteryModelId = dto.BatteryModelId,
+                    Quantity = dto.Quantity,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                inventory.Quantity += dto.Quantity;
+                inventory.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok(new ApiResponse<object> 
+            { 
+                Success = true, 
+                Message = $"Successfully created {dto.Quantity} battery units for station '{station.Name}' with serials starting from {prefix}-{nextNumber:D3}." 
+            });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Error bulk creating battery units for station {StationId}", dto.StationId);
+            return StatusCode(500, new ApiResponse<object> { Success = false, Message = "Internal server error" });
+        }
+    }
+
+    /// <summary>
     /// Lấy thông tin chi tiết một pin
     /// </summary>
     [HttpGet("{id}")]
