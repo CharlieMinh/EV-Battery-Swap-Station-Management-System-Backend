@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251023154110_RemoveIsReservedProperty")]
+    partial class RemoveIsReservedProperty
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -73,9 +76,6 @@ namespace EVBSS.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
-
-                    b.Property<decimal>("SwapPricePerSession")
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("Voltage")
                         .HasColumnType("int");
@@ -606,9 +606,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("StationId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -616,8 +613,6 @@ namespace EVBSS.Api.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique();
-
-                    b.HasIndex("StationId");
 
                     b.ToTable("Users");
                 });
@@ -1003,15 +998,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("Vehicle");
                 });
 
-            modelBuilder.Entity("EVBSS.Api.Models.User", b =>
-                {
-                    b.HasOne("EVBSS.Api.Models.Station", "Station")
-                        .WithMany("Staff")
-                        .HasForeignKey("StationId");
-
-                    b.Navigation("Station");
-                });
-
             modelBuilder.Entity("EVBSS.Api.Models.UserSubscription", b =>
                 {
                     b.HasOne("EVBSS.Api.Models.SubscriptionPlan", "SubscriptionPlan")
@@ -1076,9 +1062,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("CompatibleBatteryModel");
                 });
 
-            modelBuilder.Entity("EVBSS.Api.Models.Station", b =>
-                {
-                    b.Navigation("Staff");
             modelBuilder.Entity("EVBSS.Api.Models.Reservation", b =>
                 {
                     b.Navigation("Payment");
