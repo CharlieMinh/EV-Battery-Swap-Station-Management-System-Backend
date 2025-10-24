@@ -31,7 +31,7 @@ public class StationsController : ControllerBase
                            .Skip((page - 1) * pageSize)
                            .Take(pageSize)
                            .Select(s => new StationDto(
-                               s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive,
+                               s.Id, s.DisplayId, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive,
                                s.OpenTime, s.CloseTime, s.PhoneNumber, s.PrimaryImageUrl,
                                s.IsOpenNow()))
                            .ToListAsync();
@@ -46,7 +46,7 @@ public class StationsController : ControllerBase
         var s = await _db.Stations.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (s is null) return NotFound(new { error = new { code = "STATION_NOT_FOUND", message = "Station not found" } });
         return new StationDto(
-            s.Id, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive,
+            s.Id, s.DisplayId, s.Name, s.Address, s.City, s.Lat, s.Lng, s.IsActive,
             s.OpenTime, s.CloseTime, s.PhoneNumber, s.PrimaryImageUrl,
             s.IsOpenNow());
     }
@@ -70,11 +70,10 @@ public class StationsController : ControllerBase
         // Bước 2: Nếu filter theo BatteryModelId → Chỉ giữ trạm có pin available
         if (batteryModelId.HasValue)
         {
-            var stationsWithBattery = await _db.BatteryUnits
+var stationsWithBattery = await _db.BatteryUnits
                 .Where(b => 
                     b.BatteryModelId == batteryModelId.Value &&
-                    b.Status == BatteryStatus.Full &&
-                    !b.IsReserved)
+                    b.Status == BatteryStatus.Full)
                 .Select(b => b.StationId)
                 .Distinct()
                 .ToListAsync();
@@ -126,7 +125,7 @@ public class StationsController : ControllerBase
                 g.Count(b => b.Status == BatteryStatus.Charging),
                 g.Count(b => b.Status == BatteryStatus.Maintenance),
                 g.Count(),
-                g.Count(b => b.Status == BatteryStatus.Full && !b.IsReserved)
+                g.Count(b => b.Status == BatteryStatus.Full)
             ))
             .FirstOrDefaultAsync();
 
@@ -139,9 +138,9 @@ public class StationsController : ControllerBase
                 g.Key.Name,
                 g.Count(),
                 g.Count(b => b.Status == BatteryStatus.Full),
-                g.Count(b => b.Status == BatteryStatus.Full && !b.IsReserved),
+                g.Count(b => b.Status == BatteryStatus.Full),
                 g.Count(b => b.Status == BatteryStatus.Charging),
-                g.Count(b => b.Status == BatteryStatus.Maintenance)
+g.Count(b => b.Status == BatteryStatus.Maintenance)
             ))
             .ToListAsync();
 
@@ -196,7 +195,7 @@ public class StationsController : ControllerBase
 
         var totalBatteries = await _db.BatteryUnits.CountAsync(b => b.StationId == stationId);
         var availableBatteries = await _db.BatteryUnits
-            .CountAsync(b => b.StationId == stationId && b.Status == BatteryStatus.Full && !b.IsReserved);
+            .CountAsync(b => b.StationId == stationId && b.Status == BatteryStatus.Full);
 
         return new
         {
