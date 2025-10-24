@@ -74,4 +74,5 @@ public class Reservation
     public BatteryModel BatteryModel { get; set; } = null!;
     public BatteryUnit? BatteryUnit { get; set; }
     public User? VerifiedByStaff { get; set; }
+    public Payment? Payment { get; set; }
 }

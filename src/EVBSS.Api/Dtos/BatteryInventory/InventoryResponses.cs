@@ -23,9 +23,11 @@ public class InventoryByModelResponse
     public string ModelName { get; set; } = string.Empty;
     public int TotalQuantity { get; set; }
     public int FullQuantity { get; set; }
+    public int ReservedQuantity { get; set; }
+    public int InUseQuantity { get; set; }
     public int ChargingQuantity { get; set; }
+    public int DepletedQuantity { get; set; }
     public int MaintenanceQuantity { get; set; }
-    public int IssuedQuantity { get; set; }
     public DateTime LastUpdated { get; set; }
 }
 

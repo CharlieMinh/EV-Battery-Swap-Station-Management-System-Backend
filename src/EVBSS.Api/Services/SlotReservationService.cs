@@ -7,32 +7,6 @@ using System.Text.Json;
 
 namespace EVBSS.Api.Services;
 
-// Custom Exceptions
-public class NoBatteryException : Exception
-{
-    public NoBatteryException() : base("No full battery available.") {}
-}
-
-public class ActiveReservationExistsException : Exception
-{
-    public ActiveReservationExistsException() : base("Bạn đã có lịch đặt đang hoạt động. Vui lòng hủy hoặc hoàn thành lịch cũ trước khi đặt mới.") {}
-}
-
-public class SlotNotAvailableException : Exception
-{
-    public SlotNotAvailableException(string message) : base(message) {}
-}
-
-public class InvalidCheckInTimeException : Exception
-{
-    public InvalidCheckInTimeException(string message) : base(message) {}
-}
-
-public class NoActiveSubscriptionException : Exception
-{
-    public NoActiveSubscriptionException() : base("Bạn không có gói subscription hoạt động hoặc đã hết lượt sử dụng. Vui lòng mua gói mới hoặc thanh toán theo lần.") {}
-}
-
 /// <summary>
 /// Service xử lý logic slot-based reservation
 /// </summary>
@@ -102,16 +76,6 @@ public class SlotReservationService
 
     /// <summary>
     /// ⭐ LUỒNG 3: Tạo reservation mới theo slot (MIỄN PHÍ - dùng subscription)
-    /// <para>
-    /// - Dành cho user có gói subscription active và còn lượt sử dụng.
-    /// - KHÔNG tạo Payment record (vì thanh toán qua gói hàng tháng).
-    /// - Validate: User có subscription active, còn lượt swap, slot còn trống.
-    /// </para>
-    /// <para>
-    /// 🔄 So sánh với LUỒNG 2 (Pay-per-Swap):
-    /// - LUỒNG 2: PaymentService.CreatePayPerSwapReservationAsync → Tạo BOTH Reservation + Payment.
-    /// - LUỒNG 3: SlotReservationService.CreateReservationAsync → Chỉ tạo Reservation (no Payment).
-    /// </para>
     /// </summary>
     public async Task<Reservation> CreateReservationAsync(
         Guid userId,
@@ -129,11 +93,10 @@ public class SlotReservationService
         
         if (hasActive)
         {
-            throw new ActiveReservationExistsException();
+            throw new ActiveReservationExistsException("Bạn đã có lịch đặt đang hoạt động. Vui lòng hủy hoặc hoàn thành lịch cũ trước khi đặt mới.");
         }
         
         // ⭐ LUỒNG 3: Validation subscription (required for free booking)
-        // Người dùng PHẢI có gói subscription active và còn lượt sử dụng
         var activeSubscription = await _db.UserSubscriptions
             .Include(s => s.SubscriptionPlan)
             .FirstOrDefaultAsync(s => 
@@ -143,15 +106,14 @@ public class SlotReservationService
         
         if (activeSubscription == null)
         {
-            throw new NoActiveSubscriptionException();
+            throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động hoặc đã hết lượt sử dụng. Vui lòng mua gói mới hoặc thanh toán theo lần.");
         }
         
-        // Check swap limit (null = unlimited)
         if (activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
         {
             if (activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
             {
-                throw new NoActiveSubscriptionException();
+                throw new NoActiveSubscriptionException("Bạn đã hết lượt đổi pin trong tháng này của gói.");
             }
         }
         
@@ -163,26 +125,17 @@ public class SlotReservationService
             userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, 
             swapsRemaining == int.MaxValue ? "unlimited" : swapsRemaining);
         
-        // Validation 2: Slot phải trong tương lai (ít nhất 1 giờ trước) - TẠMĐỪNG
-        // var slotDateTime = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
-        // if (slotDateTime <= DateTime.UtcNow.AddHours(1))
-        // {
-        //     throw new SlotNotAvailableException("Vui lòng đặt lịch trước ít nhất 1 giờ.");
-        // }
-        
-        // Validation 3: Không đặt quá xa (max 7 ngày)
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);  // UPDATED: Convert current DateTime to DateOnly
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var maxDate = today.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays);
         if (slotDate > maxDate)
         {
             throw new SlotNotAvailableException($"Chỉ có thể đặt lịch trong vòng {ReservationSlotConfig.MaxAdvanceBookingDays} ngày tới.");
         }
         
-        // Validation 4: Check slot capacity
         var currentCount = await _db.Reservations
             .CountAsync(r =>
                 r.StationId == stationId &&
-                r.SlotDate == slotDate &&  // UPDATED: Direct DateOnly comparison
+                r.SlotDate == slotDate &&
                 r.SlotStartTime == slotStartTime &&
                 r.SlotEndTime == slotEndTime &&
                 r.BatteryModelId == batteryModelId &&
@@ -193,22 +146,19 @@ public class SlotReservationService
             throw new SlotNotAvailableException("Slot này đã đầy. Vui lòng chọn slot khác.");
         }
         
-        // ⭐ LUỒNG 3: Tạo reservation (KHÔNG tạo Payment vì dùng gói subscription)
-        // Note: LUỒNG 2 (Pay-per-Swap) tạo cả Reservation + Payment trong PaymentService
         var reservation = new Reservation
         {
             UserId = userId,
             StationId = stationId,
             BatteryModelId = batteryModelId,
-            BatteryUnitId = null, // Chưa assign pin
-            SlotDate = slotDate,  // UPDATED: No need for .Date anymore
+            BatteryUnitId = null,
+            SlotDate = slotDate,
             SlotStartTime = slotStartTime,
             SlotEndTime = slotEndTime,
             Status = ReservationStatus.Pending,
             CreatedAt = DateTime.UtcNow
         };
         
-        // Generate QR Code
         reservation.QRCode = GenerateQRCode(reservation.Id);
         
         _db.Reservations.Add(reservation);
@@ -222,7 +172,6 @@ public class SlotReservationService
 
     /// <summary>
     /// Lấy thông tin chi tiết reservation theo ID
-    /// User chỉ xem được reservation của mình, Staff/Admin xem được tất cả
     /// </summary>
     public async Task<Reservation> GetReservationByIdAsync(Guid reservationId, Guid userId)
     {
@@ -237,7 +186,6 @@ public class SlotReservationService
         if (reservation == null)
             throw new KeyNotFoundException("Không tìm thấy lịch đặt");
 
-        // User chỉ xem được reservation của mình
         if (reservation.UserId != userId)
             throw new UnauthorizedAccessException("Bạn không có quyền xem lịch đặt này");
 
@@ -245,7 +193,7 @@ public class SlotReservationService
     }
 
     /// <summary>
-    /// Lấy danh sách reservations với filter (cho Admin/Staff)
+    /// Lấy danh sách reservations với filter
     /// </summary>
     public async Task<List<Reservation>> GetReservationsAsync(
         DateTime? date = null,
@@ -263,7 +211,7 @@ public class SlotReservationService
 
         if (date.HasValue)
         {
-            var dateOnly = DateOnly.FromDateTime(date.Value);  // UPDATED: Convert DateTime to DateOnly
+            var dateOnly = DateOnly.FromDateTime(date.Value);
             query = query.Where(r => r.SlotDate == dateOnly);
         }
 
@@ -283,14 +231,13 @@ public class SlotReservationService
     }
 
     /// <summary>
-    /// Staff check-in driver bằng QR Code
+    /// Staff check-in driver bằng QR Code (LUỒNG 4)
     /// </summary>
     public async Task<Reservation> CheckInAsync(
         Guid reservationId,
         string qrCodeData,
         Guid staffId)
     {
-        // Verify QR Code
         if (!VerifyQRCode(reservationId, qrCodeData))
         {
             throw new InvalidOperationException("QR Code không hợp lệ hoặc đã hết hạn.");
@@ -298,6 +245,7 @@ public class SlotReservationService
         
         var reservation = await _db.Reservations
             .Include(r => r.BatteryModel)
+            .Include(r => r.Payment) // Eager load the associated payment
             .FirstOrDefaultAsync(r => r.Id == reservationId);
         
         if (reservation == null)
@@ -305,48 +253,44 @@ public class SlotReservationService
             throw new KeyNotFoundException("Không tìm thấy reservation.");
         }
         
-        // Validation: Status phải là Pending
         if (reservation.Status != ReservationStatus.Pending)
         {
-            throw new InvalidOperationException($"Reservation đã {reservation.Status}. Không thể check-in.");
+            throw new InvalidOperationException($"Reservation đã ở trạng thái {reservation.Status}. Không thể check-in.");
         }
 
-        // ⭐ TASK 25 & 26: Validate and auto-confirm PayPerSwap payment (LUỒNG 2)
-        var now = DateTime.UtcNow;  // Move now declaration here to reuse
-        
-        var payment = await _db.Payments
-            .FirstOrDefaultAsync(p => p.ReservationId == reservationId && p.Type == PaymentType.PayPerSwap);
-        
-        if (payment != null)
+        var now = DateTime.UtcNow;
+
+        // LUỒNG 4: Phân tích kịch bản thanh toán
+        // Kịch bản 3 (Dùng gói): reservation.PaymentId == null -> Bỏ qua kiểm tra
+        if (reservation.Payment != null)
         {
-            // TASK 26: Auto-confirm cash payments (CÁCH 2)
+            // Kịch bản 2 (Trả lẻ): reservation.PaymentId != null
+            var payment = reservation.Payment;
             if (payment.Status == PaymentStatus.Pending)
             {
                 if (payment.Method == PaymentMethod.Cash)
                 {
-                    // Auto-confirm cash during check-in
-                    payment.Status = PaymentStatus.Completed;
-                    payment.ProcessedByStaffId = staffId;
-                    payment.CompletedAt = now;
-                    
-                    _logger.LogInformation(
-                        "Auto-confirmed cash payment {PaymentId} for reservation {ReservationId} during check-in by staff {StaffId}",
-                        payment.Id, reservationId, staffId);
+                    // Yêu cầu FE xử lý thu tiền mặt
+                    throw new PaymentPendingCashException(
+                        $"Cần thu {payment.Amount:N0} VND tiền mặt.",
+                        payment.Id,
+                        payment.Amount
+                    );
                 }
                 else if (payment.Method == PaymentMethod.VNPay)
                 {
-                    throw new InvalidOperationException(
-                        "Thanh toán VNPay chưa hoàn tất. Vui lòng yêu cầu khách hàng hoàn tất thanh toán trực tuyến trước khi check-in.");
+                    // Lỗi: Thanh toán VNPay chưa hoàn tất
+                    throw new InvalidOperationException("Thanh toán VNPay chưa hoàn tất. Vui lòng yêu cầu khách hàng hoàn tất thanh toán trên ứng dụng.");
                 }
             }
             else if (payment.Status != PaymentStatus.Completed)
             {
-                throw new InvalidOperationException(
-                    $"Thanh toán chưa hoàn tất (Status: {payment.Status}). Không thể check-in.");
+                // Lỗi chung cho các trạng thái khác (Failed, Cancelled, etc.)
+                throw new InvalidOperationException($"Thanh toán đang ở trạng thái không hợp lệ: {payment.Status}.");
             }
+            // Nếu payment.Status == Completed, không làm gì cả, tiếp tục quy trình
         }
         
-        // Validation: Phải trong check-in window
         if (!ReservationSlotConfig.IsWithinCheckInWindow(
             reservation.SlotDate, 
             reservation.SlotStartTime, 
@@ -362,29 +306,29 @@ public class SlotReservationService
                 $"Check-in chỉ được phép từ {earliest:HH:mm} đến {latest:HH:mm}. Hiện tại: {now:HH:mm}");
         }
         
-        // Assign battery
+        // Find the best available battery (longest time in 'Full' status)
         var battery = await _db.BatteryUnits
             .Where(b => 
                 b.StationId == reservation.StationId &&
                 b.BatteryModelId == reservation.BatteryModelId &&
-                b.Status == BatteryStatus.Full &&
-                !b.IsReserved)
+                b.Status == BatteryStatus.Full) // We only care if the battery is 'Full'
             .OrderBy(b => b.UpdatedAt)
             .FirstOrDefaultAsync();
         
         if (battery == null)
         {
-            throw new NoBatteryException();
+            throw new NoBatteryException("Không có pin phù hợp hoặc pin đã được sạc đầy tại trạm.");
         }
         
-        // Update reservation
+        // Atomically update reservation and battery status
         reservation.Status = ReservationStatus.CheckedIn;
         reservation.CheckedInAt = now;
         reservation.VerifiedByStaffId = staffId;
         reservation.BatteryUnitId = battery.Id;
         
-        // Mark battery as reserved
-        battery.IsReserved = true;
+        // Set battery status to 'Reserved' to prevent other transactions from picking it.
+        // This is more robust than a separate 'IsReserved' flag.
+        battery.Status = BatteryStatus.Reserved;
         battery.UpdatedAt = now;
         
         await _db.SaveChangesAsync();
@@ -413,19 +357,16 @@ public class SlotReservationService
             throw new KeyNotFoundException("Không tìm thấy reservation.");
         }
         
-        // Validation: Chỉ owner hoặc staff mới được hủy
         if (!isStaff && reservation.UserId != userId)
         {
             throw new UnauthorizedAccessException("Bạn không có quyền hủy reservation này.");
         }
         
-        // Validation: Chỉ hủy được nếu status = Pending
         if (reservation.Status != ReservationStatus.Pending)
         {
             throw new InvalidOperationException($"Không thể hủy reservation có status {reservation.Status}.");
         }
         
-        // Update status
         reservation.Status = ReservationStatus.Cancelled;
         reservation.CancelReason = reason;
         reservation.CancelNote = note;
@@ -443,20 +384,16 @@ public class SlotReservationService
     public async Task<int> ExpireOverdueReservationsAsync()
     {
         var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(now);  // UPDATED: Convert to DateOnly
+        var today = DateOnly.FromDateTime(now);
         var currentTime = now.TimeOfDay;
         
-        // Tìm reservations đã quá check-in window
-        // Note: Fetch pending reservations and filter in-memory to avoid LINQ translation issues
         var allPendingReservations = await _db.Reservations
             .Where(r => r.Status == ReservationStatus.Pending)
             .ToListAsync();
         
         var overdueReservations = allPendingReservations
             .Where(r => 
-                // Slot của ngày hôm qua - UPDATED: Direct DateOnly comparison
                 r.SlotDate < today ||
-                // Slot hôm nay nhưng đã quá window
                 (r.SlotDate == today && 
                  currentTime > r.SlotEndTime.Add(ReservationSlotConfig.CheckInBuffer)))
             .ToList();
@@ -477,9 +414,6 @@ public class SlotReservationService
         return overdueReservations.Count;
     }
 
-    /// <summary>
-    /// Generate QR Code cho reservation
-    /// </summary>
     private string GenerateQRCode(Guid reservationId)
     {
         var payload = new
@@ -495,9 +429,6 @@ public class SlotReservationService
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(combined));
     }
 
-    /// <summary>
-    /// Verify QR Code
-    /// </summary>
     private bool VerifyQRCode(Guid reservationId, string qrCodeData)
     {
         try
@@ -510,18 +441,15 @@ public class SlotReservationService
             var json = parts[0];
             var signature = parts[1];
             
-            // Verify signature
             var computedSignature = ComputeHMAC(json);
             if (signature != computedSignature) return false;
             
-            // Verify reservationId
             var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
             if (payload == null) return false;
             
             var rid = payload["rid"].GetString();
             if (rid != reservationId.ToString()) return false;
             
-            // Verify timestamp (QR valid trong 24h)
             var ts = payload["ts"].GetInt64();
             var qrTime = DateTimeOffset.FromUnixTimeSeconds(ts);
             var age = DateTimeOffset.UtcNow - qrTime;

@@ -12,6 +12,5 @@ public class BatteryUnit
     // Navs
     public BatteryModel Model { get; set; } = null!;
     public Station? Station { get; set; }
-    public bool IsReserved { get; set; } = false;
 
 }

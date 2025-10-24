@@ -94,8 +94,6 @@ public class AppDbContext : DbContext
 
         // BatteryUnit
         b.Entity<BatteryUnit>().HasIndex(u => u.Serial).IsUnique();
-        b.Entity<BatteryUnit>().HasIndex(u => new { u.StationId, u.Status, u.IsReserved }); // tìm nhanh "Full & !IsReserved"
-        b.Entity<BatteryUnit>().Property(u => u.IsReserved).HasDefaultValue(false);
 
         // BatteryInventory - HYBRID SOLUTION for quantity-based management
         b.Entity<BatteryInventory>()
@@ -155,6 +153,13 @@ public class AppDbContext : DbContext
         .HasForeignKey(r => r.BatteryUnitId)
         .OnDelete(DeleteBehavior.Restrict);
 
+    // Define the one-to-one relationship between Reservation and Payment explicitly
+    b.Entity<Reservation>()
+        .HasOne(r => r.Payment)
+        .WithOne(p => p.Reservation)
+        .HasForeignKey<Payment>(p => p.ReservationId)
+        .OnDelete(DeleteBehavior.Restrict);
+
         // Payment & Invoice System Configurations
         ConfigurePaymentSystem(b);
 
@@ -212,11 +217,7 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(p => p.UserSubscriptionId)
             .OnDelete(DeleteBehavior.SetNull);
-        b.Entity<Payment>()
-            .HasOne(p => p.Reservation)
-            .WithMany()
-            .HasForeignKey(p => p.ReservationId)
-            .OnDelete(DeleteBehavior.Restrict);
+
         b.Entity<Payment>()
             .HasOne(p => p.User)
             .WithMany()

@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 using EVBSS.Api.Dtos.Reservations;
 using EVBSS.Api.Models;
 using EVBSS.Api.Services;
@@ -144,6 +145,7 @@ public class SlotReservationsController : ControllerBase
     [HttpPost("{id:guid}/check-in")]
     [Authorize(Roles = "Staff,Admin")]
     [ProducesResponseType(typeof(CheckInResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PaymentPendingCashResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CheckIn(Guid id, [FromBody] CheckInRequest req)
     {
@@ -167,6 +169,15 @@ public class SlotReservationsController : ControllerBase
             };
 
             return Ok(response);
+        }
+        catch (PaymentPendingCashException ex)
+        {
+            return BadRequest(new PaymentPendingCashResponse
+            {
+                Error = new ErrorResponse { Code = "PAYMENT_PENDING_CASH", Message = ex.Message },
+                PaymentId = ex.PaymentId,
+                Amount = ex.Amount
+            });
         }
         catch (InvalidOperationException ex)
         {
@@ -296,3 +307,23 @@ public record CancelReservationRequest(
     CancelReason Reason,
     string? Note
 );
+
+// --- DTOs for Check-In Error Handling ---
+
+public record PaymentPendingCashResponse
+{
+    [JsonPropertyName("error")]
+    public ErrorResponse Error { get; set; } = null!;
+    [JsonPropertyName("paymentId")]
+    public Guid PaymentId { get; set; }
+    [JsonPropertyName("amount")]
+    public decimal Amount { get; set; }
+}
+
+public record ErrorResponse
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = null!;
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = null!;
+}
