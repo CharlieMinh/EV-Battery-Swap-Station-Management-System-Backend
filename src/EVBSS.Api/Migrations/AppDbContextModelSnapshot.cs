@@ -1079,6 +1079,8 @@ namespace EVBSS.Api.Migrations
             modelBuilder.Entity("EVBSS.Api.Models.Station", b =>
                 {
                     b.Navigation("Staff");
+                });
+
             modelBuilder.Entity("EVBSS.Api.Models.Reservation", b =>
                 {
                     b.Navigation("Payment");
