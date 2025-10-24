@@ -43,5 +43,8 @@ public class Station
         var now = DateTime.Now.TimeOfDay;
         return now >= OpenTime && now <= CloseTime;
     }
+
+    // Navigation property: One station can have many staff members
+    public ICollection<User> Staff { get; set; } = new List<User>();
 }
 

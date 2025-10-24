@@ -34,4 +34,9 @@ public class CreateUserRequest
     /// Optional: Set initial status (default: Active)
     /// </summary>
     public UserStatus? Status { get; set; }
+
+    /// <summary>
+    /// Optional: Assign to a station if Role is Staff
+    /// </summary>
+    public Guid? StationId { get; set; }
 }

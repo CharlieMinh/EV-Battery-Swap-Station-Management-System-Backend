@@ -13,4 +13,8 @@ public class UserResponse
     public string Status { get; set; } = default!; // "Active" or "Locked"
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLogin { get; set; }
+
+    // Staff-specific fields
+    public Guid? StationId { get; set; }
+    public string? StationName { get; set; }
 }

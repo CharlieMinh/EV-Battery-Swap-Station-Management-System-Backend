@@ -224,6 +224,30 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("✅ Seeded Admin user.");
         }
 
+        // Seed Staff User
+        if (!context.Users.Any(u => u.Role == Role.Staff))
+        {
+            var firstStation = context.Stations.FirstOrDefault();
+            if (firstStation != null)
+            {
+                logger.LogInformation("Seeding initial staff user...");
+                context.Users.Add(new User
+                {
+                    Email = "staff1@evbss.local",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("staff123"),
+                    Name = "Staff Member 1",
+                    Role = Role.Staff,
+                    StationId = firstStation.Id // Assign staff to the first station
+                });
+                context.SaveChanges();
+                logger.LogInformation("✅ Seeded Staff user and assigned to station {StationName}.", firstStation.Name);
+            }
+            else
+            {
+                logger.LogWarning("⚠️ Could not seed staff user because no stations were found.");
+            }
+        }
+
         // Step 2: Seed Vehicle & Battery Models
         await VehicleModelSeeder.SeedVehicleModelsAsync(context);
         logger.LogInformation("✅ VehicleModels and their corresponding BatteryModels seeded successfully.");

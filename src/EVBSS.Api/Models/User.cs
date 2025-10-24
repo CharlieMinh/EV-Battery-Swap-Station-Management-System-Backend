@@ -31,4 +31,8 @@ public class User
 
     // Navigation property: Một user có nhiều subscription
     public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
+
+    // Staff-specific fields: A staff member can be assigned to one station
+    public Guid? StationId { get; set; }
+    public Station? Station { get; set; }
 }
