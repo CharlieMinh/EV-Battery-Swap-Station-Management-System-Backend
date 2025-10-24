@@ -32,6 +32,7 @@ public class SwapTransactionService
                 .Include(r => r.User).ThenInclude(u => u.Vehicles)
                 .Include(r => r.Station)
                 .Include(r => r.Payment)
+                .Include(r => r.BatteryUnit) // Include the assigned battery unit
                 .FirstOrDefaultAsync(r => r.Id == request.ReservationId);
 
             if (reservation == null)
@@ -40,20 +41,37 @@ public class SwapTransactionService
             if (reservation.Status != ReservationStatus.CheckedIn)
                 throw new InvalidOperationException($"Lịch hẹn phải ở trạng thái 'CheckedIn' để hoàn tất. Trạng thái hiện tại: {reservation.Status}");
 
-            if (!reservation.BatteryUnitId.HasValue)
+            // ⭐ IMPROVEMENT: The new battery is already linked in the reservation from the check-in step.
+            var newBattery = reservation.BatteryUnit;
+            if (newBattery == null)
                 throw new InvalidOperationException("Lịch hẹn chưa được gán pin mới.");
 
-            // 2. Find the new and old batteries
-            var newBattery = await _context.BatteryUnits.FindAsync(reservation.BatteryUnitId.Value);
-            if (newBattery == null)
-                throw new InvalidOperationException("Không tìm thấy thông tin pin mới đã gán.");
-
-            var oldBattery = await _context.BatteryUnits
-                .FirstOrDefaultAsync(b => b.Serial == request.OldBatterySerial);
+            // ⭐ IMPROVEMENT: Pre-fetch old battery to ensure it exists if serial is provided
+            BatteryUnit? oldBattery = null;
+            if (!string.IsNullOrEmpty(request.OldBatterySerial))
+            {
+                oldBattery = await _context.BatteryUnits
+                    .FirstOrDefaultAsync(b => b.Serial == request.OldBatterySerial);
+            }
 
             var vehicle = reservation.User.Vehicles.FirstOrDefault();
             if (vehicle == null)
                 throw new InvalidOperationException("Không tìm thấy thông tin xe của người dùng.");
+
+            // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
+            if (reservation.Payment == null) // This indicates a subscription-based swap
+            {
+                var activeSubscription = await _context.UserSubscriptions
+                    .Include(s => s.SubscriptionPlan)
+                    .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
+
+                if (activeSubscription?.SubscriptionPlan.MaxSwapsPerMonth != null &&
+                    activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
+                {
+                    throw new InvalidOperationException(
+                        $"Người dùng đã đạt giới hạn {activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value} lần đổi pin trong tháng này.");
+                }
+            }
 
             // 3. Create the SwapTransaction
             var swapTransaction = new SwapTransaction
@@ -74,7 +92,7 @@ public class SwapTransactionService
                 IsPaid = reservation.Payment?.Status == PaymentStatus.Completed || reservation.Payment == null,
                 StartedAt = reservation.CreatedAt,
                 CheckedInAt = reservation.CheckedInAt,
-                BatteryIssuedAt = DateTime.UtcNow,
+                BatteryIssuedAt = DateTime.UtcNow, // Or use a more precise time from check-in if available
             };
 
             _context.SwapTransactions.Add(swapTransaction);
@@ -82,27 +100,43 @@ public class SwapTransactionService
             // 4. Update reservation status
             reservation.Status = ReservationStatus.Completed;
 
-            // 5. Update battery statuses
+            // 5. Update battery statuses and INVENTORY
+            var oldStatusOfNewBattery = newBattery.Status; // Capture status before changing
             newBattery.Status = BatteryStatus.InUse;
+            newBattery.UpdatedAt = DateTime.UtcNow;
+
+            // ⭐ FIX 1: Update inventory for the battery being issued
+            await _inventoryService.UpdateInventoryCountAsync(
+                newBattery.BatteryModelId,
+                newBattery.StationId,
+                oldStatusOfNewBattery, // From 'Full' or 'Reserved'
+                newBattery.Status,     // To 'InUse'
+                1);
 
             if (oldBattery != null)
             {
+                // The old battery is now at the station and needs charging
+                var oldStatusOfOldBattery = oldBattery.Status;
                 oldBattery.Status = BatteryStatus.Depleted;
-                oldBattery.StationId = reservation.StationId; // It's now at this station
+                oldBattery.StationId = reservation.StationId;
                 oldBattery.UpdatedAt = DateTime.UtcNow;
+
+                // Note: We don't update inventory for the old battery yet because 'Depleted'
+                // doesn't count towards available stock. This happens when it becomes 'Full'.
             }
+
 
             // 6. Update subscription swap count if applicable
             if (reservation.Payment == null)
             {
                 var activeSubscription = await _context.UserSubscriptions
                     .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
-                
+
                 if (activeSubscription != null)
                 {
                     activeSubscription.CurrentMonthSwapCount++;
                     swapTransaction.UserSubscriptionId = activeSubscription.Id;
-                    _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}", 
+                    _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}",
                         activeSubscription.Id, activeSubscription.CurrentMonthSwapCount);
                 }
                 else
@@ -116,7 +150,7 @@ public class SwapTransactionService
             await _context.SaveChangesAsync();
             await dbTransaction.CommitAsync();
 
-            _logger.LogInformation("Successfully finalized swap from reservation {ReservationId}. New SwapTransaction ID: {SwapTransactionId}", 
+            _logger.LogInformation("Successfully finalized swap from reservation {ReservationId}. New SwapTransaction ID: {SwapTransactionId}",
                 request.ReservationId, swapTransaction.Id);
 
             return swapTransaction;
