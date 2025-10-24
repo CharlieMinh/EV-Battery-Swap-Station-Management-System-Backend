@@ -14,7 +14,7 @@ namespace EVBSS.Api.Services;
 public interface ISubscriptionService
 {
     Task<SubscriptionCreatedResponse> CreateSubscriptionAsync(Guid userId, CreateSubscriptionRequest request);
-    
+    Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId);
     /// <summary>
     /// Tạo subscription pending (chờ thanh toán) theo flow Frontend yêu cầu
     /// Tạo UserSubscription với IsActive=false + Payment pending + VNPay URL
@@ -253,6 +253,85 @@ public class SubscriptionService : ISubscriptionService
             MaxSwapsPerMonth = subscriptionPlan.MaxSwapsPerMonth ?? 0,
             Message = "Gói subscription đã được tạo. Vui lòng chọn phương thức thanh toán."
         };
+    }
+
+    // (Đây là hàm mới mà chúng ta đã định nghĩa)
+    public async Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId)
+    {
+        var subscriptions = await _context.UserSubscriptions
+            .Include(us => us.SubscriptionPlan)
+                .ThenInclude(sp => sp.BatteryModel)
+            .Include(us => us.Vehicle)
+            .Where(us => us.UserId == userId)
+            .OrderByDescending(us => us.IsActive)
+            .ThenByDescending(us => us.CreatedAt)
+            .ToListAsync();
+
+        if (!subscriptions.Any())
+        {
+            return new List<UserSubscriptionDto>();
+        }
+
+        // Map TỪNG DÒNG (record) sang DTO
+        return subscriptions.Select(sub => new UserSubscriptionDto
+        {
+            Id = sub.Id,
+            UserId = sub.UserId,
+            SubscriptionPlanId = sub.SubscriptionPlanId,
+            
+            // ✅ GÁN VÀO TRƯỜNG MỚI (SỐ ÍT)
+            VehicleId = sub.VehicleId, 
+            Vehicle = new SubscriptionVehicleDto 
+            {
+                Id = sub.Vehicle.Id,
+                Brand = "VinFast", // Sửa lỗi build
+                Model = "Unknown", // Sửa lỗi build
+                VIN = sub.Vehicle.VIN,
+                Plate = sub.Vehicle.Plate,
+                Color = "Unknown",
+                Year = DateTime.UtcNow.Year
+            },
+
+            // (Vẫn gán cho các trường cũ để DTO đầy đủ)
+            VehicleIds = new List<Guid> { sub.VehicleId },
+            Vehicles = new List<SubscriptionVehicleDto>
+            {
+                new SubscriptionVehicleDto
+                {
+                    Id = sub.Vehicle.Id,
+                    Brand = "VinFast", 
+                    Model = "Unknown",
+                    VIN = sub.Vehicle.VIN,
+                    Plate = sub.Vehicle.Plate,
+                    Color = "Unknown",
+                    Year = DateTime.UtcNow.Year
+                }
+            },
+            
+            // ... (các trường còn lại)
+            StartDate = sub.StartDate,
+            EndDate = sub.EndDate,
+            IsActive = sub.IsActive,
+            CurrentBillingPeriodStart = sub.CurrentBillingPeriodStart,
+            CurrentBillingPeriodEnd = sub.CurrentBillingPeriodEnd,
+            CurrentMonthSwapCount = sub.CurrentMonthSwapCount,
+            // SwapsLimit = sub.SubscriptionPlan.MaxSwapsPerMonth, // Lỗi read-only
+            DepositPaid = sub.DepositPaid,
+            DepositPaidDate = sub.DepositPaidDate,
+            LastPaymentDate = sub.LastPaymentDate,
+            CreatedAt = sub.CreatedAt,
+            SubscriptionPlan = new SubscriptionPlanDto
+            {
+                Id = sub.SubscriptionPlan.Id,
+                Name = sub.SubscriptionPlan.Name,
+                Description = sub.SubscriptionPlan.Description,
+                MonthlyPrice = sub.SubscriptionPlan.MonthlyPrice,
+                MaxSwapsPerMonth = sub.SubscriptionPlan.MaxSwapsPerMonth,
+                BatteryModelId = sub.SubscriptionPlan.BatteryModelId,
+                BatteryModelName = sub.SubscriptionPlan.BatteryModel.Name,
+                IsActive = sub.SubscriptionPlan.IsActive
+            }
+        });
     }
 
     public async Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId)

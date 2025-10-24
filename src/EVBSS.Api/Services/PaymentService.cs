@@ -134,10 +134,11 @@ public class PaymentService : IPaymentService
     }
 
     public async Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(
-        Guid userId, 
-        CreatePayPerSwapReservationRequest request, 
+        Guid userId,
+        CreatePayPerSwapReservationRequest request,
         string ipAddress)
     {
+        // Bắt đầu transaction với 'using' để đảm bảo tự động dispose/rollback khi có lỗi
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
@@ -145,6 +146,7 @@ public class PaymentService : IPaymentService
             Reservation reservation;
             try
             {
+                // Cố gắng tạo reservation
                 reservation = await _slotReservationService.CreateReservationAsync(
                     userId,
                     request.StationId,
@@ -153,40 +155,47 @@ public class PaymentService : IPaymentService
                     request.SlotStartTime,
                     request.SlotEndTime);
             }
+            // Xử lý các exception cụ thể đã biết
             catch (ActiveReservationExistsException ex)
             {
-                await transaction.RollbackAsync();
+                _logger.LogWarning(ex, "User {UserId} already has an active reservation.", userId);
+                // Không cần rollback tường minh, 'using' sẽ xử lý.
                 return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
             }
             catch (SlotNotAvailableException ex)
             {
-                await transaction.RollbackAsync();
-                return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
+                 _logger.LogWarning(ex, "Slot not available for user {UserId}.", userId);
+                 // Không cần rollback tường minh, 'using' sẽ xử lý.
+                 return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
             }
 
+            // Tạo Payment
             var payment = new Payment
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                ReservationId = reservation.Id,
+                ReservationId = reservation.Id, // Đảm bảo reservation không null ở đây
                 UserSubscriptionId = null,
                 Method = request.PaymentMethod,
                 Type = PaymentType.PayPerSwap,
                 Amount = request.Amount,
                 Status = PaymentStatus.Pending,
-                Description = $"Thanh toán đặt lịch đổi pin - {request.SlotDate:dd/MM/yyyy} {request.SlotStartTime:hh:mm}-{request.SlotEndTime:hh:mm}",
+                Description = $"Thanh toán đặt lịch đổi pin - {request.SlotDate:dd/MM/yyyy} {request.SlotStartTime:hh\\:mm}-{request.SlotEndTime:hh\\:mm}", // Giữ lại format đúng
                 VnpTxnRef = GenerateTransactionReference(),
                 PaymentReference = GenerateTransactionReference(),
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Payments.Add(payment);
-            await _context.SaveChangesAsync();
 
+            // Lưu các thay đổi (Reservation và Payment) trong transaction
+            await _context.SaveChangesAsync(); // Có thể ném ra DbUpdateException,...
+
+            // Commit transaction dựa trên phương thức thanh toán *CHỈ KHI* mọi thứ thành công đến đây
             if (request.PaymentMethod == PaymentMethod.VNPay)
             {
-                var paymentUrl = GenerateVnPayUrlForReservation(payment, reservation, ipAddress);
-                await transaction.CommitAsync();
+                var paymentUrl = GenerateVnPayUrlForReservation(payment, reservation, ipAddress); // Có thể ném ra lỗi format,...
+                await transaction.CommitAsync(); // Commit tường minh CHỈ trên đường dẫn thành công
                 return new CreatePayPerSwapReservationResponse
                 {
                     Success = true,
@@ -198,28 +207,39 @@ public class PaymentService : IPaymentService
                     Status = "Pending"
                 };
             }
-            else
+            else // Cash
             {
-                await transaction.CommitAsync();
-                return new CreatePayPerSwapReservationResponse
-                {
-                    Success = true,
-                    Message = "Đã tạo lịch hẹn thành công. Vui lòng thanh toán tiền mặt tại trạm khi check-in.",
-                    ReservationId = reservation.Id,
-                    PaymentId = payment.Id,
-                    QRCode = reservation.QRCode,
-                    Status = "Pending",
-                    Amount = payment.Amount,
-                    Instructions = $"Vui lòng đến trạm đúng giờ hẹn ({reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh:mm}-{reservation.SlotEndTime:hh:mm}) và xuất trình mã QR này để check-in. Thanh toán {payment.Amount:N0} VNĐ bằng tiền mặt tại quầy."
-                };
+                 await transaction.CommitAsync(); // Commit tường minh CHỈ trên đường dẫn thành công
+                 // Kiểm tra lại format thời gian trong Instructions nếu cần
+                 string instructions = $"Vui lòng đến trạm đúng giờ hẹn ({reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh\\:mm}-{reservation.SlotEndTime:hh\\:mm}) và xuất trình mã QR này để check-in. Thanh toán {payment.Amount:N0} VNĐ bằng tiền mặt tại quầy.";
+                 return new CreatePayPerSwapReservationResponse
+                 {
+                     Success = true,
+                     Message = "Đã tạo lịch hẹn thành công. Vui lòng thanh toán tiền mặt tại trạm khi check-in.",
+                     ReservationId = reservation.Id,
+                     PaymentId = payment.Id,
+                     QRCode = reservation.QRCode, // Đảm bảo QRCode được gán đúng
+                     Status = "Pending",
+                     Amount = payment.Amount,
+                     Instructions = instructions
+                 };
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) // Bắt TẤT CẢ exception từ khối try chính
         {
-            await transaction.RollbackAsync();
+            // ----- ĐÃ XÓA ROLLBACK TƯỜNG MINH -----
+            // await transaction.RollbackAsync(); // <<<< DÒNG NÀY ĐÃ BỊ XÓA
+
+            // Log lỗi
             _logger.LogError(ex, "Error creating pay-per-swap reservation for user {UserId}", userId);
+
+            // Trả về lỗi chung
+            // Khối 'using' sẽ tự động gọi Dispose() trên transaction,
+            // và sẽ tự động rollback vì CommitAsync() chưa được gọi thành công.
             return new CreatePayPerSwapReservationResponse { Success = false, Message = "Có lỗi xảy ra khi tạo lịch đặt. Vui lòng thử lại." };
         }
+        // Code không nên đến được đây vì các nhánh đều có return.
+        // Nếu đến được, 'using' cũng sẽ đảm bảo rollback.
     }
 
     private string GenerateTransactionReference()
