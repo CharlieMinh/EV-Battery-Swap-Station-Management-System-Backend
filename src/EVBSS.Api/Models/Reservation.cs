@@ -14,6 +14,20 @@ public class Reservation
     /// Pin được assign khi check-in (nullable vì chưa assign ngay khi đặt)
     /// </summary>
     public Guid? BatteryUnitId { get; set; }
+    
+    /// <summary>
+    /// ⭐ NEW 2025-10-25: Payment ID for pay-per-swap bookings (nullable)
+    /// Nếu null → Đặt lịch bằng subscription (miễn phí)
+    /// Nếu != null → Đặt lịch trả theo lượt (pay-per-swap)
+    /// </summary>
+    public Guid? PaymentId { get; set; }
+    
+    /// <summary>
+    /// ⭐ NEW 2025-10-25: UserSubscription ID khi đặt lịch bằng gói (nullable)
+    /// Nếu null → Đặt lịch pay-per-swap
+    /// Nếu != null → Đặt lịch bằng subscription
+    /// </summary>
+    public Guid? UserSubscriptionId { get; set; }
 
     // === SLOT-BASED BOOKING FIELDS ===
     /// <summary>
@@ -74,5 +88,6 @@ public class Reservation
     public BatteryModel BatteryModel { get; set; } = null!;
     public BatteryUnit? BatteryUnit { get; set; }
     public User? VerifiedByStaff { get; set; }
-    public Payment? Payment { get; set; }
+    public Payment? Payment { get; set; }  // ⭐ Link to Payment for pay-per-swap
+    public UserSubscription? UserSubscription { get; set; }  // ⭐ Link to UserSubscription when using plan
 }
