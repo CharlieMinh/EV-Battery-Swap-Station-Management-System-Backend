@@ -113,7 +113,7 @@ namespace EVBSS.Api.Controllers
         /// [Admin] Gets a list of all bulk create requests.
         /// </summary>
         [HttpGet]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Staff,Admin")]
         public async Task<IActionResult> GetAllRequests()
         {
             var requests = await _context.BulkCreateRequests
