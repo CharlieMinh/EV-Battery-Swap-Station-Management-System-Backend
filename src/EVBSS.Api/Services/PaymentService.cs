@@ -19,7 +19,7 @@ public interface IPaymentService
     Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(Guid userId, CreatePayPerSwapReservationRequest request, string ipAddress);
     
     /// <summary>
-    /// Lấy danh sách payments (cho Staff/Admin dashboard)
+    /// Lấy danh sách payments (cho Staff/Admin dashboard hoặc Driver xem payment của mình)
     /// </summary>
     Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
         int page, 
@@ -28,7 +28,8 @@ public interface IPaymentService
         PaymentMethod? method = null,
         PaymentType? type = null,
         DateTime? fromDate = null,
-        DateTime? toDate = null);
+        DateTime? toDate = null,
+        Guid? userId = null);
     
     /// <summary>
     /// Lấy chi tiết 1 payment
@@ -300,7 +301,8 @@ public class PaymentService : IPaymentService
         PaymentMethod? method = null,
         PaymentType? type = null,
         DateTime? fromDate = null,
-        DateTime? toDate = null)
+        DateTime? toDate = null,
+        Guid? userId = null)
     {
         var query = _context.Payments
             .Include(p => p.User)
@@ -308,6 +310,10 @@ public class PaymentService : IPaymentService
                 .ThenInclude(us => us!.SubscriptionPlan)
             .Include(p => p.Reservation)
             .AsQueryable();
+
+        // ⭐ Filter by userId if provided (for Driver to see only their payments)
+        if (userId.HasValue)
+            query = query.Where(p => p.UserId == userId.Value);
 
         // Apply filters
         if (status.HasValue)
