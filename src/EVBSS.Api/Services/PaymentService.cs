@@ -17,6 +17,24 @@ public interface IPaymentService
     Task<Payment> CompleteCashPaymentAsync(Guid paymentId, Guid staffId);
 
     Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(Guid userId, CreatePayPerSwapReservationRequest request, string ipAddress);
+    
+    /// <summary>
+    /// Lấy danh sách payments (cho Staff/Admin dashboard hoặc Driver xem payment của mình)
+    /// </summary>
+    Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
+        int page, 
+        int pageSize, 
+        PaymentStatus? status = null, 
+        PaymentMethod? method = null,
+        PaymentType? type = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        Guid? userId = null);
+    
+    /// <summary>
+    /// Lấy chi tiết 1 payment
+    /// </summary>
+    Task<PaymentDetailResponse?> GetPaymentDetailAsync(Guid paymentId);
 }
 
 public class PaymentService : IPaymentService
@@ -117,10 +135,11 @@ public class PaymentService : IPaymentService
     }
 
     public async Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(
-        Guid userId, 
-        CreatePayPerSwapReservationRequest request, 
+        Guid userId,
+        CreatePayPerSwapReservationRequest request,
         string ipAddress)
     {
+        // Bắt đầu transaction với 'using' để đảm bảo tự động dispose/rollback khi có lỗi
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
@@ -128,6 +147,7 @@ public class PaymentService : IPaymentService
             Reservation reservation;
             try
             {
+                // Cố gắng tạo reservation
                 reservation = await _slotReservationService.CreateReservationAsync(
                     userId,
                     request.StationId,
@@ -136,40 +156,47 @@ public class PaymentService : IPaymentService
                     request.SlotStartTime,
                     request.SlotEndTime);
             }
+            // Xử lý các exception cụ thể đã biết
             catch (ActiveReservationExistsException ex)
             {
-                await transaction.RollbackAsync();
+                _logger.LogWarning(ex, "User {UserId} already has an active reservation.", userId);
+                // Không cần rollback tường minh, 'using' sẽ xử lý.
                 return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
             }
             catch (SlotNotAvailableException ex)
             {
-                await transaction.RollbackAsync();
-                return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
+                 _logger.LogWarning(ex, "Slot not available for user {UserId}.", userId);
+                 // Không cần rollback tường minh, 'using' sẽ xử lý.
+                 return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
             }
 
+            // Tạo Payment
             var payment = new Payment
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                ReservationId = reservation.Id,
+                ReservationId = reservation.Id, // Đảm bảo reservation không null ở đây
                 UserSubscriptionId = null,
                 Method = request.PaymentMethod,
                 Type = PaymentType.PayPerSwap,
                 Amount = request.Amount,
                 Status = PaymentStatus.Pending,
-                Description = $"Thanh toán đặt lịch đổi pin - {request.SlotDate:dd/MM/yyyy} {request.SlotStartTime:hh:mm}-{request.SlotEndTime:hh:mm}",
+                Description = $"Thanh toán đặt lịch đổi pin - {request.SlotDate:dd/MM/yyyy} {request.SlotStartTime:hh\\:mm}-{request.SlotEndTime:hh\\:mm}", // Giữ lại format đúng
                 VnpTxnRef = GenerateTransactionReference(),
                 PaymentReference = GenerateTransactionReference(),
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Payments.Add(payment);
-            await _context.SaveChangesAsync();
 
+            // Lưu các thay đổi (Reservation và Payment) trong transaction
+            await _context.SaveChangesAsync(); // Có thể ném ra DbUpdateException,...
+
+            // Commit transaction dựa trên phương thức thanh toán *CHỈ KHI* mọi thứ thành công đến đây
             if (request.PaymentMethod == PaymentMethod.VNPay)
             {
-                var paymentUrl = GenerateVnPayUrlForReservation(payment, reservation, ipAddress);
-                await transaction.CommitAsync();
+                var paymentUrl = GenerateVnPayUrlForReservation(payment, reservation, ipAddress); // Có thể ném ra lỗi format,...
+                await transaction.CommitAsync(); // Commit tường minh CHỈ trên đường dẫn thành công
                 return new CreatePayPerSwapReservationResponse
                 {
                     Success = true,
@@ -181,28 +208,39 @@ public class PaymentService : IPaymentService
                     Status = "Pending"
                 };
             }
-            else
+            else // Cash
             {
-                await transaction.CommitAsync();
-                return new CreatePayPerSwapReservationResponse
-                {
-                    Success = true,
-                    Message = "Đã tạo lịch hẹn thành công. Vui lòng thanh toán tiền mặt tại trạm khi check-in.",
-                    ReservationId = reservation.Id,
-                    PaymentId = payment.Id,
-                    QRCode = reservation.QRCode,
-                    Status = "Pending",
-                    Amount = payment.Amount,
-                    Instructions = $"Vui lòng đến trạm đúng giờ hẹn ({reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh:mm}-{reservation.SlotEndTime:hh:mm}) và xuất trình mã QR này để check-in. Thanh toán {payment.Amount:N0} VNĐ bằng tiền mặt tại quầy."
-                };
+                 await transaction.CommitAsync(); // Commit tường minh CHỈ trên đường dẫn thành công
+                 // Kiểm tra lại format thời gian trong Instructions nếu cần
+                 string instructions = $"Vui lòng đến trạm đúng giờ hẹn ({reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh\\:mm}-{reservation.SlotEndTime:hh\\:mm}) và xuất trình mã QR này để check-in. Thanh toán {payment.Amount:N0} VNĐ bằng tiền mặt tại quầy.";
+                 return new CreatePayPerSwapReservationResponse
+                 {
+                     Success = true,
+                     Message = "Đã tạo lịch hẹn thành công. Vui lòng thanh toán tiền mặt tại trạm khi check-in.",
+                     ReservationId = reservation.Id,
+                     PaymentId = payment.Id,
+                     QRCode = reservation.QRCode, // Đảm bảo QRCode được gán đúng
+                     Status = "Pending",
+                     Amount = payment.Amount,
+                     Instructions = instructions
+                 };
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) // Bắt TẤT CẢ exception từ khối try chính
         {
-            await transaction.RollbackAsync();
+            // ----- ĐÃ XÓA ROLLBACK TƯỜNG MINH -----
+            // await transaction.RollbackAsync(); // <<<< DÒNG NÀY ĐÃ BỊ XÓA
+
+            // Log lỗi
             _logger.LogError(ex, "Error creating pay-per-swap reservation for user {UserId}", userId);
+
+            // Trả về lỗi chung
+            // Khối 'using' sẽ tự động gọi Dispose() trên transaction,
+            // và sẽ tự động rollback vì CommitAsync() chưa được gọi thành công.
             return new CreatePayPerSwapReservationResponse { Success = false, Message = "Có lỗi xảy ra khi tạo lịch đặt. Vui lòng thử lại." };
         }
+        // Code không nên đến được đây vì các nhánh đều có return.
+        // Nếu đến được, 'using' cũng sẽ đảm bảo rollback.
     }
 
     private string GenerateTransactionReference()
@@ -251,5 +289,161 @@ public class PaymentService : IPaymentService
         var hashBytes = hmac.ComputeHash(dataBytes);
         
         return Convert.ToHexString(hashBytes).ToLower();
+    }
+
+    /// <summary>
+    /// Lấy danh sách payments với filtering và pagination (cho Staff/Admin)
+    /// </summary>
+    public async Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
+        int page, 
+        int pageSize, 
+        PaymentStatus? status = null, 
+        PaymentMethod? method = null,
+        PaymentType? type = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        Guid? userId = null)
+    {
+        var query = _context.Payments
+            .Include(p => p.User)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.SubscriptionPlan)
+            .Include(p => p.Reservation)
+            .AsQueryable();
+
+        // ⭐ Filter by userId if provided (for Driver to see only their payments)
+        if (userId.HasValue)
+            query = query.Where(p => p.UserId == userId.Value);
+
+        // Apply filters
+        if (status.HasValue)
+            query = query.Where(p => p.Status == status.Value);
+
+        if (method.HasValue)
+            query = query.Where(p => p.Method == method.Value);
+
+        if (type.HasValue)
+            query = query.Where(p => p.Type == type.Value);
+
+        if (fromDate.HasValue)
+            query = query.Where(p => p.CreatedAt >= fromDate.Value);
+
+        if (toDate.HasValue)
+            query = query.Where(p => p.CreatedAt <= toDate.Value);
+
+        // Get total count
+        var totalCount = await query.CountAsync();
+
+        // Apply pagination and get results
+        var payments = await query
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new PaymentListResponse
+            {
+                Id = p.Id,
+                UserId = p.UserId,
+                UserName = p.User.Name,
+                UserEmail = p.User.Email,
+                UserPhone = p.User.Phone,
+                UserSubscriptionId = p.UserSubscriptionId,
+                SubscriptionPlanName = p.UserSubscription != null ? p.UserSubscription.SubscriptionPlan.Name : null,
+                ReservationId = p.ReservationId,
+                Method = p.Method.ToString(),
+                Type = p.Type.ToString(),
+                Amount = p.Amount,
+                Status = p.Status.ToString(),
+                Description = p.Description,
+                VnpTxnRef = p.VnpTxnRef,
+                PaymentReference = p.PaymentReference,
+                VnpResponseCode = p.VnpResponseCode,
+                VnpTransactionNo = p.VnpTransactionNo,
+                CreatedAt = p.CreatedAt,
+                CompletedAt = p.CompletedAt,
+                ProcessedByStaffId = p.ProcessedByStaffId,
+                ProcessedByStaffName = p.ProcessedByStaffId.HasValue 
+                    ? _context.Users.Where(u => u.Id == p.ProcessedByStaffId).Select(u => u.Name).FirstOrDefault()
+                    : null
+            })
+            .ToListAsync();
+
+        return (payments, totalCount);
+    }
+
+    /// <summary>
+    /// Lấy chi tiết 1 payment (cho Staff/Admin)
+    /// </summary>
+    public async Task<PaymentDetailResponse?> GetPaymentDetailAsync(Guid paymentId)
+    {
+        var payment = await _context.Payments
+            .Include(p => p.User)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.SubscriptionPlan)
+            .Include(p => p.Reservation)
+                .ThenInclude(r => r!.Station)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
+
+        if (payment == null)
+            return null;
+
+        var detail = new PaymentDetailResponse
+        {
+            Id = payment.Id,
+            UserId = payment.UserId,
+            UserName = payment.User.Name,
+            UserEmail = payment.User.Email,
+            UserPhone = payment.User.Phone,
+            UserSubscriptionId = payment.UserSubscriptionId,
+            SubscriptionPlanName = payment.UserSubscription?.SubscriptionPlan.Name,
+            ReservationId = payment.ReservationId,
+            Method = payment.Method.ToString(),
+            Type = payment.Type.ToString(),
+            Amount = payment.Amount,
+            Status = payment.Status.ToString(),
+            Description = payment.Description,
+            VnpTxnRef = payment.VnpTxnRef,
+            PaymentReference = payment.PaymentReference,
+            VnpResponseCode = payment.VnpResponseCode,
+            VnpTransactionNo = payment.VnpTransactionNo,
+            CreatedAt = payment.CreatedAt,
+            CompletedAt = payment.CompletedAt,
+            ProcessedByStaffId = payment.ProcessedByStaffId,
+            ProcessedByStaffName = payment.ProcessedByStaffId.HasValue 
+                ? await _context.Users.Where(u => u.Id == payment.ProcessedByStaffId).Select(u => u.Name).FirstOrDefaultAsync()
+                : null,
+            
+            // User info
+            User = new PaymentUserInfo
+            {
+                Id = payment.User.Id,
+                FullName = payment.User.Name ?? "N/A",
+                Email = payment.User.Email,
+                PhoneNumber = payment.User.Phone
+            },
+            
+            // Subscription info (if applicable)
+            Subscription = payment.UserSubscription != null ? new PaymentSubscriptionInfo
+            {
+                UserSubscriptionId = payment.UserSubscription.Id,
+                PlanName = payment.UserSubscription.SubscriptionPlan.Name,
+                Price = payment.UserSubscription.SubscriptionPlan.MonthlyPrice,
+                MaxSwapsPerMonth = payment.UserSubscription.SubscriptionPlan.MaxSwapsPerMonth,
+                StartDate = payment.UserSubscription.StartDate,
+                EndDate = payment.UserSubscription.EndDate
+            } : null,
+            
+            // Reservation info (if applicable)
+            Reservation = payment.Reservation != null ? new PaymentReservationInfo
+            {
+                ReservationId = payment.Reservation.Id,
+                StationName = payment.Reservation.Station.Name,
+                SlotDate = payment.Reservation.SlotDate,
+                SlotStartTime = payment.Reservation.SlotStartTime,
+                SlotEndTime = payment.Reservation.SlotEndTime,
+                Status = payment.Reservation.Status.ToString()
+            } : null
+        };
+
+        return detail;
     }
 }

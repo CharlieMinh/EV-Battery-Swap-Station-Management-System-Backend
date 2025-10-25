@@ -115,6 +115,22 @@ public class SubscriptionsController : ControllerBase
         }
     }
 
+[HttpGet("mine/all")]
+public async Task<ActionResult<IEnumerable<UserSubscriptionDto>>> GetAllMySubscriptions()
+{
+    try
+    {
+        var userId = GetCurrentUserId();
+        var subscriptions = await _subscriptionService.GetUserAllSubscriptionsAsync(userId);
+
+        return Ok(subscriptions);
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error getting all user subscriptions");
+        return StatusCode(500, new { message = "Có lỗi xảy ra khi lấy thông tin subscription." });
+    }
+}
     /// <summary>
     /// Hủy subscription hiện tại của user
     /// </summary>
