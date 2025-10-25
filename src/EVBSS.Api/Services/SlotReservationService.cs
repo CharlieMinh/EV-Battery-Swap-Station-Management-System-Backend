@@ -1,9 +1,12 @@
+using EVBSS.Api.Configuration;
 using EVBSS.Api.Data;
 using EVBSS.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Web;
 
 namespace EVBSS.Api.Services;
 
@@ -15,15 +18,21 @@ public class SlotReservationService
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
     private readonly ILogger<SlotReservationService> _logger;
+    private readonly VnPayConfig _vnPayConfig;
     
     // Secret key để sign QR Code (nên lưu trong appsettings.json hoặc Azure Key Vault)
     private string QRSecret => _config["QRCode:SecretKey"] ?? "DEFAULT_SECRET_KEY_CHANGE_ME";
 
-    public SlotReservationService(AppDbContext db, IConfiguration config, ILogger<SlotReservationService> logger)
+    public SlotReservationService(
+        AppDbContext db, 
+        IConfiguration config, 
+        ILogger<SlotReservationService> logger,
+        IOptions<VnPayConfig> vnPayConfig)
     {
         _db = db;
         _config = config;
         _logger = logger;
+        _vnPayConfig = vnPayConfig.Value;
     }
 
     /// <summary>
@@ -75,7 +84,9 @@ public class SlotReservationService
     }
 
     /// <summary>
-    /// ⭐ LUỒNG 3: Tạo reservation mới theo slot (MIỄN PHÍ - dùng subscription)
+    /// ⭐ LUỒNG 3 & 4: Tạo reservation mới theo slot
+    /// - Nếu có subscription → MIỄN PHÍ (paymentRequired = false)
+    /// - Nếu không có subscription → PAY-PER-SWAP (paymentRequired = true, tạo Payment)
     /// </summary>
     public async Task<Reservation> CreateReservationAsync(
         Guid userId,
@@ -83,7 +94,8 @@ public class SlotReservationService
         Guid batteryModelId,
         DateOnly slotDate,  // UPDATED: Changed from DateTime to DateOnly
         TimeSpan slotStartTime,
-        TimeSpan slotEndTime)
+        TimeSpan slotEndTime,
+        PaymentMethod? paymentMethod = null)  // ⭐ NEW 2025-10-25: For pay-per-swap flow
     {
         // Validation 1: User chỉ được có 1 active reservation
         var hasActive = await _db.Reservations
@@ -96,7 +108,11 @@ public class SlotReservationService
             throw new ActiveReservationExistsException("Bạn đã có lịch đặt đang hoạt động. Vui lòng hủy hoặc hoàn thành lịch cũ trước khi đặt mới.");
         }
         
-        // ⭐ LUỒNG 3: Validation subscription (required for free booking)
+        // ⭐ FIX 2025-10-25: Support both Subscription and Pay-per-swap flows
+        // Validation 2: Check subscription and determine payment requirement
+        bool paymentRequired = false;
+        Guid? userSubscriptionId = null;
+        
         var activeSubscription = await _db.UserSubscriptions
             .Include(s => s.SubscriptionPlan)
             .FirstOrDefaultAsync(s => 
@@ -104,26 +120,43 @@ public class SlotReservationService
                 s.IsActive &&
                 s.CurrentBillingPeriodEnd >= DateTime.UtcNow); // Gói chưa hết hạn
         
-        if (activeSubscription == null)
+        if (activeSubscription != null)
         {
-            throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động hoặc đã hết lượt sử dụng. Vui lòng mua gói mới hoặc thanh toán theo lần.");
-        }
-        
-        if (activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
-        {
-            if (activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
+            // ✅ LUỒNG SUBSCRIPTION: User có gói → Đặt lịch miễn phí
+            // Validate swap count limit
+            if (activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
             {
-                throw new NoActiveSubscriptionException("Bạn đã hết lượt đổi pin trong tháng này của gói.");
+                if (activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
+                {
+                    throw new NoActiveSubscriptionException("Bạn đã hết lượt đổi pin trong tháng này của gói. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
+                }
             }
-        }
-        
-        var swapsRemaining = activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue
-            ? activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value - activeSubscription.CurrentMonthSwapCount
-            : int.MaxValue;
             
-        _logger.LogInformation("User {UserId} has active subscription {SubscriptionId} ({PlanName}) with {SwapsRemaining} swaps remaining",
-            userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, 
-            swapsRemaining == int.MaxValue ? "unlimited" : swapsRemaining);
+            var swapsRemaining = activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue
+                ? activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value - activeSubscription.CurrentMonthSwapCount
+                : int.MaxValue;
+                
+            _logger.LogInformation("User {UserId} has active subscription {SubscriptionId} ({PlanName}) with {SwapsRemaining} swaps remaining",
+                userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, 
+                swapsRemaining == int.MaxValue ? "unlimited" : swapsRemaining);
+            
+            paymentRequired = false;
+            userSubscriptionId = activeSubscription.Id;
+        }
+        else
+        {
+            // ✅ LUỒNG PAY-PER-SWAP: User không có gói → Phải chọn phương thức thanh toán
+            if (paymentMethod == null)
+            {
+                throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
+            }
+            
+            _logger.LogInformation("User {UserId} booking pay-per-swap with payment method {PaymentMethod}",
+                userId, paymentMethod);
+            
+            paymentRequired = true;
+            userSubscriptionId = null;  // Không dùng subscription
+        }
         
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var maxDate = today.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays);
@@ -146,12 +179,22 @@ public class SlotReservationService
             throw new SlotNotAvailableException("Slot này đã đầy. Vui lòng chọn slot khác.");
         }
         
+        // ⭐ Query BatteryModel để lấy SwapPricePerSession cho pay-per-swap
+        var batteryModel = await _db.BatteryModels
+            .FirstOrDefaultAsync(bm => bm.Id == batteryModelId);
+        
+        if (batteryModel == null)
+        {
+            throw new ArgumentException("Loại pin không tồn tại.");
+        }
+        
         var reservation = new Reservation
         {
             UserId = userId,
             StationId = stationId,
             BatteryModelId = batteryModelId,
             BatteryUnitId = null,
+            UserSubscriptionId = userSubscriptionId,  // ⭐ Set subscription ID (null if pay-per-swap)
             SlotDate = slotDate,
             SlotStartTime = slotStartTime,
             SlotEndTime = slotEndTime,
@@ -162,10 +205,36 @@ public class SlotReservationService
         reservation.QRCode = GenerateQRCode(reservation.Id);
         
         _db.Reservations.Add(reservation);
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync();  // Save to get reservation.Id for Payment
         
-        _logger.LogInformation("✅ LUỒNG 3: Created subscription-based reservation {ReservationId} for user {UserId} at slot {SlotStart}-{SlotEnd} (no payment required)", 
-            reservation.Id, userId, slotStartTime, slotEndTime);
+        // ⭐ FIXED 2025-10-25: Create Payment if pay-per-swap
+        if (paymentRequired && paymentMethod.HasValue)
+        {
+            var payment = new Payment
+            {
+                UserId = userId,
+                ReservationId = reservation.Id,  // ⭐ Link to reservation (EF Core will auto-set reservation.PaymentId)
+                Method = paymentMethod.Value,
+                Type = PaymentType.PayPerSwap,  // ⭐ FIXED: Use PayPerSwap enum value
+                Amount = batteryModel.SwapPricePerSession,  // ⭐ FIXED: Get price from BatteryModel
+                Status = PaymentStatus.Pending,
+                VnpTxnRef = GenerateTransactionReference(),
+                PaymentReference = GenerateTransactionReference(),
+                Description = $"Đổi pin {batteryModel.Name} - Slot {slotStartTime:hh\\:mm}-{slotEndTime:hh\\:mm}",  // ⭐ FIXED: Use battery model name
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            _db.Payments.Add(payment);
+            await _db.SaveChangesAsync();  // ⭐ EF Core will auto-update reservation.PaymentId via relationship
+            
+            _logger.LogInformation("✅ Created pay-per-swap reservation {ReservationId} with Payment {PaymentId} ({Method}, {Amount} VND) for {BatteryModel}",
+                reservation.Id, payment.Id, paymentMethod.Value, payment.Amount, batteryModel.Name);
+        }
+        else
+        {
+            _logger.LogInformation("✅ Created subscription-based reservation {ReservationId} for user {UserId} (no payment required)", 
+                reservation.Id, userId);
+        }
         
         return reservation;
     }
@@ -469,6 +538,15 @@ public class SlotReservationService
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(QRSecret));
         var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
         return Convert.ToBase64String(hash);
+    }
+    
+    /// <summary>
+    /// ⭐ Helper method: Generate unique transaction reference for Payment
+    /// Format: EVByyyyMMddHHmmssRAND (e.g., EVB202510251630001234)
+    /// </summary>
+    private string GenerateTransactionReference()
+    {
+        return $"EVB{DateTime.Now:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
     }
 }
 

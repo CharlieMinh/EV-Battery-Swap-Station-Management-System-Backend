@@ -346,3 +346,13 @@ FodyWeavers.xsd
 # JetBrains Rider
 .idea/
 *.sln.iml
+
+# ===================================
+# EVBSS Custom - Sensitive Files
+# ===================================
+
+# Local appsettings with secrets (NEVER COMMIT)
+**/appsettings.Local.json
+
+# Uploaded files (user photos, vehicles)
+**/wwwroot/uploads/

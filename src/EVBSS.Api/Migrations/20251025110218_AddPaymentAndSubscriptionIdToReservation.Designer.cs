@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025110218_AddPaymentAndSubscriptionIdToReservation")]
+    partial class AddPaymentAndSubscriptionIdToReservation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -117,90 +120,6 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("StationId", "Status");
 
                     b.ToTable("BatteryUnits");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.BulkCreateRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("BatteryModelId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("HandledByStaffId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("RequestedByAdminId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("StaffNotes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("StationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BatteryModelId");
-
-                    b.HasIndex("HandledByStaffId");
-
-                    b.HasIndex("RequestedByAdminId");
-
-                    b.HasIndex("StationId");
-
-                    b.ToTable("BulkCreateRequests");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.Notification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsRead")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid?>("RelatedEntityId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("SenderId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SenderId");
-
-                    b.HasIndex("UserId", "IsRead", "CreatedAt");
-
-                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.PasswordResetToken", b =>
@@ -912,56 +831,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("Model");
 
                     b.Navigation("Station");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.BulkCreateRequest", b =>
-                {
-                    b.HasOne("EVBSS.Api.Models.BatteryModel", "BatteryModel")
-                        .WithMany()
-                        .HasForeignKey("BatteryModelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.User", "HandledByStaff")
-                        .WithMany()
-                        .HasForeignKey("HandledByStaffId");
-
-                    b.HasOne("EVBSS.Api.Models.User", "RequestedByAdmin")
-                        .WithMany()
-                        .HasForeignKey("RequestedByAdminId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.Station", "Station")
-                        .WithMany()
-                        .HasForeignKey("StationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("BatteryModel");
-
-                    b.Navigation("HandledByStaff");
-
-                    b.Navigation("RequestedByAdmin");
-
-                    b.Navigation("Station");
-                });
-
-            modelBuilder.Entity("EVBSS.Api.Models.Notification", b =>
-                {
-                    b.HasOne("EVBSS.Api.Models.User", "Sender")
-                        .WithMany()
-                        .HasForeignKey("SenderId");
-
-                    b.HasOne("EVBSS.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Sender");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.PasswordResetToken", b =>

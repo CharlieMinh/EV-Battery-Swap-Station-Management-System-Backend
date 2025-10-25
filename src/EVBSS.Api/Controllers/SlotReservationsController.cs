@@ -93,7 +93,8 @@ public class SlotReservationsController : ControllerBase
                 req.BatteryModelId,
                 req.SlotDate,
                 req.SlotStartTime,
-                req.SlotEndTime);
+                req.SlotEndTime,
+                req.PaymentMethod);  // ⭐ FIXED 2025-10-25: Pass PaymentMethod for pay-per-swap
 
             var response = MapToResponse(reservation);
 
@@ -262,7 +263,8 @@ public record CreateSlotReservationRequest(
     Guid BatteryModelId,
     DateOnly SlotDate,  // UPDATED: Changed from DateTime to DateOnly to fix timezone issue
     TimeSpan SlotStartTime,
-    TimeSpan SlotEndTime
+    TimeSpan SlotEndTime,
+    PaymentMethod? PaymentMethod = null  // ⭐ NEW 2025-10-25: If null → Use subscription (free), if set → Pay-per-swap
 );
 
 public record SlotReservationResponse

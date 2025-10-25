@@ -1,4 +1,5 @@
 using EVBSS.Api.Dtos.Payments;
+using EVBSS.Api.Models;
 using EVBSS.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -209,6 +210,108 @@ public class PaymentsController : ControllerBase
                 Success = false,
                 Message = "Có lỗi xảy ra khi chọn phương thức thanh toán."
             });
+        }
+    }
+
+    /// <summary>
+    /// ⭐ API MỚI: Lấy danh sách payments (Staff/Admin dashboard)
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Staff,Admin")]
+    public async Task<ActionResult<object>> GetPayments(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] PaymentStatus? status = null,
+        [FromQuery] PaymentMethod? method = null,
+        [FromQuery] PaymentType? type = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
+    {
+        try
+        {
+            var (payments, totalCount) = await _paymentService.GetPaymentsAsync(
+                page, pageSize, status, method, type, fromDate, toDate);
+
+            return Ok(new
+            {
+                payments,
+                pagination = new
+                {
+                    page,
+                    pageSize,
+                    totalCount,
+                    totalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting payments list");
+            return StatusCode(500, new { message = "Có lỗi xảy ra khi lấy danh sách thanh toán." });
+        }
+    }
+
+    /// <summary>
+    /// ⭐ API MỚI: Driver lấy danh sách payments của chính mình
+    /// </summary>
+    [HttpGet("my-payments")]
+    [Authorize(Roles = "Driver")]
+    public async Task<ActionResult<object>> GetMyPayments(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] PaymentStatus? status = null,
+        [FromQuery] PaymentMethod? method = null,
+        [FromQuery] PaymentType? type = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            
+            // Sử dụng lại method GetPaymentsAsync với userId filter
+            var (payments, totalCount) = await _paymentService.GetPaymentsAsync(
+                page, pageSize, status, method, type, fromDate, toDate, userId);
+
+            return Ok(new
+            {
+                payments,
+                pagination = new
+                {
+                    page,
+                    pageSize,
+                    totalCount,
+                    totalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting my payments for user {UserId}", GetCurrentUserId());
+            return StatusCode(500, new { message = "Có lỗi xảy ra khi lấy lịch sử thanh toán." });
+        }
+    }
+
+    /// <summary>
+    /// ⭐ API MỚI: Lấy chi tiết 1 payment
+    /// </summary>
+    [HttpGet("{paymentId:guid}")]
+    [Authorize(Roles = "Staff,Admin")]
+    public async Task<ActionResult<PaymentDetailResponse>> GetPaymentDetail(Guid paymentId)
+    {
+        try
+        {
+            var payment = await _paymentService.GetPaymentDetailAsync(paymentId);
+
+            if (payment == null)
+                return NotFound(new { message = "Không tìm thấy thanh toán." });
+
+            return Ok(payment);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting payment detail for {PaymentId}", paymentId);
+            return StatusCode(500, new { message = "Có lỗi xảy ra khi lấy chi tiết thanh toán." });
         }
     }
 
