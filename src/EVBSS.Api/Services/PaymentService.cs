@@ -104,6 +104,7 @@ public class PaymentService : IPaymentService
     public async Task<Payment> CompleteCashPaymentAsync(Guid paymentId, Guid staffId)
     {
         var payment = await _context.Payments
+            .Include(p => p.UserSubscription) // Include the related UserSubscription
             .FirstOrDefaultAsync(p => p.Id == paymentId);
 
         if (payment == null)
@@ -121,6 +122,23 @@ public class PaymentService : IPaymentService
             throw new InvalidOperationException($"Thanh toán đã ở trạng thái {payment.Status}, không thể xác nhận.");
         }
 
+        // --- Start of new logic ---
+        // Check if this payment is for a subscription and activate it
+        if (payment.Type == PaymentType.Subscription && payment.UserSubscriptionId.HasValue && payment.UserSubscription != null)
+        {
+            var userSubscription = payment.UserSubscription;
+
+            // Activate the subscription and set its dates
+            userSubscription.IsActive = true;
+            userSubscription.StartDate = DateTime.UtcNow;
+            userSubscription.CurrentBillingPeriodStart = DateTime.UtcNow;
+            userSubscription.CurrentBillingPeriodEnd = DateTime.UtcNow.AddDays(30); // As agreed
+            userSubscription.UpdatedAt = DateTime.UtcNow;
+
+            _logger.LogInformation("Subscription {UserSubscriptionId} activated for user {UserId} upon cash payment.", userSubscription.Id, userSubscription.UserId);
+        }
+        // --- End of new logic ---
+
         // Update payment status
         payment.Status = PaymentStatus.Completed;
         payment.CompletedAt = DateTime.UtcNow;
@@ -128,8 +146,8 @@ public class PaymentService : IPaymentService
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Cash payment {PaymentId} for reservation {ReservationId} was completed by staff {StaffId}.",
-            payment.Id, payment.ReservationId, staffId);
+        _logger.LogInformation("Cash payment {PaymentId} was completed by staff {StaffId}.",
+            payment.Id, staffId);
 
         return payment;
     }
