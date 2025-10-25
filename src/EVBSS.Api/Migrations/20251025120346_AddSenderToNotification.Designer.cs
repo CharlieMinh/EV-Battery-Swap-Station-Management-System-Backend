@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251025120346_AddSenderToNotification")]
+    partial class AddSenderToNotification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -364,9 +367,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid?>("PaymentId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("QRCode")
                         .HasColumnType("nvarchar(max)");
 
@@ -388,9 +388,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("UserSubscriptionId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("VerifiedByStaffId")
                         .HasColumnType("uniqueidentifier");
 
@@ -399,8 +396,6 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("BatteryModelId");
 
                     b.HasIndex("BatteryUnitId");
-
-                    b.HasIndex("UserSubscriptionId");
 
                     b.HasIndex("VerifiedByStaffId");
 
@@ -1039,10 +1034,6 @@ namespace EVBSS.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("EVBSS.Api.Models.UserSubscription", "UserSubscription")
-                        .WithMany()
-                        .HasForeignKey("UserSubscriptionId");
-
                     b.HasOne("EVBSS.Api.Models.User", "VerifiedByStaff")
                         .WithMany()
                         .HasForeignKey("VerifiedByStaffId");
@@ -1054,8 +1045,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("Station");
 
                     b.Navigation("User");
-
-                    b.Navigation("UserSubscription");
 
                     b.Navigation("VerifiedByStaff");
                 });

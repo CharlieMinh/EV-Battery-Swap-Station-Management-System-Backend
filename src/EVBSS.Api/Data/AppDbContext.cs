@@ -21,11 +21,13 @@ public class AppDbContext : DbContext
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
     public DbSet<Payment> Payments => Set<Payment>();
-    public DbSet<SwapTransaction> SwapTransactions => Set<SwapTransaction>();
-    
-    // Password Reset System
-    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+        public DbSet<SwapTransaction> SwapTransactions => Set<SwapTransaction>();
+        public DbSet<BulkCreateRequest> BulkCreateRequests { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
 
+    
+        // Password Reset System
+        public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         // Station
@@ -319,6 +321,16 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => new { e.UserId, e.IsUsed, e.ExpiresAt });
             entity.HasIndex(e => e.ExpiresAt); // For cleanup jobs
+        });
+
+        b.Entity<Notification>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => new { e.UserId, e.IsRead, e.CreatedAt });
         });
     }
 }
