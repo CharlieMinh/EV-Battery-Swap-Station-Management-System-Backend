@@ -9,6 +9,8 @@ using EVBSS.Api.Services;
 using EVBSS.Api.Configuration;
 using Amazon.Rekognition;
 using Amazon.Runtime;
+using EVBSS.Api.Hubs;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -68,7 +70,7 @@ builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPay"
 // JWT Authentication
 var jwt = builder.Configuration.GetSection("Jwt");
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]
-                                                                  ?? throw new InvalidOperationException("Missing Jwt:Key")));
+                                                                  ?? throw new InvalidOperationException("MissingJwt:Key")));
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
     {
@@ -81,6 +83,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwt["Issuer"],
             ValidAudience = jwt["Audience"],
             IssuerSigningKey = signingKey,
+            RoleClaimType = ClaimTypes.Role,
             ClockSkew = TimeSpan.Zero
         };
         o.Events = new JwtBearerEvents
@@ -95,10 +98,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
-builder.Services.AddAuthorization();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("Staff", policy => policy.RequireRole("Staff"));
+});
+
 
 // Controllers
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 // Application Services
 builder.Services.AddScoped<SlotReservationService>();
@@ -162,6 +172,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseMiddleware<SubscriptionExpirationMiddleware>();
+
+app.MapHub<NotificationHub>("/notificationHub");
 
 app.MapControllers();
 
@@ -268,9 +280,9 @@ using (var scope = app.Services.CreateScope())
                 {
                     allPlans.AddRange(new[]
                     {
-                        new SubscriptionPlan { Name = $"Gói Basic - 15 lần/tháng ({pinName})", Description = "Đối tượng: Người dùng có lộ trình di chuyển cố định, chủ yếu trong thành phố.", MonthlyPrice = 4100000m, MaxSwapsPerMonth = 15, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Giá khởi điểm tốt nhất để trải nghiệm dịch vụ.\n✓ Hỗ trợ tiêu chuẩn 24/7 qua tổng đài.\n✓ Linh hoạt nâng cấp gói bất kỳ lúc nào.", BatteryModelId = battery.Id },
-                        new SubscriptionPlan { Name = $"Gói Standard - 30 lần/tháng ({pinName})", Description = "Đối tượng: Gia đình, chuyên gia thường xuyên di chuyển giữa các tỉnh hoặc đi nghỉ cuối tuần.", MonthlyPrice = 6500000m, MaxSwapsPerMonth = 30, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tiết kiệm ~20% trên mỗi lần đổi so với gói Basic.\n✓ Xem lịch sử đổi pin chi tiết trên ứng dụng.\n✓ Tùy chọn tạm ngưng gói 1 lần/năm (tối đa 30 ngày).", BatteryModelId = battery.Id },
-                        new SubscriptionPlan { Name = $"Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Doanh nhân, chủ doanh nghiệp, người yêu cầu dịch vụ đẳng cấp nhất.", MonthlyPrice = 8100000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Đường dây nóng VIP 24/7 (Kết nối trực tiếp).\n✓ Ưu tiên đặt trước pin tại trạm.", BatteryModelId = battery.Id }
+                        new SubscriptionPlan { Name = "Gói Basic - 15 lần/tháng ({pinName})", Description = "Đối tượng: Người dùng có lộ trình di chuyển cố định, chủ yếu trong thành phố.", MonthlyPrice = 4100000m, MaxSwapsPerMonth = 15, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Giá khởi điểm tốt nhất để trải nghiệm dịch vụ.\n✓ Hỗ trợ tiêu chuẩn 24/7 qua tổng đài.\n✓ Linh hoạt nâng cấp gói bất kỳ lúc nào.", BatteryModelId = battery.Id },
+                        new SubscriptionPlan { Name = "Gói Standard - 30 lần/tháng ({pinName})", Description = "Đối tượng: Gia đình, chuyên gia thường xuyên di chuyển giữa các tỉnh hoặc đi nghỉ cuối tuần.", MonthlyPrice = 6500000m, MaxSwapsPerMonth = 30, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tiết kiệm ~20% trên mỗi lần đổi so với gói Basic.\n✓ Xem lịch sử đổi pin chi tiết trên ứng dụng.\n✓ Tùy chọn tạm ngưng gói 1 lần/năm (tối đa 30 ngày).", BatteryModelId = battery.Id },
+                        new SubscriptionPlan { Name = "Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Doanh nhân, chủ doanh nghiệp, người yêu cầu dịch vụ đẳng cấp nhất.", MonthlyPrice = 8100000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Đường dây nóng VIP 24/7 (Kết nối trực tiếp).\n✓ Ưu tiên đặt trước pin tại trạm.", BatteryModelId = battery.Id }
                     });
                 }
                 // ========== Gói cước cho Pin VF8 ==========
@@ -278,9 +290,9 @@ using (var scope = app.Services.CreateScope())
                 {
                     allPlans.AddRange(new[]
                     {
-                        new SubscriptionPlan { Name = $"Gói Basic - 15 lần/tháng ({pinName})", Description = "Đối tượng: Người đi làm hàng ngày, nhu cầu di chuyển cơ bản.", MonthlyPrice = 2200000m, MaxSwapsPerMonth = 15, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Chi phí tối ưu cho nhu cầu đi lại cố định.\n✓ Hỗ trợ 24/7 qua ứng dụng và tổng đài.\n✓ Dễ dàng nâng cấp khi cần.", BatteryModelId = battery.Id },
-                        new SubscriptionPlan { Name = $"Gói Standard - 30 lần/tháng ({pinName})", Description = "Đối tượng: Cấp quản lý, người thường xuyên công tác, di chuyển liên tỉnh.", MonthlyPrice = 3300000m, MaxSwapsPerMonth = 30, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tiết kiệm chi phí đáng kể trên mỗi lần đổi pin.\n✓ Gợi ý trạm đổi pin thông minh.\n✓ Chính sách hủy linh hoạt.", BatteryModelId = battery.Id },
-                        new SubscriptionPlan { Name = $"Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Doanh nghiệp, xe dịch vụ (taxi, cho thuê) yêu cầu hoạt động liên tục.", MonthlyPrice = 5500000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Hỗ trợ sự cố ưu tiên 24/7 (Cam kết xử lý nhanh).\n✓ Cung cấp báo cáo sử dụng hàng tháng.", BatteryModelId = battery.Id }
+                        new SubscriptionPlan { Name = "Gói Basic - 15 lần/tháng ({pinName})", Description = "Đối tượng: Người đi làm hàng ngày, nhu cầu di chuyển cơ bản.", MonthlyPrice = 2200000m, MaxSwapsPerMonth = 15, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Chi phí tối ưu cho nhu cầu đi lại cố định.\n✓ Hỗ trợ 24/7 qua ứng dụng và tổng đài.\n✓ Dễ dàng nâng cấp khi cần.", BatteryModelId = battery.Id },
+                        new SubscriptionPlan { Name = "Gói Standard - 30 lần/tháng ({pinName})", Description = "Đối tượng: Cấp quản lý, người thường xuyên công tác, di chuyển liên tỉnh.", MonthlyPrice = 3300000m, MaxSwapsPerMonth = 30, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tiết kiệm chi phí đáng kể trên mỗi lần đổi pin.\n✓ Gợi ý trạm đổi pin thông minh.\n✓ Chính sách hủy linh hoạt.", BatteryModelId = battery.Id },
+                        new SubscriptionPlan { Name = "Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Doanh nghiệp, xe dịch vụ (taxi, cho thuê) yêu cầu hoạt động liên tục.", MonthlyPrice = 5500000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Hỗ trợ sự cố ưu tiên 24/7 (Cam kết xử lý nhanh).\n✓ Cung cấp báo cáo sử dụng hàng tháng.", BatteryModelId = battery.Id }
                     });
                 }
                 // ========== Gói cước cho Pin VF5 ==========
@@ -288,9 +300,9 @@ using (var scope = app.Services.CreateScope())
                 {
                     allPlans.AddRange(new[]
                     {
-                         new SubscriptionPlan { Name = $"Gói Basic - 10 lần/tháng ({pinName})", Description = "Đối tượng: Người mới sử dụng xe điện, di chuyển chủ yếu trong nội thành.", MonthlyPrice = 1200000m, MaxSwapsPerMonth = 10, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Gói siêu tiết kiệm cho di chuyển đô thị.\n✓ Hỗ trợ tiêu chuẩn 24/7.\n✓ Theo dõi số lần đổi còn lại qua ứng dụng.", BatteryModelId = battery.Id },
-                         new SubscriptionPlan { Name = $"Gói Standard - 20 lần/tháng ({pinName})", Description = "Đối tượng: Người có lối sống năng động, thường xuyên di chuyển giữa các quận hoặc đi ngoại ô.", MonthlyPrice = 1600000m, MaxSwapsPerMonth = 20, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tiết kiệm hơn so với trả phí lẻ.\n✓ Nhận thông báo về trạm mới & mẹo dùng pin.\n✓ Hủy gói linh hoạt cuối chu kỳ.", BatteryModelId = battery.Id },
-                         new SubscriptionPlan { Name = $"Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Tài xế công nghệ, nhân viên kinh doanh, người có tần suất sử dụng xe rất cao.", MonthlyPrice = 2700000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Cam kết pin hiệu suất cao (đã kiểm định).\n✓ Hỗ trợ kỹ thuật nhanh qua App 24/7.", BatteryModelId = battery.Id }
+                         new SubscriptionPlan { Name = "Gói Basic - 10 lần/tháng ({pinName})", Description = "Đối tượng: Người mới sử dụng xe điện, di chuyển chủ yếu trong nội thành.", MonthlyPrice = 1200000m, MaxSwapsPerMonth = 10, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Gói siêu tiết kiệm cho di chuyển đô thị.\n✓ Hỗ trợ tiêu chuẩn 24/7.\n✓ Theo dõi số lần đổi còn lại qua ứng dụng.", BatteryModelId = battery.Id },
+                         new SubscriptionPlan { Name = "Gói Standard - 20 lần/tháng ({pinName})", Description = "Đối tượng: Người có lối sống năng động, thường xuyên di chuyển giữa các quận hoặc đi ngoại ô.", MonthlyPrice = 1600000m, MaxSwapsPerMonth = 20, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tiết kiệm hơn so với trả phí lẻ.\n✓ Nhận thông báo về trạm mới & mẹo dùng pin.\n✓ Hủy gói linh hoạt cuối chu kỳ.", BatteryModelId = battery.Id },
+                         new SubscriptionPlan { Name = "Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Tài xế công nghệ, nhân viên kinh doanh, người có tần suất sử dụng xe rất cao.", MonthlyPrice = 2700000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Cam kết pin hiệu suất cao (đã kiểm định).\n✓ Hỗ trợ kỹ thuật nhanh qua App 24/7.", BatteryModelId = battery.Id }
                     });
                 }
                 // ========== Gói cước cho Pin VF3 ==========
@@ -298,9 +310,9 @@ using (var scope = app.Services.CreateScope())
                 {
                     allPlans.AddRange(new[]
                     {
-                        new SubscriptionPlan { Name = $"Gói Basic - 10 lần/tháng ({pinName})", Description = "Đối tượng: Sinh viên, người cần phương tiện phụ, di chuyển quãng đường rất ngắn.", MonthlyPrice = 900000m, MaxSwapsPerMonth = 10, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Chi phí thấp nhất, khởi đầu cực kỳ dễ dàng.\n✓ Hỗ trợ tìm trạm gần nhất qua App 24/7.\n✓ Quản lý chi phí đơn giản.", BatteryModelId = battery.Id },
-                        new SubscriptionPlan { Name = $"Gói Standard - 20 lần/tháng ({pinName})", Description = "Đối tượng: Người đi làm, người giao hàng bán thời gian, di chuyển thường xuyên trong thành phố.", MonthlyPrice = 1200000m, MaxSwapsPerMonth = 20, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tối ưu chi phí cho người di chuyển nhiều.\n✓ Ưu đãi đặc biệt khi gia hạn dài hạn.\n✓ Xem lại lịch sử và chi phí đổi pin.", BatteryModelId = battery.Id },
-                        new SubscriptionPlan { Name = $"Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Shipper chuyên nghiệp, người cần di chuyển liên tục không ngừng nghỉ.", MonthlyPrice = 2000000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Hỗ trợ khẩn cấp 24/7 (Ưu tiên xử lý sự cố).\n✓ Tích điểm thưởng đổi ưu đãi dịch vụ.", BatteryModelId = battery.Id }
+                        new SubscriptionPlan { Name = "Gói Basic - 10 lần/tháng ({pinName})", Description = "Đối tượng: Sinh viên, người cần phương tiện phụ, di chuyển quãng đường rất ngắn.", MonthlyPrice = 900000m, MaxSwapsPerMonth = 10, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Chi phí thấp nhất, khởi đầu cực kỳ dễ dàng.\n✓ Hỗ trợ tìm trạm gần nhất qua App 24/7.\n✓ Quản lý chi phí đơn giản.", BatteryModelId = battery.Id },
+                        new SubscriptionPlan { Name = "Gói Standard - 20 lần/tháng ({pinName})", Description = "Đối tượng: Người đi làm, người giao hàng bán thời gian, di chuyển thường xuyên trong thành phố.", MonthlyPrice = 1200000m, MaxSwapsPerMonth = 20, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Tối ưu chi phí cho người di chuyển nhiều.\n✓ Ưu đãi đặc biệt khi gia hạn dài hạn.\n✓ Xem lại lịch sử và chi phí đổi pin.", BatteryModelId = battery.Id },
+                        new SubscriptionPlan { Name = "Gói Premium - Không giới hạn ({pinName})", Description = "Đối tượng: Shipper chuyên nghiệp, người cần di chuyển liên tục không ngừng nghỉ.", MonthlyPrice = 2000000m, MaxSwapsPerMonth = null, RefundPolicy = "Hoàn tiền theo tỷ lệ ngày còn lại", Benefits = "✓ Không giới hạn số lần đổi pin.\n✓ Hỗ trợ khẩn cấp 24/7 (Ưu tiên xử lý sự cố).\n✓ Tích điểm thưởng đổi ưu đãi dịch vụ.", BatteryModelId = battery.Id }
                     });
                 }
             }
