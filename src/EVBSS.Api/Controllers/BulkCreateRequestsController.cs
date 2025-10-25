@@ -110,6 +110,41 @@ namespace EVBSS.Api.Controllers
         }
 
         /// <summary>
+        /// [Admin] Gets a list of all bulk create requests.
+        /// </summary>
+        [HttpGet]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllRequests()
+        {
+            var requests = await _context.BulkCreateRequests
+                .Include(r => r.RequestedByAdmin)
+                .Include(r => r.HandledByStaff)
+                .Include(r => r.Station)
+                .Include(r => r.BatteryModel)
+                .Select(r => new 
+                {
+                    r.Id,
+                    r.StationId,
+                    StationName = r.Station.Name,
+                    r.BatteryModelId,
+                    BatteryModelName = r.BatteryModel.Name,
+                    r.Quantity,
+                    r.Status,
+                    r.RequestedByAdminId,
+                    RequestedByAdminName = r.RequestedByAdmin.Name,
+                    r.HandledByStaffId,
+                    HandledByStaffName = r.HandledByStaff.Name,
+                    r.StaffNotes,
+                    r.CreatedAt,
+                    r.UpdatedAt
+                })
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+            
+            return Ok(requests);
+        }
+
+        /// <summary>
         /// Staff gets a list of pending confirmation requests for their station.
         /// </summary>
         [HttpGet("pending")]
