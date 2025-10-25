@@ -14,7 +14,7 @@ namespace EVBSS.Api.Services;
 public interface ISubscriptionService
 {
     Task<SubscriptionCreatedResponse> CreateSubscriptionAsync(Guid userId, CreateSubscriptionRequest request);
-    Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId);
+    
     /// <summary>
     /// Tạo subscription pending (chờ thanh toán) theo flow Frontend yêu cầu
     /// Tạo UserSubscription với IsActive=false + Payment pending + VNPay URL
@@ -22,6 +22,12 @@ public interface ISubscriptionService
     Task<CreatePendingSubscriptionResponse> CreatePendingSubscriptionAsync(Guid userId, CreatePendingSubscriptionRequest request, string ipAddress);
     
     Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId);
+    
+    /// <summary>
+    /// Lấy tất cả subscriptions của user (bao gồm cả active và inactive)
+    /// </summary>
+    Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId);
+    
     Task<CancelSubscriptionResponse> CancelSubscriptionAsync(Guid userId);
     Task<SubscriptionUsageDto?> GetSubscriptionUsageAsync(Guid userId);
     Task CheckAndExpireSubscriptionsAsync(); // ⭐ NEW: Auto-expire logic
@@ -82,6 +88,21 @@ public class SubscriptionService : ISubscriptionService
         if (existingSubscriptions.Any())
         {
             throw new InvalidOperationException("Một hoặc nhiều xe đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
+        }
+
+        // ⭐ FIX 2025-10-25: Check if any vehicle has pending payment (prevent spam subscription creation)
+        var pendingPayments = await _context.Payments
+            .Include(p => p.UserSubscription)
+            .Where(p => p.UserId == userId
+                     && p.UserSubscription != null
+                     && request.VehicleIds.Contains(p.UserSubscription.VehicleId)
+                     && p.Status == PaymentStatus.Pending
+                     && p.Type == PaymentType.Subscription)
+            .ToListAsync();
+
+        if (pendingPayments.Any())
+        {
+            throw new InvalidOperationException($"Một hoặc nhiều xe đã có gói subscription đang chờ thanh toán. Vui lòng hoàn tất thanh toán hoặc hủy gói cũ trước khi mua gói mới.");
         }
 
         // Validate subscription plan exists and is active
@@ -155,6 +176,7 @@ public class SubscriptionService : ISubscriptionService
 
     /// <summary>
     /// Tạo subscription pending (chờ thanh toán) - FLOW FRONTEND YÊU CẦU
+    /// ⭐ FIXED 2025-10-25: Allow multiple subscriptions for different vehicles
     /// 1. Tạo UserSubscription với IsActive = FALSE
     /// 2. Tạo Payment với Status = Pending
     /// 3. Generate VNPay payment URL
@@ -165,17 +187,7 @@ public class SubscriptionService : ISubscriptionService
         CreatePendingSubscriptionRequest request, 
         string ipAddress)
     {
-        // 1. Check if user already has active subscription
-        var existingSubscription = await _context.UserSubscriptions
-            .Where(us => us.UserId == userId && us.IsActive)
-            .FirstOrDefaultAsync();
-
-        if (existingSubscription != null)
-        {
-            throw new InvalidOperationException("Bạn đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
-        }
-
-        // 2. Validate subscription plan exists and is active
+        // 1. Validate subscription plan exists and is active
         var subscriptionPlan = await _context.SubscriptionPlans
             .Include(sp => sp.BatteryModel)
             .FirstOrDefaultAsync(sp => sp.Id == request.SubscriptionPlanId && sp.IsActive);
@@ -185,7 +197,7 @@ public class SubscriptionService : ISubscriptionService
             throw new ArgumentException("Gói subscription không tồn tại hoặc đã bị vô hiệu hóa.");
         }
 
-        // 3. Validate vehicle belongs to user and is compatible
+        // 2. Validate vehicle belongs to user and is compatible
         var vehicle = await _context.Vehicles
             .Include(v => v.CompatibleModel)
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.UserId == userId);
@@ -198,6 +210,34 @@ public class SubscriptionService : ISubscriptionService
         if (vehicle.CompatibleBatteryModelId != subscriptionPlan.BatteryModelId)
         {
             throw new InvalidOperationException($"Xe {vehicle.Plate} không tương thích với gói pin {subscriptionPlan.Name}.");
+        }
+
+        // 3. Check if THIS VEHICLE already has ACTIVE subscription OR PENDING payment  
+        // ⭐ FIX 2025-10-25: Prevent spam subscription creation while payment pending
+        var activeSubscription = await _context.UserSubscriptions
+            .Where(us => us.UserId == userId 
+                      && us.VehicleId == request.VehicleId
+                      && us.IsActive)
+            .FirstOrDefaultAsync();
+
+        if (activeSubscription != null)
+        {
+            throw new InvalidOperationException($"Xe {vehicle.Plate} đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
+        }
+
+        // Kiểm tra xem có payment pending không (chặn spam)
+        var pendingPayment = await _context.Payments
+            .Include(p => p.UserSubscription)
+            .Where(p => p.UserId == userId
+                     && p.UserSubscription != null
+                     && p.UserSubscription.VehicleId == request.VehicleId
+                     && p.Status == PaymentStatus.Pending
+                     && p.Type == PaymentType.Subscription)
+            .FirstOrDefaultAsync();
+
+        if (pendingPayment != null)
+        {
+            throw new InvalidOperationException($"Xe {vehicle.Plate} đã có gói subscription đang chờ thanh toán. Vui lòng hoàn tất thanh toán hoặc hủy gói cũ trước khi mua gói mới.");
         }
 
         // 4. ⭐ Tạo UserSubscription với IsActive = FALSE (chờ thanh toán)
@@ -255,85 +295,6 @@ public class SubscriptionService : ISubscriptionService
         };
     }
 
-    // (Đây là hàm mới mà chúng ta đã định nghĩa)
-    public async Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId)
-    {
-        var subscriptions = await _context.UserSubscriptions
-            .Include(us => us.SubscriptionPlan)
-                .ThenInclude(sp => sp.BatteryModel)
-            .Include(us => us.Vehicle)
-            .Where(us => us.UserId == userId)
-            .OrderByDescending(us => us.IsActive)
-            .ThenByDescending(us => us.CreatedAt)
-            .ToListAsync();
-
-        if (!subscriptions.Any())
-        {
-            return new List<UserSubscriptionDto>();
-        }
-
-        // Map TỪNG DÒNG (record) sang DTO
-        return subscriptions.Select(sub => new UserSubscriptionDto
-        {
-            Id = sub.Id,
-            UserId = sub.UserId,
-            SubscriptionPlanId = sub.SubscriptionPlanId,
-            
-            // ✅ GÁN VÀO TRƯỜNG MỚI (SỐ ÍT)
-            VehicleId = sub.VehicleId, 
-            Vehicle = new SubscriptionVehicleDto 
-            {
-                Id = sub.Vehicle.Id,
-                Brand = "VinFast", // Sửa lỗi build
-                Model = "Unknown", // Sửa lỗi build
-                VIN = sub.Vehicle.VIN,
-                Plate = sub.Vehicle.Plate,
-                Color = "Unknown",
-                Year = DateTime.UtcNow.Year
-            },
-
-            // (Vẫn gán cho các trường cũ để DTO đầy đủ)
-            VehicleIds = new List<Guid> { sub.VehicleId },
-            Vehicles = new List<SubscriptionVehicleDto>
-            {
-                new SubscriptionVehicleDto
-                {
-                    Id = sub.Vehicle.Id,
-                    Brand = "VinFast", 
-                    Model = "Unknown",
-                    VIN = sub.Vehicle.VIN,
-                    Plate = sub.Vehicle.Plate,
-                    Color = "Unknown",
-                    Year = DateTime.UtcNow.Year
-                }
-            },
-            
-            // ... (các trường còn lại)
-            StartDate = sub.StartDate,
-            EndDate = sub.EndDate,
-            IsActive = sub.IsActive,
-            CurrentBillingPeriodStart = sub.CurrentBillingPeriodStart,
-            CurrentBillingPeriodEnd = sub.CurrentBillingPeriodEnd,
-            CurrentMonthSwapCount = sub.CurrentMonthSwapCount,
-            // SwapsLimit = sub.SubscriptionPlan.MaxSwapsPerMonth, // Lỗi read-only
-            DepositPaid = sub.DepositPaid,
-            DepositPaidDate = sub.DepositPaidDate,
-            LastPaymentDate = sub.LastPaymentDate,
-            CreatedAt = sub.CreatedAt,
-            SubscriptionPlan = new SubscriptionPlanDto
-            {
-                Id = sub.SubscriptionPlan.Id,
-                Name = sub.SubscriptionPlan.Name,
-                Description = sub.SubscriptionPlan.Description,
-                MonthlyPrice = sub.SubscriptionPlan.MonthlyPrice,
-                MaxSwapsPerMonth = sub.SubscriptionPlan.MaxSwapsPerMonth,
-                BatteryModelId = sub.SubscriptionPlan.BatteryModelId,
-                BatteryModelName = sub.SubscriptionPlan.BatteryModel.Name,
-                IsActive = sub.SubscriptionPlan.IsActive
-            }
-        });
-    }
-
     public async Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId)
     {
         var subscriptions = await _context.UserSubscriptions
@@ -389,6 +350,71 @@ public class SubscriptionService : ISubscriptionService
         };
     }
 
+    /// <summary>
+    /// Lấy tất cả subscriptions của user (bao gồm cả active và inactive)
+    /// Dùng cho trang lịch sử subscription
+    /// </summary>
+    public async Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId)
+    {
+        var subscriptions = await _context.UserSubscriptions
+            .Include(us => us.SubscriptionPlan)
+                .ThenInclude(sp => sp.BatteryModel)
+            .Include(us => us.Vehicle)
+            .Where(us => us.UserId == userId)
+            .OrderByDescending(us => us.CreatedAt)  // Mới nhất lên đầu
+            .ToListAsync();
+
+        if (!subscriptions.Any())
+            return new List<UserSubscriptionDto>();
+
+        // Map mỗi subscription thành DTO
+        var result = subscriptions.Select(sub => new UserSubscriptionDto
+        {
+            Id = sub.Id,
+            UserId = sub.UserId,
+            SubscriptionPlanId = sub.SubscriptionPlanId,
+            VehicleIds = new List<Guid> { sub.VehicleId },
+            StartDate = sub.StartDate,
+            EndDate = sub.EndDate,
+            IsActive = sub.IsActive,
+            CurrentBillingPeriodStart = sub.CurrentBillingPeriodStart,
+            CurrentBillingPeriodEnd = sub.CurrentBillingPeriodEnd,
+            CurrentMonthSwapCount = sub.CurrentMonthSwapCount,
+            DepositPaid = sub.DepositPaid,
+            DepositPaidDate = sub.DepositPaidDate,
+            LastPaymentDate = sub.LastPaymentDate,
+            CreatedAt = sub.CreatedAt,
+            SubscriptionPlan = new SubscriptionPlanDto
+            {
+                Id = sub.SubscriptionPlan.Id,
+                Name = sub.SubscriptionPlan.Name,
+                Description = sub.SubscriptionPlan.Description,
+                MonthlyPrice = sub.SubscriptionPlan.MonthlyPrice,
+                MaxSwapsPerMonth = sub.SubscriptionPlan.MaxSwapsPerMonth,
+                Benefits = sub.SubscriptionPlan.Benefits,
+                RefundPolicy = sub.SubscriptionPlan.RefundPolicy,
+                BatteryModelId = sub.SubscriptionPlan.BatteryModelId,
+                BatteryModelName = sub.SubscriptionPlan.BatteryModel.Name,
+                IsActive = sub.SubscriptionPlan.IsActive
+            },
+            Vehicles = new List<SubscriptionVehicleDto>
+            {
+                new SubscriptionVehicleDto
+                {
+                    Id = sub.Vehicle.Id,
+                    Brand = "VinFast",
+                    Model = "Unknown",
+                    VIN = sub.Vehicle.VIN,
+                    Plate = sub.Vehicle.Plate,
+                    Color = "Unknown",
+                    Year = DateTime.UtcNow.Year
+                }
+            }
+        }).ToList();
+
+        return result;
+    }
+
     public async Task<CancelSubscriptionResponse> CancelSubscriptionAsync(Guid userId)
     {
         var subscription = await _context.UserSubscriptions
@@ -435,7 +461,7 @@ public class SubscriptionService : ISubscriptionService
         return new CancelSubscriptionResponse
         {
             Success = true,
-            Message = "Hủy gói subscription thành công!",
+            Message = "Hủy gói dịch vụ thành công!",
             EndDate = subscription.EndDate,
             DepositRefund = depositRefund
         };
