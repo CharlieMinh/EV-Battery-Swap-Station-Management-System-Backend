@@ -281,10 +281,10 @@ namespace EVBSS.Api.Controllers
 
                 var admins = await _context.Users.Where(u => u.Role == Role.Admin).ToListAsync();
                 var staffIdentifier = !string.IsNullOrEmpty(staffUser.Name) ? staffUser.Name : staffUser.Email;
-                var notificationMessage = $"Bulk create request {request.Id} for station {request.StationId} was confirmed by staff {staffIdentifier}.";
+                var notificationMessage = $"Request {request.Id} confirmed by {staffIdentifier}.";
                 if (!string.IsNullOrWhiteSpace(dto.Notes))
                 {
-                    notificationMessage += $" Notes: {dto.Notes}";
+                    notificationMessage += $" Note: {dto.Notes}";
                 }
 
                 foreach (var admin in admins)
