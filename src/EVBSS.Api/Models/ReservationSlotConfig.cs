@@ -63,28 +63,34 @@ public static class ReservationSlotConfig
     
     /// <summary>
     /// Kiểm tra xem thời điểm hiện tại có trong check-in window của slot không
-    /// UPDATED: Support both DateTime and DateOnly parameters
+    /// UPDATED: Always return true - Allow check-in anytime for demo/testing
     /// </summary>
     public static bool IsWithinCheckInWindow(DateTime slotDate, TimeSpan slotStartTime, TimeSpan slotEndTime, DateTime now)
     {
-        var slotDateTime = slotDate.Date.Add(slotStartTime);
-        var windowStart = slotDateTime.Add(-CheckInBuffer);
-        var windowEnd = slotDate.Date.Add(slotEndTime).Add(CheckInBuffer);
+        // ⭐ ALWAYS ALLOW CHECK-IN - Removed time window validation
+        return true;
         
-        return now >= windowStart && now <= windowEnd;
+        // Original logic (commented out for future reference):
+        // var slotDateTime = slotDate.Date.Add(slotStartTime);
+        // var windowStart = slotDateTime.Add(-CheckInBuffer);
+        // var windowEnd = slotDate.Date.Add(slotEndTime).Add(CheckInBuffer);
+        // return now >= windowStart && now <= windowEnd;
     }
     
     /// <summary>
     /// Kiểm tra xem thời điểm hiện tại có trong check-in window của slot không (DateOnly overload)
+    /// UPDATED: Always return true - Allow check-in anytime for demo/testing
     /// </summary>
     public static bool IsWithinCheckInWindow(DateOnly slotDate, TimeSpan slotStartTime, TimeSpan slotEndTime, DateTime now)
     {
-        // Convert DateOnly to DateTime for calculation
-        var slotDateTime = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
-        var windowStart = slotDateTime.Add(-CheckInBuffer);
-        var windowEnd = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotEndTime)).Add(CheckInBuffer);
+        // ⭐ ALWAYS ALLOW CHECK-IN - Removed time window validation
+        return true;
         
-        return now >= windowStart && now <= windowEnd;
+        // Original logic (commented out for future reference):
+        // var slotDateTime = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotStartTime));
+        // var windowStart = slotDateTime.Add(-CheckInBuffer);
+        // var windowEnd = slotDate.ToDateTime(TimeOnly.FromTimeSpan(slotEndTime)).Add(CheckInBuffer);
+        // return now >= windowStart && now <= windowEnd;
     }
     
     /// <summary>
