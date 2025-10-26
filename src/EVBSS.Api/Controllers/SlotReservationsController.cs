@@ -251,7 +251,8 @@ public class SlotReservationsController : ControllerBase
             {
                 EarliestTime = earliest,
                 LatestTime = latest
-            }
+            },
+            UserId = reservation.UserId
         };
     }
 }
@@ -281,6 +282,7 @@ public record SlotReservationResponse
     public TimeSpan SlotEndTime { get; set; }
     public string QRCode { get; set; } = null!;
     public CheckInWindowDto CheckInWindow { get; set; } = null!;
+    public Guid UserId { get; set; }
 }
 
 public record CheckInWindowDto
