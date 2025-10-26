@@ -374,6 +374,7 @@ public class SubscriptionService : ISubscriptionService
             UserId = sub.UserId,
             SubscriptionPlanId = sub.SubscriptionPlanId,
             VehicleIds = new List<Guid> { sub.VehicleId },
+            VehicleId = sub.VehicleId,
             StartDate = sub.StartDate,
             EndDate = sub.EndDate,
             IsActive = sub.IsActive,
