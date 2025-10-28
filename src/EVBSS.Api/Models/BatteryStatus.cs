@@ -1,8 +1,8 @@
+// File: src/EVBSS.Api/Models/BatteryStatus.cs
 namespace EVBSS.Api.Models;
 
 public enum BatteryStatus
-{
-    // Pin sẵn sàng để được gán cho khách
+{    // Pin sẵn sàng để được gán cho khách
     Full = 0,
 
     // Pin đã được gán cho một yêu cầu đặt lịch (reservation) và đang chờ khách đến lấy
@@ -18,5 +18,7 @@ public enum BatteryStatus
     Depleted = 4,
 
     // Pin đang trong quá trình bảo trì, không thể sử dụng
-    Maintenance = 5
+    Maintenance = 5,
+    // ⭐ THÊM MỚI: Pin được báo lỗi và đang chờ kiểm tra
+    Faulty = 6 // Pin đã được Staff xác nhận là lỗi hệ thống/bảo hành
 }

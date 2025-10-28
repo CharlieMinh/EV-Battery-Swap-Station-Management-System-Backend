@@ -117,6 +117,7 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();  // ⭐ LUỒNG 2: Required for CreatePayPerSwapReservationAsync
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 builder.Services.AddScoped<SwapTransactionService>();
+builder.Services.AddScoped<BatteryComplaintService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<PasswordResetService>();
 builder.Services.AddScoped<GoogleAuthService>();

@@ -82,6 +82,10 @@ public class Reservation
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // ⭐ NEW: Link back to a BatteryComplaint that triggered this re-swap reservation
+    public Guid? RelatedComplaintId { get; set; }
+    public BatteryComplaint? RelatedComplaint { get; set; }
+
     // Navigation properties
     public User User { get; set; } = null!;
     public Station Station { get; set; } = null!;

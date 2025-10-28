@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251027190550_AddBatteryComplaintFlow")]
+    partial class AddBatteryComplaintFlow
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -68,7 +71,7 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("SwapTransactionId")
                         .IsUnique();
 
-                    b.ToTable("BatteryComplaints");
+                    b.ToTable("BatteryComplaint");
                 });
 
             modelBuilder.Entity("EVBSS.Api.Models.BatteryInventory", b =>
@@ -124,7 +127,6 @@ namespace EVBSS.Api.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<decimal>("SwapPricePerSession")
-                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("Voltage")
@@ -420,9 +422,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("QRCode")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("RelatedComplaintId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateOnly>("SlotDate")
                         .HasColumnType("date");
 
@@ -452,8 +451,6 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("BatteryModelId");
 
                     b.HasIndex("BatteryUnitId");
-
-                    b.HasIndex("RelatedComplaintId");
 
                     b.HasIndex("UserSubscriptionId");
 
@@ -641,9 +638,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<int?>("Rating")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("RelatedComplaintId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("ReservationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -698,8 +692,6 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("CompletedByStaffId");
 
                     b.HasIndex("IssuedBatteryId");
-
-                    b.HasIndex("RelatedComplaintId");
 
                     b.HasIndex("ReservationId");
 
@@ -1121,11 +1113,6 @@ namespace EVBSS.Api.Migrations
                         .HasForeignKey("BatteryUnitId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("EVBSS.Api.Models.BatteryComplaint", "RelatedComplaint")
-                        .WithMany()
-                        .HasForeignKey("RelatedComplaintId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("EVBSS.Api.Models.Station", "Station")
                         .WithMany()
                         .HasForeignKey("StationId")
@@ -1149,8 +1136,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("BatteryModel");
 
                     b.Navigation("BatteryUnit");
-
-                    b.Navigation("RelatedComplaint");
 
                     b.Navigation("Station");
 
@@ -1196,11 +1181,6 @@ namespace EVBSS.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("EVBSS.Api.Models.BatteryComplaint", "RelatedComplaint")
-                        .WithMany()
-                        .HasForeignKey("RelatedComplaintId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("EVBSS.Api.Models.Reservation", "Reservation")
                         .WithMany()
                         .HasForeignKey("ReservationId")
@@ -1243,8 +1223,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("CompletedByStaff");
 
                     b.Navigation("IssuedBattery");
-
-                    b.Navigation("RelatedComplaint");
 
                     b.Navigation("Reservation");
 

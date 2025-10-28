@@ -3,23 +3,27 @@ using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using EVBSS.Api.Services;
 using EVBSS.Api.Dtos.SwapTransactions;
+using EVBSS.Api.Dtos.Complaints;
 using EVBSS.Api.Models;
 
 namespace EVBSS.Api.Controllers;
 
 [ApiController]
-[Route("api/v1/swaps")]
+[Route("api/swap-transactions")]
 [Authorize]
 public class SwapTransactionsController : ControllerBase
 {
     private readonly SwapTransactionService _swapService;
+    private readonly BatteryComplaintService _complaintService;
     private readonly ILogger<SwapTransactionsController> _logger;
 
     public SwapTransactionsController(
         SwapTransactionService swapService,
+        BatteryComplaintService complaintService,
         ILogger<SwapTransactionsController> logger)
     {
         _swapService = swapService;
+        _complaintService = complaintService;
         _logger = logger;
     }
 
@@ -286,6 +290,38 @@ public class SwapTransactionsController : ControllerBase
         {
             _logger.LogError(ex, "Error rating swap {SwapId} for user {UserId}", id, GetCurrentUserId());
             return StatusCode(500, new { error = "An error occurred while rating the swap transaction" });
+        }
+    }
+
+    /// <summary>
+    /// Driver báo cáo pin được cấp trong giao dịch bị lỗi
+    /// </summary>
+    [HttpPost("report-faulty")]
+    [Authorize(Roles = "Driver")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<BatteryComplaint>> ReportFaultyBattery([FromBody] ReportFaultyBatteryRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId(); 
+            var complaint = await _complaintService.ReportFaultyBatteryAsync(userId, request);
+
+            return Ok(complaint);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reporting faulty battery for swap {SwapId}", request.SwapTransactionId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "Đã có lỗi xảy ra khi báo cáo pin lỗi." });
         }
     }
 
