@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -107,7 +108,14 @@ builder.Services.AddAuthorization(options =>
 
 
 // Controllers
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Ignore object reference cycles when serializing to JSON (prevents "A possible object cycle was detected")
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        // Keep property names as defined in C# (PascalCase) instead of camelCasing
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+    });
 builder.Services.AddSignalR();
 
 // Application Services

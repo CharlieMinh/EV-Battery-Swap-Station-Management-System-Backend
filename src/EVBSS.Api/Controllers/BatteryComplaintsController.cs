@@ -87,14 +87,24 @@ namespace EVBSS.Api.Controllers
             }
         }
 
-        [HttpPost("{id}/receive-faulty-battery")]
-        public async Task<IActionResult> ReceiveFaultyBatteryAndCreateReswap(Guid id)
+        [HttpPost("{id}/finalize-reswap")]
+        public async Task<IActionResult> FinalizeReswap(Guid id, [FromQuery] Guid stationId, [FromBody] CompleteReswapRequest request)
         {
             try
             {
                 var staffId = User.GetRequiredUserId();
-                var reservation = await _complaintService.ProcessFaultyBatteryReturnAndCreateReswapAsync(staffId, id);
-                return Ok(new { message = "Pin lỗi đã được thu hồi và một lượt đổi pin miễn phí đã được tạo.", reservation });
+
+                // Gọi phương thức gộp 2 bước trong Service
+                var swap = await _complaintService.ProcessAndCompleteReswapAsync(staffId, id, stationId, request);
+
+                return Ok(new
+                {
+                    message = $"Giao dịch đổi pin miễn phí (Re-swap) cho khiếu nại {id} đã hoàn tất thành công. Pin cũ đã thu hồi, pin mới đã cấp. Khiếu nại đã được ĐÓNG (Resolved).",
+                    SwapId = swap.Id,
+                    IssuedBatterySerial = swap.IssuedBatterySerial,
+                    ReceivedBatterySerial = swap.ReturnedBatterySerial,
+                    swap.Status
+                });
             }
             catch (KeyNotFoundException ex)
             {
@@ -102,38 +112,19 @@ namespace EVBSS.Api.Controllers
             }
             catch (InvalidOperationException ex)
             {
+                // Ví dụ: Reservation chưa CheckIn, hoặc không có pin tốt
                 return Conflict(new { message = ex.Message });
-            }
-        }
-
-        [HttpPost("{id}/finalize")]
-        public async Task<IActionResult> FinalizeComplaint(Guid id)
-        {
-            try
-            {
-                var staffId = User.GetRequiredUserId();
-                var result = await _complaintService.FinalizeComplaintAsync(staffId, id);
-
-                return Ok(new
-                {
-                    message = $"Khiếu nại {result.Id} đã được đóng thành công (Resolved).",
-                    status = result.Status.ToString()
-                });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { error = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { error = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error finalizing complaint {ComplaintId}", id);
-                return StatusCode(500, new { error = "Có lỗi xảy ra khi hoàn tất khiếu nại." });
+                _logger.LogError(ex, "Error finalizing re-swap for complaint {ComplaintId}", id);
+                return StatusCode(500, new { message = "Đã xảy ra lỗi hệ thống khi xử lý Re-swap.", details = ex.Message });
             }
         }
+
+        // Finalization of complaints is handled automatically by the SwapTransaction workflow
+        // when a related re-swap completes. Manual finalize endpoint removed to enforce
+        // consistent process and avoid accidental state changes.
 
         [HttpPost("{id}/investigate")]
         public async Task<IActionResult> InvestigateComplaint(Guid id, [FromBody] InvestigateComplaintRequest request)

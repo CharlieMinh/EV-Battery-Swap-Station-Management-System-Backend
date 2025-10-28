@@ -4,6 +4,8 @@ public class FinalizeSwapRequest
 {
     public Guid ReservationId { get; set; }
     public string OldBatterySerial { get; set; } = null!;
+    // Optional: health percentage of the old battery returned by the customer/staff
+    public int? OldBatteryHealth { get; set; }
     // public object? BatteryCheckStats { get; set; } // Optional: For future use
 }
 

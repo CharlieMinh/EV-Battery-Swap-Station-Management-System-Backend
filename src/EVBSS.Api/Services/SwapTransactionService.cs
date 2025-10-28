@@ -50,52 +50,12 @@ public class SwapTransactionService
             if (newBattery == null)
                 throw new InvalidOperationException("Lịch hẹn chưa được gán pin mới.");
 
-            // ⭐ IMPROVEMENT: Handle old battery serial generation if not provided
+            // The returned (old) battery is an external item provided by the customer.
+            // We do NOT create a new BatteryUnit for it here. We only record the serial
+            // supplied by staff/driver. Battery units that originate from customers are
+            // handled outside the station-managed BatteryUnit lifecycle (e.g. maintenance).
             BatteryUnit? oldBattery = null;
-            if (string.IsNullOrEmpty(request.OldBatterySerial))
-            {
-                // Generate a new serial for the old battery
-                var prefix = newBattery.Serial.Length >= 3 ? newBattery.Serial.Substring(0, 3) : "BAT";
-                var lastSerial = await _context.BatteryUnits
-                    .Where(b => b.Serial.StartsWith(prefix + "-"))
-                    .OrderByDescending(b => b.Serial)
-                    .Select(b => b.Serial)
-                    .FirstOrDefaultAsync();
-
-                int nextNumber = 1;
-                if (lastSerial != null)
-                {
-                    var lastNumberStr = lastSerial.Substring(prefix.Length + 1);
-                    if (int.TryParse(lastNumberStr, out int lastNumber))
-                    {
-                        nextNumber = lastNumber + 1;
-                    }
-                }
-                
-                var newGeneratedSerial = $"{prefix}-{nextNumber:D3}";
-
-                // Create a new BatteryUnit for the returned battery
-                oldBattery = new BatteryUnit
-                {
-                    Serial = newGeneratedSerial,
-                    BatteryModelId = newBattery.BatteryModelId, // Assume same model for simplicity
-                    StationId = reservation.StationId,
-                    Status = BatteryStatus.Depleted, // It's returned, so it's depleted
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _context.BatteryUnits.Add(oldBattery);
-            }
-            else
-            {
-                oldBattery = await _context.BatteryUnits
-                    .FirstOrDefaultAsync(b => b.Serial == request.OldBatterySerial);
-                if (oldBattery == null)
-                {
-                    // If a serial is provided but not found, we might want to throw an error
-                    // or create a new entry as we do above. For now, let's be strict.
-                    throw new KeyNotFoundException($"Không tìm thấy pin cũ với serial '{request.OldBatterySerial}'.");
-                }
-            }
+            var returnedBatterySerial = request.OldBatterySerial; // may be null or empty if not provided
 
             var vehicle = reservation.User.Vehicles.FirstOrDefault();
             if (vehicle == null)
@@ -126,9 +86,10 @@ public class SwapTransactionService
                 Reservation = reservation,
                 Vehicle = vehicle,
                 IssuedBattery = newBattery,
-                ReturnedBattery = oldBattery, // Set navigation property
+                ReturnedBattery = oldBattery, // kept null per new policy
                 IssuedBatterySerial = newBattery.Serial,
-                ReturnedBatterySerial = oldBattery?.Serial,
+                ReturnedBatterySerial = returnedBatterySerial,
+                BatteryHealthReturned = request.OldBatteryHealth,
                 // If this reservation was created due to a complaint, propagate the link to the swap
                 RelatedComplaintId = reservation.RelatedComplaintId,
                 Status = SwapTransactionStatus.Completed,
@@ -160,22 +121,7 @@ public class SwapTransactionService
                 newBattery.Status,     // To 'InUse'
                 1);
 
-            if (oldBattery != null)
-            {
-                // The old battery is now at the station and needs charging
-                var oldStatusOfOldBattery = oldBattery.Status;
-                oldBattery.Status = BatteryStatus.Depleted;
-                oldBattery.StationId = reservation.StationId;
-                oldBattery.UpdatedAt = DateTime.UtcNow;
-
-                // ⭐ FIX: Update inventory for the battery being returned
-                await _inventoryService.UpdateInventoryCountAsync(
-                    oldBattery.BatteryModelId,
-                    oldBattery.StationId, // This is now the new station ID
-                    oldStatusOfOldBattery, // From 'InUse' (or whatever it was)
-                    oldBattery.Status,     // To 'Depleted'
-                    1);
-            }
+            // Per new policy: do not create/update BatteryUnit or inventory for customer's returned battery here.
 
 
             // 6. Update subscription swap count if applicable

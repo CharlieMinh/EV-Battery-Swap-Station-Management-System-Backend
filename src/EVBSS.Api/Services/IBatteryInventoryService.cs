@@ -39,4 +39,10 @@ public interface IBatteryInventoryService
     /// Called by SwapTransactionService to maintain sync
     /// </summary>
     Task UpdateInventoryCountAsync(Guid batteryModelId, Guid stationId, Models.BatteryStatus fromStatus, Models.BatteryStatus toStatus, int quantity = 1);
+
+    /// <summary>
+    /// Change inventory count for a single status. Useful for decrementing or incrementing a specific status
+    /// at a given station (e.g., decrement InUse at source station when a battery is returned elsewhere).
+    /// </summary>
+    Task ChangeInventoryCountByStatusAsync(Guid batteryModelId, Guid stationId, Models.BatteryStatus status, int delta);
 }
