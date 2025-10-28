@@ -1,0 +1,16 @@
+### Test VNPay V2 - Theo hướng dẫn chính thức
+### KHÔNG CẦN IPN URL, chỉ cần ReturnUrl
+
+###
+POST http://localhost:5194/api/v1/VnPayTest/create-payment
+Content-Type: application/json
+
+{
+  "orderType": "other",
+  "amount": 100000,
+  "orderDescription": "Thanh toan goi dich vu Premium",
+  "name": "Pham Van Minh"
+}
+
+###
+GET http://localhost:5194/api/v1/VnPayTest/payment-callback
