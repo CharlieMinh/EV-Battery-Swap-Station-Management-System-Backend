@@ -4,16 +4,13 @@ public enum PaymentType
 {
     Subscription = 0,        // Thuê pin theo gói
     PayPerSwap = 1,         // Trả tiền theo lần đổi
-    BuyOutright = 2,        // Mua đứt pin  
-    TradeIn = 3             // Thu cũ đổi mới
+
 }
 
 public enum PaymentMethod
 {
     VNPay = 0,
     Cash = 1,
-    BankTransfer = 2,
-    Momo = 3
 }
 
 public enum PaymentStatus

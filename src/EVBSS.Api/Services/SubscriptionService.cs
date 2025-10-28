@@ -38,12 +38,18 @@ public class SubscriptionService : ISubscriptionService
     private readonly AppDbContext _context;
     private readonly ILogger<SubscriptionService> _logger;
     private readonly VnPayConfig _vnPayConfig;
+    private readonly IVnPayServiceV2 _vnPayServiceV2;
 
-    public SubscriptionService(AppDbContext context, ILogger<SubscriptionService> logger, IOptions<VnPayConfig> vnPayConfig)
+    public SubscriptionService(
+        AppDbContext context, 
+        ILogger<SubscriptionService> logger, 
+        IOptions<VnPayConfig> vnPayConfig,
+        IVnPayServiceV2 vnPayServiceV2)
     {
         _context = context;
         _logger = logger;
         _vnPayConfig = vnPayConfig.Value;
+        _vnPayServiceV2 = vnPayServiceV2;
     }
     
     // ⭐ NEW: Check and expire subscriptions that passed their billing end date
@@ -604,34 +610,24 @@ public class SubscriptionService : ISubscriptionService
 
     private string GenerateVnPayUrl(Payment payment, UserSubscription subscription, SubscriptionPlan plan, Vehicle vehicle, string ipAddress)
     {
-        var orderInfo = $"{plan.Name} - {vehicle.Plate}";
-        
-        var vnpParams = new Dictionary<string, string>
+        // ⭐ SỬ DỤNG VnPayServiceV2 (theo hướng dẫn chính thức VNPay)
+        var paymentModel = new PaymentInformationModel
         {
-            {"vnp_Version", _vnPayConfig.Version},
-            {"vnp_Command", _vnPayConfig.Command},
-            {"vnp_TmnCode", _vnPayConfig.TmnCode},
-            {"vnp_Amount", ((long)(payment.Amount * 100)).ToString()}, // Convert to cents
-            {"vnp_CurrCode", _vnPayConfig.CurrCode},
-            {"vnp_TxnRef", payment.VnpTxnRef!},
-            {"vnp_OrderInfo", orderInfo},
-            {"vnp_OrderType", "billpayment"}, // Fixed value for subscription
-            {"vnp_Locale", _vnPayConfig.Locale},
-            {"vnp_ReturnUrl", _vnPayConfig.ReturnUrl},
-            {"vnp_IpAddr", ipAddress},
-            {"vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss")}
+            OrderType = "billpayment", // subscription payment
+            Amount = (double)payment.Amount,
+            OrderDescription = $"Thanh toan {plan.Name}",
+            Name = $"{vehicle.Plate}"
         };
 
-        // Sort parameters and create query string
-        var sortedParams = vnpParams.OrderBy(x => x.Key).ToList();
-        var queryString = string.Join("&", sortedParams.Select(p => $"{p.Key}={HttpUtility.UrlEncode(p.Value)}"));
+        // Create fake HttpContext with IP address
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(ipAddress);
 
-        // Generate secure hash
-        var hashData = string.Join("&", sortedParams.Select(p => $"{p.Key}={p.Value}"));
-        var secureHash = ComputeHmacSha512(_vnPayConfig.HashSecret, hashData);
-
-        // Build final URL
-        return $"{_vnPayConfig.BaseUrl}?{queryString}&vnp_SecureHash={secureHash}";
+        var paymentUrl = _vnPayServiceV2.CreatePaymentUrl(paymentModel, httpContext);
+        
+        _logger.LogInformation("Generated VNPay URL for payment {PaymentId}: {Url}", payment.Id, paymentUrl);
+        
+        return paymentUrl;
     }
 
     private string ComputeHmacSha512(string key, string data)

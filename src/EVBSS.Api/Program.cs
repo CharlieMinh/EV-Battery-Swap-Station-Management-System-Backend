@@ -65,7 +65,7 @@ var conn = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
 
 // Configurations
-builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPay"));
+builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPayOld"));
 
 // JWT Authentication
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -114,8 +114,9 @@ builder.Services.AddSignalR();
 builder.Services.AddScoped<SlotReservationService>();
 builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
-builder.Services.AddScoped<IPaymentService, PaymentService>();  // ⭐ LUỒNG 2: Required for CreatePayPerSwapReservationAsync
+builder.Services.AddScoped<IPaymentService, PaymentService>();  // LUỒNG 2: Required for CreatePayPerSwapReservationAsync
 builder.Services.AddScoped<IVnPayService, VnPayService>();
+builder.Services.AddScoped<IVnPayServiceV2, VnPayServiceV2>(); // NEW: VNPay theo hướng dẫn chính thức
 builder.Services.AddScoped<SwapTransactionService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<PasswordResetService>();
