@@ -167,10 +167,10 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Get all customers/drivers (for Admin customer management)
+    /// Get all customers/drivers (for Admin customer management and staff)
     /// </summary>
     [HttpGet("customers")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<IActionResult> GetAllCustomers(
         [FromQuery] string? search = null,
         [FromQuery] int page = 1,
