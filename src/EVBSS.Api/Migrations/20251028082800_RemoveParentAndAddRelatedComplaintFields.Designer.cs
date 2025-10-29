@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251028082800_RemoveParentAndAddRelatedComplaintFields")]
+    partial class RemoveParentAndAddRelatedComplaintFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -444,9 +447,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid?>("UserSubscriptionId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("VehicleId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("VerifiedByStaffId")
                         .HasColumnType("uniqueidentifier");
 
@@ -459,8 +459,6 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("RelatedComplaintId");
 
                     b.HasIndex("UserSubscriptionId");
-
-                    b.HasIndex("VehicleId");
 
                     b.HasIndex("VerifiedByStaffId");
 
@@ -1147,11 +1145,6 @@ namespace EVBSS.Api.Migrations
                         .WithMany()
                         .HasForeignKey("UserSubscriptionId");
 
-                    b.HasOne("EVBSS.Api.Models.Vehicle", "Vehicle")
-                        .WithMany()
-                        .HasForeignKey("VehicleId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("EVBSS.Api.Models.User", "VerifiedByStaff")
                         .WithMany()
                         .HasForeignKey("VerifiedByStaffId");
@@ -1167,8 +1160,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("User");
 
                     b.Navigation("UserSubscription");
-
-                    b.Navigation("Vehicle");
 
                     b.Navigation("VerifiedByStaff");
                 });

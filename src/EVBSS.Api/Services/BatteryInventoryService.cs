@@ -363,47 +363,14 @@ public class BatteryInventoryService : IBatteryInventoryService
     {
         try
         {
-            // Decrease count in source status
-            var sourceInventory = await _context.BatteryInventories
-                .FirstOrDefaultAsync(bi => 
-                    bi.BatteryModelId == batteryModelId &&
-                    bi.StationId == stationId &&
-                    bi.Status == fromStatus);
-
-            if (sourceInventory != null)
+            // Decrease count in source status (if different)
+            if (fromStatus != toStatus)
             {
-                sourceInventory.Quantity -= quantity;
-                sourceInventory.UpdatedAt = DateTime.UtcNow;
-                
-                // Keep record even if quantity reaches 0 for audit purposes
+                await ChangeCountInternalAsync(batteryModelId, stationId, fromStatus, -quantity);
             }
 
             // Increase count in destination status
-            var destInventory = await _context.BatteryInventories
-                .FirstOrDefaultAsync(bi => 
-                    bi.BatteryModelId == batteryModelId &&
-                    bi.StationId == stationId &&
-                    bi.Status == toStatus);
-
-            if (destInventory == null)
-            {
-                // Create new inventory record if doesn't exist
-                destInventory = new BatteryInventory
-                {
-                    Id = Guid.NewGuid(),
-                    BatteryModelId = batteryModelId,
-                    StationId = stationId,
-                    Status = toStatus,
-                    Quantity = quantity,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _context.BatteryInventories.Add(destInventory);
-            }
-            else
-            {
-                destInventory.Quantity += quantity;
-                destInventory.UpdatedAt = DateTime.UtcNow;
-            }
+            await ChangeCountInternalAsync(batteryModelId, stationId, toStatus, quantity);
 
             await _context.SaveChangesAsync();
 
@@ -416,6 +383,118 @@ public class BatteryInventoryService : IBatteryInventoryService
             _logger.LogError(ex, "Error updating inventory count: {Message}", ex.Message);
             // Don't throw - we don't want to fail the main transaction
         }
+    }
+
+    /// <summary>
+    /// Private helper: change inventory count for a single status without calling SaveChangesAsync.
+    /// Caller is responsible for saving changes (this supports batch updates inside a transaction).
+    /// </summary>
+    private async Task ChangeCountInternalAsync(Guid batteryModelId, Guid stationId, BatteryStatus status, int delta)
+    {
+        var inventory = await _context.BatteryInventories
+            .FirstOrDefaultAsync(bi =>
+                bi.BatteryModelId == batteryModelId &&
+                bi.StationId == stationId &&
+                bi.Status == status);
+
+        if (inventory == null)
+        {
+            if (delta > 0)
+            {
+                inventory = new BatteryInventory
+                {
+                    Id = Guid.NewGuid(),
+                    BatteryModelId = batteryModelId,
+                    StationId = stationId,
+                    Status = status,
+                    Quantity = delta,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.BatteryInventories.Add(inventory);
+            }
+            else
+            {
+                _logger.LogWarning("Attempted to decrement non-existent inventory: Model={ModelId}, Station={StationId}, Status={Status}, Delta={Delta}",
+                    batteryModelId, stationId, status, delta);
+                return;
+            }
+        }
+        else
+        {
+            inventory.Quantity += delta;
+            inventory.UpdatedAt = DateTime.UtcNow;
+
+            if (inventory.Quantity < 0)
+            {
+                _logger.LogError(
+                    "Inventory count went negative: Model={ModelId}, Station={StationId}, Status={Status}, NewQuantity={NewQuantity}",
+                    batteryModelId, stationId, status, inventory.Quantity);
+                inventory.Quantity = 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Public helper method: Change count for a single status. Calls SaveChangesAsync internally.
+    /// Useful for small cross-station adjustments. If caller is already inside a Db transaction, prefer
+    /// using UpdateInventoryCountAsync or the internal ChangeCountInternalAsync pattern.
+    /// </summary>
+    public async Task ChangeInventoryCountByStatusAsync(Guid batteryModelId, Guid stationId, BatteryStatus status, int delta)
+    {
+        try
+        {
+            await ChangeCountInternalAsync(batteryModelId, stationId, status, delta);
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error changing inventory count: {Message}", ex.Message);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Tự động tạo pin mới với Serial VF3-XXX (XXX là 3 số tự tăng)
+    /// Pin này được tạo như một đại diện cho pin trả về nếu khách hàng không có pin đang đăng ký trong hệ thống.
+    /// Trạng thái mặc định: Faulty, SOH = 50%
+    /// </summary>
+    public async Task<BatteryUnit> AutoCreateNewBatteryUnitAsync(Guid batteryModelId, Guid stationId, Guid staffId)
+    {
+        // 1. TÌM SERIAL LỚN NHẤT theo định dạng VF3-XXX
+        var maxSerial = await _context.BatteryUnits
+            .Where(b => b.Serial.StartsWith("VF3-"))
+            .Select(b => b.Serial)
+            .OrderByDescending(s => s)
+            .FirstOrDefaultAsync();
+
+        int nextIndex = 1;
+        if (maxSerial != null && maxSerial.Length >= 7 && int.TryParse(maxSerial.Substring(4), out int currentMax))
+        {
+            nextIndex = currentMax + 1;
+        }
+
+        var newSerial = $"VF3-{nextIndex:D3}";
+
+        var newBattery = new BatteryUnit
+        {
+            Id = Guid.NewGuid(),
+            Serial = newSerial,
+            BatteryModelId = batteryModelId,
+            StationId = stationId,
+            Status = BatteryStatus.Faulty,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.BatteryUnits.Add(newBattery);
+
+        // Cập nhật tồn kho: tăng Faulty count cho trạm
+        await ChangeInventoryCountByStatusAsync(batteryModelId, stationId, BatteryStatus.Faulty, 1);
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogWarning("Auto-created new BatteryUnit {Serial} (External/Faulty) for transaction purpose.", newSerial);
+
+        return newBattery;
     }
 
     /// <summary>

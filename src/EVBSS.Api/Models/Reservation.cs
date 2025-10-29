@@ -11,6 +11,11 @@ public class Reservation
     public Guid BatteryModelId { get; set; }
     
     /// <summary>
+    /// ⭐ NEW: Vehicle associated with this reservation (useful for matching compatible BatteryModel)
+    /// </summary>
+    public Guid? VehicleId { get; set; }
+    
+    /// <summary>
     /// Pin được assign khi check-in (nullable vì chưa assign ngay khi đặt)
     /// </summary>
     public Guid? BatteryUnitId { get; set; }
@@ -82,12 +87,17 @@ public class Reservation
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // ⭐ NEW: Link back to a BatteryComplaint that triggered this re-swap reservation
+    public Guid? RelatedComplaintId { get; set; }
+    public BatteryComplaint? RelatedComplaint { get; set; }
+
     // Navigation properties
     public User User { get; set; } = null!;
     public Station Station { get; set; } = null!;
     public BatteryModel BatteryModel { get; set; } = null!;
     public BatteryUnit? BatteryUnit { get; set; }
     public User? VerifiedByStaff { get; set; }
+    public Vehicle? Vehicle { get; set; }
     public Payment? Payment { get; set; }  // ⭐ Link to Payment for pay-per-swap
     public UserSubscription? UserSubscription { get; set; }  // ⭐ Link to UserSubscription when using plan
 }

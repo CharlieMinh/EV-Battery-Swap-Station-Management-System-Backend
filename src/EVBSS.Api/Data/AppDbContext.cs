@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
         public DbSet<SwapTransaction> SwapTransactions => Set<SwapTransaction>();
         public DbSet<BulkCreateRequest> BulkCreateRequests { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<BatteryComplaint> BatteryComplaints { get; set; }
 
     
         // Password Reset System
@@ -44,6 +45,9 @@ public class AppDbContext : DbContext
 
         b.Entity<BatteryModel>()
             .Property(m => m.Name).HasMaxLength(200);
+        // Ensure decimal precision for SwapPricePerSession to avoid silent truncation
+        b.Entity<BatteryModel>()
+            .Property(m => m.SwapPricePerSession).HasPrecision(18, 2);
         b.Entity<BatteryUnit>()
             .HasIndex(u => u.Serial).IsUnique();
         b.Entity<BatteryUnit>()
@@ -130,6 +134,16 @@ public class AppDbContext : DbContext
         b.Entity<Reservation>().HasOne(r => r.Station).WithMany().HasForeignKey(r => r.StationId);
         b.Entity<Reservation>().HasOne(r => r.BatteryModel).WithMany().HasForeignKey(r => r.BatteryModelId);
         b.Entity<Reservation>().HasOne(r => r.BatteryUnit).WithMany().HasForeignKey(r => r.BatteryUnitId);
+        b.Entity<Reservation>().HasOne(r => r.Vehicle).WithMany().HasForeignKey(r => r.VehicleId).OnDelete(DeleteBehavior.Restrict);
+
+            // Link Reservation back to BatteryComplaint (if this reservation was created as a re-swap)
+            b.Entity<Reservation>()
+                .HasIndex(r => r.RelatedComplaintId);
+            b.Entity<Reservation>()
+                .HasOne(r => r.RelatedComplaint)
+                .WithMany()
+                .HasForeignKey(r => r.RelatedComplaintId)
+                .OnDelete(DeleteBehavior.SetNull);
 
         b.Entity<Reservation>()
         .HasOne(r => r.User)
@@ -283,6 +297,13 @@ public class AppDbContext : DbContext
             .HasForeignKey(st => st.ReturnedBatteryId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // RelatedComplaint: link a re-swap SwapTransaction back to the original BatteryComplaint
+        b.Entity<SwapTransaction>()
+            .HasOne(st => st.RelatedComplaint)
+            .WithMany() // If you want BatteryComplaint to expose a collection of re-swaps, change to WithMany(c => c.ReSwapTransactions)
+            .HasForeignKey(st => st.RelatedComplaintId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Configure PasswordResetToken
         b.Entity<PasswordResetToken>(entity =>
         {
@@ -331,6 +352,39 @@ public class AppDbContext : DbContext
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.UserId, e.IsRead, e.CreatedAt });
+        });
+
+        // Thêm cấu hình BatteryComplaint
+        b.Entity<BatteryComplaint>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.ComplaintDetails)
+                .HasMaxLength(500);
+
+            // Index: 1 giao dịch chỉ có 1 khiếu nại
+            entity.HasIndex(e => e.SwapTransactionId).IsUnique(); 
+
+            // Relationships (OnDelete.Restrict cho các thực thể quan trọng)
+            entity.HasOne(e => e.SwapTransaction)
+                .WithMany()
+                .HasForeignKey(e => e.SwapTransactionId)
+                .OnDelete(DeleteBehavior.Restrict); // Không xóa giao dịch nếu có khiếu nại
+
+            entity.HasOne(e => e.IssuedBattery)
+                .WithMany()
+                .HasForeignKey(e => e.IssuedBatteryId)
+                .OnDelete(DeleteBehavior.Restrict); // Không xóa pin nếu có khiếu nại
+
+            entity.HasOne(e => e.ReportedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.ReportedByUserId)
+                .OnDelete(DeleteBehavior.Restrict); // Không xóa user nếu có khiếu nại
+
+            entity.HasOne(e => e.HandledByStaff)
+                .WithMany()
+                .HasForeignKey(e => e.HandledByStaffId)
+                .OnDelete(DeleteBehavior.SetNull); // Nếu Staff nghỉ việc, chỉ SetNull
         });
     }
 }

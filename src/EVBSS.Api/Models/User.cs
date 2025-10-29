@@ -1,4 +1,5 @@
 namespace EVBSS.Api.Models;
+using System.Text.Json.Serialization;
 
 public enum Role { Driver = 0, Staff = 1, Admin = 2 }
 
@@ -34,5 +35,6 @@ public class User
 
     // Staff-specific fields: A staff member can be assigned to one station
     public Guid? StationId { get; set; }
+    [JsonIgnore]
     public Station? Station { get; set; }
 }

@@ -39,7 +39,13 @@ public class SwapTransaction
     public int VehicleOdoAtSwap { get; set; }                    // Số km xe tại thời điểm đổi
     public int? BatteryHealthIssued { get; set; }                // % sức khỏe pin cấp
     public int? BatteryHealthReturned { get; set; }              // % sức khỏe pin trả
+    // NOTE: ParentComplaintId removed; use RelatedComplaintId instead to avoid duplication
     
+    // ⭐ THÊM MỚI: Liên kết đến khiếu nại pin lỗi đã kích hoạt Re-swap này
+    public Guid? RelatedComplaintId { get; set; }
+
+    // Navigation property
+    public BatteryComplaint? RelatedComplaint { get; set; }
     // Pricing & Payment
     public PaymentType PaymentType { get; set; }
     public decimal SwapFee { get; set; } = 0;                    // Phí đổi pin (nếu trả theo lần)

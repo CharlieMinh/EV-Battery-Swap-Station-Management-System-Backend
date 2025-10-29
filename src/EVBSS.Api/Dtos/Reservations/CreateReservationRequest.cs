@@ -5,6 +5,9 @@ namespace EVBSS.Api.Dtos.Reservations;
 public class CreateReservationRequest
 {
     [Required] public Guid StationId { get; set; }
-    [Required] public Guid BatteryModelId { get; set; }
-    [Required] public DateTime StartTime { get; set; } // UTC ISO-8601
+    // VehicleId replaces BatteryModelId; server resolves BatteryModel from the Vehicle
+    [Required] public Guid VehicleId { get; set; }
+    [Required] public DateOnly SlotDate { get; set; }
+    [Required] public TimeSpan SlotStartTime { get; set; }
+    [Required] public TimeSpan SlotEndTime { get; set; }
 }

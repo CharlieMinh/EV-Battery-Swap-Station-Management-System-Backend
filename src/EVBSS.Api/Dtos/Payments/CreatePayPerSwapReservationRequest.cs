@@ -15,10 +15,10 @@ public class CreatePayPerSwapReservationRequest
     public Guid StationId { get; set; }
     
     /// <summary>
-    /// ID của loại pin (BatteryModel) tương thích với xe
+    /// ID của xe (Vehicle) - server sẽ ánh xạ sang BatteryModel tương ứng
     /// </summary>
-    [Required(ErrorMessage = "BatteryModelId là bắt buộc")]
-    public Guid BatteryModelId { get; set; }
+    [Required(ErrorMessage = "VehicleId là bắt buộc")]
+    public Guid VehicleId { get; set; }
     
     /// <summary>
     /// Ngày đặt lịch (không bao gồm giờ)

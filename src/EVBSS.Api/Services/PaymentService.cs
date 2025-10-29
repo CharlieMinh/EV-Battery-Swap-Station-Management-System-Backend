@@ -169,10 +169,11 @@ public class PaymentService : IPaymentService
                 reservation = await _slotReservationService.CreateReservationAsync(
                     userId,
                     request.StationId,
-                    request.BatteryModelId,
+                    request.VehicleId,
                     request.SlotDate,
                     request.SlotStartTime,
-                    request.SlotEndTime);
+                    request.SlotEndTime,
+                    request.PaymentMethod);
             }
             // Xử lý các exception cụ thể đã biết
             catch (ActiveReservationExistsException ex)
