@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251029050345_UpdateComplaintWorkflowStatus")]
-    partial class UpdateComplaintWorkflowStatus
+    [Migration("20251029160110_FinalComplaintFlowSetup")]
+    partial class FinalComplaintFlowSetup
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

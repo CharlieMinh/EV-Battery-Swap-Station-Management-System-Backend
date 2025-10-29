@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251029022940_AutoAddVehicleIdToReservation")]
-    partial class AutoAddVehicleIdToReservation
+    [Migration("20251029155143_RecreateComplaintFlowAndVehicleOrder")]
+    partial class RecreateComplaintFlowAndVehicleOrder
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

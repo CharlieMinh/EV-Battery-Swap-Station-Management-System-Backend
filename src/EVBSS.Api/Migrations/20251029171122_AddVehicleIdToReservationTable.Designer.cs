@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251028064722_AddSwapTransactionRelatedComplaint")]
-    partial class AddSwapTransactionRelatedComplaint
+    [Migration("20251029171122_AddVehicleIdToReservationTable")]
+    partial class AddVehicleIdToReservationTable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -423,6 +423,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("QRCode")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("RelatedComplaintId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateOnly>("SlotDate")
                         .HasColumnType("date");
 
@@ -444,6 +447,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid?>("UserSubscriptionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("VerifiedByStaffId")
                         .HasColumnType("uniqueidentifier");
 
@@ -453,7 +459,11 @@ namespace EVBSS.Api.Migrations
 
                     b.HasIndex("BatteryUnitId");
 
+                    b.HasIndex("RelatedComplaintId");
+
                     b.HasIndex("UserSubscriptionId");
+
+                    b.HasIndex("VehicleId");
 
                     b.HasIndex("VerifiedByStaffId");
 
@@ -630,9 +640,6 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("ParentComplaintId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("PaymentType")
                         .HasColumnType("int");
 
@@ -699,8 +706,6 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("CompletedByStaffId");
 
                     b.HasIndex("IssuedBatteryId");
-
-                    b.HasIndex("ParentComplaintId");
 
                     b.HasIndex("RelatedComplaintId");
 
@@ -1124,6 +1129,11 @@ namespace EVBSS.Api.Migrations
                         .HasForeignKey("BatteryUnitId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("EVBSS.Api.Models.BatteryComplaint", "RelatedComplaint")
+                        .WithMany()
+                        .HasForeignKey("RelatedComplaintId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("EVBSS.Api.Models.Station", "Station")
                         .WithMany()
                         .HasForeignKey("StationId")
@@ -1140,6 +1150,11 @@ namespace EVBSS.Api.Migrations
                         .WithMany()
                         .HasForeignKey("UserSubscriptionId");
 
+                    b.HasOne("EVBSS.Api.Models.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("EVBSS.Api.Models.User", "VerifiedByStaff")
                         .WithMany()
                         .HasForeignKey("VerifiedByStaffId");
@@ -1148,11 +1163,15 @@ namespace EVBSS.Api.Migrations
 
                     b.Navigation("BatteryUnit");
 
+                    b.Navigation("RelatedComplaint");
+
                     b.Navigation("Station");
 
                     b.Navigation("User");
 
                     b.Navigation("UserSubscription");
+
+                    b.Navigation("Vehicle");
 
                     b.Navigation("VerifiedByStaff");
                 });
@@ -1191,11 +1210,6 @@ namespace EVBSS.Api.Migrations
                         .HasForeignKey("IssuedBatteryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.BatteryComplaint", "ParentComplaint")
-                        .WithMany()
-                        .HasForeignKey("ParentComplaintId")
-                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("EVBSS.Api.Models.BatteryComplaint", "RelatedComplaint")
                         .WithMany()
@@ -1244,8 +1258,6 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("CompletedByStaff");
 
                     b.Navigation("IssuedBattery");
-
-                    b.Navigation("ParentComplaint");
 
                     b.Navigation("RelatedComplaint");
 

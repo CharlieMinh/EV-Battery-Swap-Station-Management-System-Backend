@@ -5,7 +5,7 @@
 namespace EVBSS.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class UpdateComplaintWorkflowStatus : Migration
+    public partial class RecreateComplaintFlowAndVehicleOrder : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

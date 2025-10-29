@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251028082800_RemoveParentAndAddRelatedComplaintFields")]
-    partial class RemoveParentAndAddRelatedComplaintFields
+    [Migration("20251029154347_ComplaintFlowAndFixes_Clean")]
+    partial class ComplaintFlowAndFixes_Clean
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -447,6 +447,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<Guid?>("UserSubscriptionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("VerifiedByStaffId")
                         .HasColumnType("uniqueidentifier");
 
@@ -459,6 +462,8 @@ namespace EVBSS.Api.Migrations
                     b.HasIndex("RelatedComplaintId");
 
                     b.HasIndex("UserSubscriptionId");
+
+                    b.HasIndex("VehicleId");
 
                     b.HasIndex("VerifiedByStaffId");
 
@@ -1145,6 +1150,11 @@ namespace EVBSS.Api.Migrations
                         .WithMany()
                         .HasForeignKey("UserSubscriptionId");
 
+                    b.HasOne("EVBSS.Api.Models.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("EVBSS.Api.Models.User", "VerifiedByStaff")
                         .WithMany()
                         .HasForeignKey("VerifiedByStaffId");
@@ -1160,6 +1170,8 @@ namespace EVBSS.Api.Migrations
                     b.Navigation("User");
 
                     b.Navigation("UserSubscription");
+
+                    b.Navigation("Vehicle");
 
                     b.Navigation("VerifiedByStaff");
                 });
