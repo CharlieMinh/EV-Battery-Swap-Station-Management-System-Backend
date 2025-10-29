@@ -8,12 +8,13 @@ public class Reservation
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }
     public Guid StationId { get; set; }
-    public Guid BatteryModelId { get; set; }
-    
+    // Đã sửa: VehicleId nằm trước BatteryModelId
     /// <summary>
     /// ⭐ NEW: Vehicle associated with this reservation (useful for matching compatible BatteryModel)
     /// </summary>
     public Guid? VehicleId { get; set; }
+
+    public Guid BatteryModelId { get; set; }
     
     /// <summary>
     /// Pin được assign khi check-in (nullable vì chưa assign ngay khi đặt)
