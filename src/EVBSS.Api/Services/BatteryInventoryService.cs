@@ -454,6 +454,50 @@ public class BatteryInventoryService : IBatteryInventoryService
     }
 
     /// <summary>
+    /// Tự động tạo pin mới với Serial VF3-XXX (XXX là 3 số tự tăng)
+    /// Pin này được tạo như một đại diện cho pin trả về nếu khách hàng không có pin đang đăng ký trong hệ thống.
+    /// Trạng thái mặc định: Faulty, SOH = 50%
+    /// </summary>
+    public async Task<BatteryUnit> AutoCreateNewBatteryUnitAsync(Guid batteryModelId, Guid stationId, Guid staffId)
+    {
+        // 1. TÌM SERIAL LỚN NHẤT theo định dạng VF3-XXX
+        var maxSerial = await _context.BatteryUnits
+            .Where(b => b.Serial.StartsWith("VF3-"))
+            .Select(b => b.Serial)
+            .OrderByDescending(s => s)
+            .FirstOrDefaultAsync();
+
+        int nextIndex = 1;
+        if (maxSerial != null && maxSerial.Length >= 7 && int.TryParse(maxSerial.Substring(4), out int currentMax))
+        {
+            nextIndex = currentMax + 1;
+        }
+
+        var newSerial = $"VF3-{nextIndex:D3}";
+
+        var newBattery = new BatteryUnit
+        {
+            Id = Guid.NewGuid(),
+            Serial = newSerial,
+            BatteryModelId = batteryModelId,
+            StationId = stationId,
+            Status = BatteryStatus.Faulty,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.BatteryUnits.Add(newBattery);
+
+        // Cập nhật tồn kho: tăng Faulty count cho trạm
+        await ChangeInventoryCountByStatusAsync(batteryModelId, stationId, BatteryStatus.Faulty, 1);
+
+        await _context.SaveChangesAsync();
+
+        _logger.LogWarning("Auto-created new BatteryUnit {Serial} (External/Faulty) for transaction purpose.", newSerial);
+
+        return newBattery;
+    }
+
+    /// <summary>
     /// Generate serial number for battery units
     /// </summary>
     private string GenerateSerial(string? prefix, int index, int totalQuantity)

@@ -13,6 +13,8 @@ using System;
 using System.Threading.Tasks;
 using System.Text;
 using System.Collections.Generic;
+using EVBSS.Api.Dtos.SwapTransactions; // Cần thêm namespace này
+using EVBSS.Api.Dtos.Reservations; // For CreateReservationRequest-derived DTOs
 
 namespace EVBSS.Api.Services
 {
@@ -21,9 +23,9 @@ namespace EVBSS.Api.Services
         private readonly AppDbContext _context;
         private readonly ILogger<BatteryComplaintService> _logger;
         private readonly IBatteryInventoryService _inventoryService;
-    private readonly ReservationService? _reservationService;
-    private readonly IHubContext<NotificationHub>? _hubContext;
-    private readonly IServiceProvider _serviceProvider;
+        private readonly ReservationService? _reservationService;
+        private readonly IHubContext<NotificationHub>? _hubContext;
+        private readonly IServiceProvider _serviceProvider;
         private readonly IConfiguration _config;
 
         private string QRSecret => _config["QRCode:SecretKey"] ?? "DEFAULT_SECRET_KEY_CHANGE_ME";
@@ -54,8 +56,9 @@ namespace EVBSS.Api.Services
             if (complaint == null)
                 throw new KeyNotFoundException("Không tìm thấy khiếu nại.");
 
-            if (complaint.Status != ComplaintStatus.Pending)
-                throw new InvalidOperationException($"Chỉ có thể chuyển sang Investigating từ trạng thái Pending. Trạng thái hiện tại: {complaint.Status}.");
+            // FIX: Chỉ cho phép chuyển từ CheckedIn (pin đã ở trạm) sang Investigating.
+            if (complaint.Status != ComplaintStatus.CheckedIn)
+                throw new InvalidOperationException($"Chỉ có thể chuyển sang Investigating từ trạng thái CheckedIn. Trạng thái hiện tại: {complaint.Status}.");
 
             complaint.Status = ComplaintStatus.Investigating;
             complaint.HandledByStaffId = staffId;
@@ -100,6 +103,42 @@ namespace EVBSS.Api.Services
             return complaint;
         }
 
+        /// <summary>
+        /// Transition a complaint into the CheckedIn state when a linked reservation is checked-in by staff.
+        /// Idempotent: if already CheckedIn, returns the complaint unchanged.
+        /// Allowed transition: Scheduled -> CheckedIn (Chỉ áp dụng cho lịch kiểm tra ban đầu)
+        /// </summary>
+        public async Task<BatteryComplaint> TransitionToCheckedInAsync(Guid complaintId, Guid staffId)
+        {
+            var complaint = await _context.BatteryComplaints
+                .FirstOrDefaultAsync(c => c.Id == complaintId);
+
+            if (complaint == null)
+                throw new KeyNotFoundException("Không tìm thấy khiếu nại.");
+
+            // If already CheckedIn, return early (idempotent)
+            if (complaint.Status == ComplaintStatus.CheckedIn)
+                return complaint;
+
+
+            // FIX: Chỉ cho phép chuyển từ Scheduled sang CheckedIn (loại bỏ AwaitingReswap và PendingScheduling)
+            if (complaint.Status != ComplaintStatus.Scheduled)
+            {
+                throw new InvalidOperationException($"Không thể chuyển khiếu nại sang CheckedIn từ trạng thái hiện tại: {complaint.Status}. Chỉ chấp nhận Scheduled.");
+            }
+
+            complaint.Status = ComplaintStatus.CheckedIn;
+            complaint.HandledByStaffId = staffId;
+            complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty)
+                + $"\n[System Note]: Complaint transitioned to CheckedIn by Staff {staffId} at {DateTime.UtcNow}.";
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Complaint {ComplaintId} transitioned to CheckedIn by staff {StaffId}", complaintId, staffId);
+
+            return complaint;
+        }
+
         public async Task<BatteryComplaint> ReportFaultyBatteryAsync(Guid driverId, ReportFaultyBatteryRequest request)
         {
             var swap = await _context.SwapTransactions
@@ -126,7 +165,7 @@ namespace EVBSS.Api.Services
                 SwapTransactionId = request.SwapTransactionId,
                 IssuedBatteryId = swap.IssuedBatteryId,
                 ComplaintDetails = request.ComplaintDetails,
-                Status = ComplaintStatus.Pending,
+                Status = ComplaintStatus.PendingScheduling,
                 ReportDate = DateTime.UtcNow
             };
 
@@ -167,8 +206,9 @@ namespace EVBSS.Api.Services
 
             var complaint = await GetComplaintByIdAsync(complaintId);
 
-            if (complaint.Status != ComplaintStatus.Pending && complaint.Status != ComplaintStatus.Investigating)
-                throw new InvalidOperationException($"Không thể xử lý khiếu nại đã ở trạng thái {complaint.Status}.");
+            // Enforce stricter flow: staff must investigate (Investigating) before making a decision
+            if (complaint.Status != ComplaintStatus.Investigating)
+                throw new InvalidOperationException($"Chỉ có thể ra quyết định khi khiếu nại đang ở trạng thái Investigating. Trạng thái hiện tại: {complaint.Status}.");
 
             complaint.Status = request.NewStatus;
             complaint.HandledByStaffId = staffId;
@@ -179,11 +219,8 @@ namespace EVBSS.Api.Services
             string message;
             if (request.NewStatus == ComplaintStatus.Confirmed)
             {
-                // Do not instruct the driver to go to a specific station here because
-                // staff may choose a different station to receive the faulty battery.
-                // Inform the driver that the complaint is confirmed and they should
-                // check the 'Lịch hẹn' (Reservations) section for the re-swap details.
-                message = $"Khiếu nại pin lỗi đã được XÁC NHẬN (Confirmed). Nhân viên sẽ tạo một lượt đổi pin miễn phí cho bạn tại trạm phù hợp. Vui lòng kiểm tra mục 'Lịch hẹn' để xem thông tin đổi pin mới.";
+                // Message only notifies that the complaint is confirmed; staff must finalize later.
+                message = $"Khiếu nại pin lỗi đã được XÁC NHẬN (Confirmed). Staff sẽ tiến hành đổi pin thay thế cho bạn.";
             }
             else // Rejected
             {
@@ -208,190 +245,7 @@ namespace EVBSS.Api.Services
             return complaint;
         }
 
-        public async Task<BatteryComplaint> ProcessFaultyBatteryReturnAsync(Guid staffId, Guid complaintId, Guid staffStationId, bool isChained = false)
-        {
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                var complaint = await GetComplaintByIdAsync(complaintId);
-
-                if (complaint.Status != ComplaintStatus.Confirmed)
-                    throw new InvalidOperationException($"Không thể thu hồi pin cho khiếu nại ở trạng thái {complaint.Status}. Driver phải đặt lịch đổi pin trước.");
-
-                var issuedBattery = complaint.IssuedBattery
-                    ?? throw new InvalidOperationException("Không tìm thấy thông tin pin bị lỗi.");
-
-                var swap = complaint.SwapTransaction
-                    ?? throw new InvalidOperationException("Không tìm thấy giao dịch đổi pin liên quan.");
-
-                // Require that the driver previously created a reservation linked to this complaint
-                // and that the driver has CheckedIn at the station before staff can receive the faulty battery.
-                var reservation = await _context.Reservations
-                    .FirstOrDefaultAsync(r => r.RelatedComplaintId == complaint.Id);
-
-                if (reservation == null)
-                    throw new InvalidOperationException("Driver chưa đặt lịch hẹn đổi pin miễn phí (Re-swap).");
-
-                if (reservation.Status != ReservationStatus.CheckedIn)
-                    throw new InvalidOperationException($"Lịch hẹn Re-swap (ID: {reservation.Id}) chưa được Driver Check-in. Staff không thể thu hồi pin.");
-
-                // Backfill link from original swap to complaint for auditability
-                if (swap.RelatedComplaintId == null)
-                {
-                    swap.RelatedComplaintId = complaint.Id;
-                }
-
-                // Update battery status to Faulty and inventory (same as previous logic)
-                var oldStatus = issuedBattery.Status;
-                if (oldStatus != BatteryStatus.Faulty)
-                {
-                    var currentPhysicalStationId = issuedBattery.StationId;
-                    var sourceStationId = swap.StationId;
-
-                    issuedBattery.Status = BatteryStatus.Faulty;
-                    issuedBattery.UpdatedAt = DateTime.UtcNow;
-
-                    if (oldStatus == BatteryStatus.InUse)
-                    {
-                        await _inventoryService.ChangeInventoryCountByStatusAsync(
-                            issuedBattery.BatteryModelId,
-                            sourceStationId,
-                            BatteryStatus.InUse,
-                            -1);
-                    }
-                    else
-                    {
-                        await _inventoryService.ChangeInventoryCountByStatusAsync(
-                            issuedBattery.BatteryModelId,
-                            currentPhysicalStationId,
-                            oldStatus,
-                            -1);
-                    }
-
-                    issuedBattery.StationId = staffStationId;
-
-                    await _inventoryService.ChangeInventoryCountByStatusAsync(
-                        issuedBattery.BatteryModelId,
-                        staffStationId,
-                        BatteryStatus.Faulty,
-                        1);
-                }
-
-                // Append a note that the faulty battery was received.
-                complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty)
-                    + $"\nPin lỗi đã được thu hồi bởi Staff {staffId} tại trạm {staffStationId}.";
-
-                // Only create a user-facing notification when this is an independent API call.
-                if (!isChained)
-                {
-                    _context.Notifications.Add(new Notification
-                    {
-                        Id = Guid.NewGuid(),
-                        UserId = complaint.ReportedByUserId,
-                        SenderId = staffId,
-                        Message = $"Pin lỗi liên quan đến khiếu nại {complaint.Id} đã được Staff thu hồi. Vui lòng hoàn tất giao dịch đổi pin mới.",
-                        Type = NotificationType.Generic,
-                        CreatedAt = DateTime.UtcNow,
-                        IsRead = false,
-                        RelatedEntityId = complaint.Id
-                    });
-                }
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                _logger.LogInformation("Successfully processed faulty battery return for complaint {ComplaintId} by staff {StaffId} (Chained: {IsChained})", complaintId, staffId, isChained);
-
-                return complaint;
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Error processing faulty battery return for complaint {ComplaintId}", complaintId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Completes the re-swap flow for a complaint by finalizing the reservation -> creating a SwapTransaction,
-        /// issuing the replacement battery, updating inventories and then finalizing the complaint.
-        /// This method delegates heavy-lifting to SwapTransactionService.FinalizeFromReservationAsync.
-        /// </summary>
-        public async Task<SwapTransaction> CompleteReswapTransactionAsync(Guid staffId, Guid complaintId, EVBSS.Api.Dtos.Complaints.CompleteReswapRequest request)
-        {
-            // Resolve SwapTransactionService lazily to avoid circular DI dependency
-            var swapService = _serviceProvider?.GetService<SwapTransactionService>()
-                ?? throw new InvalidOperationException("SwapTransactionService is not available via IServiceProvider.");
-
-            // --- START: Auto-fill returned battery serial from the complaint's IssuedBattery when staff omits it ---
-            var complaint = await _context.BatteryComplaints
-                .Include(c => c.IssuedBattery)
-                .FirstOrDefaultAsync(c => c.Id == complaintId);
-
-            if (complaint == null)
-                throw new KeyNotFoundException("Không tìm thấy khiếu nại (Complaint) để hoàn tất Re-swap.");
-
-            var returnedBatterySerial = request?.ReturnedBatterySerial;
-
-            if (string.IsNullOrWhiteSpace(returnedBatterySerial))
-            {
-                if (complaint.IssuedBattery == null || string.IsNullOrWhiteSpace(complaint.IssuedBattery.Serial))
-                {
-                    throw new InvalidOperationException("Không thể xác định Serial pin lỗi từ khiếu nại. Dữ liệu pin bị thiếu.");
-                }
-
-                returnedBatterySerial = complaint.IssuedBattery.Serial;
-                _logger.LogInformation("Auto-filled ReturnedBatterySerial for complaint {ComplaintId} with known faulty battery serial: {Serial}", complaintId, returnedBatterySerial);
-            }
-            // --- END: Auto-fill logic ---
-
-            // Find the reservation linked to this complaint
-            var reservation = await _context.Reservations
-                .Include(r => r.User).ThenInclude(u => u.Vehicles)
-                .Include(r => r.Station)
-                .Include(r => r.BatteryUnit)
-                .FirstOrDefaultAsync(r => r.RelatedComplaintId == complaintId);
-
-            if (reservation == null)
-                throw new KeyNotFoundException("Không tìm thấy lịch hẹn (Reservation) cho khiếu nại này.");
-
-            if (reservation.Status != ReservationStatus.CheckedIn)
-                throw new InvalidOperationException($"Lịch hẹn Re-swap (ID: {reservation.Id}) phải ở trạng thái CheckedIn để hoàn tất.");
-
-            // Build finalize request and reuse SwapTransactionService logic
-            var finalizeRequest = new EVBSS.Api.Dtos.SwapTransactions.FinalizeSwapRequest
-            {
-                ReservationId = reservation.Id,
-                // Use the determined/auto-filled serial
-                OldBatterySerial = returnedBatterySerial,
-                OldBatteryHealth = request?.ReturnedBatteryHealth
-            };
-
-            var swap = await swapService.FinalizeFromReservationAsync(finalizeRequest, staffId);
-
-            // If the swap is related to a complaint, ensure complaint is finalized (FinalizeFromReservationAsync already does auto-finalize,
-            // but call FinalizeComplaintAsync to be explicit if needed)
-            try
-            {
-                if (swap.RelatedComplaintId.HasValue)
-                {
-                    var related = swap.RelatedComplaintId.Value;
-                    // Use the complaint we loaded above
-                    if (complaint != null && complaint.Status == ComplaintStatus.Confirmed)
-                    {
-                        await FinalizeComplaintAsync(staffId, related);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Auto-finalize after CompleteReswapTransactionAsync failed for swap {SwapId}", swap.Id);
-            }
-
-            return swap;
-        }
-
-        // Generate a signed QR code payload: Base64( JSON(payload) + '|' + HMAC )
+    // Generate a signed QR code payload: Base64( JSON(payload) + '|' + HMAC )
         private string GenerateQRCode(Guid reservationId)
         {
             var payload = new
@@ -414,88 +268,21 @@ namespace EVBSS.Api.Services
             return Convert.ToBase64String(hash);
         }
 
-        /// <summary>
-        /// Gộp 2 bước: Thu hồi pin lỗi VÀ Hoàn tất giao dịch đổi pin miễn phí (Re-swap) thành một bước duy nhất cho Staff.
-        /// </summary>
-        /// <param name="staffId">ID của Staff thực hiện.</param>
-        /// <param name="complaintId">ID của khiếu nại.</param>
-        /// <param name="staffStationId">ID trạm Staff đang xử lý (nơi pin lỗi được thu hồi).</param>
-        /// <param name="request">DTO chứa Serial và Health của pin lỗi được thu hồi.</param>
-        /// <returns>SwapTransaction mới đã hoàn tất.</returns>
-        public async Task<SwapTransaction> ProcessAndCompleteReswapAsync(Guid staffId, Guid complaintId, Guid staffStationId, EVBSS.Api.Dtos.Complaints.CompleteReswapRequest request)
+        // Backwards-compat wrappers for controllers / services that still call legacy methods.
+        // These are thin shims that call the consolidated immediate-reswap flow where appropriate.
+        public async Task<SwapTransaction> ProcessAndCompleteReswapAsync(Guid staffId, Guid complaintId, Guid staffStationId, CompleteReswapRequest request)
         {
-            // Bước 1: Thu hồi pin lỗi (isChained = true để không gửi notification trung gian)
-            await ProcessFaultyBatteryReturnAsync(staffId, complaintId, staffStationId, isChained: true);
-
-            // Bước 2: Hoàn tất giao dịch cấp pin mới
-            var swapTransaction = await CompleteReswapTransactionAsync(staffId, complaintId, request);
-
-            return swapTransaction;
+            // Backwards-compat: finalize a confirmed complaint. This wrapper will call the new finalize method.
+            var swap = await FinalizeConfirmedReswapAsync(staffId, complaintId, staffStationId, request);
+            return swap;
         }
 
-        /// <summary>
-        /// Lấy lịch hẹn đổi pin miễn phí (Re-swap Reservation) liên kết với một khiếu nại.
-        /// </summary>
-        /// <param name="complaintId">ID của khiếu nại.</param>
-        /// <returns>Đối tượng Reservation hoặc null nếu không tìm thấy.</returns>
-        public async Task<Reservation?> GetReservationByComplaintIdAsync(Guid complaintId)
-        {
-            return await _context.Reservations
-                .FirstOrDefaultAsync(r => r.RelatedComplaintId == complaintId);
-        }
+        // Legacy reservation-based "DriverCreateReswapReservationAsync" has been removed.
+        // Use DriverScheduleInitialInspectionAsync to create the single inspection reservation
+        // that covers the lifecycle from PendingScheduling -> Scheduled and then use
+        // staff workflows (Investigate -> Resolve -> FinalizeConfirmedReswapAsync) to
+        // complete re-swap processing.
 
-        // Driver-facing: Create a free re-swap reservation linked to a confirmed complaint.
-        public async Task<Reservation> DriverCreateReswapReservationAsync(Guid driverId, CreateReswapReservationRequest request)
-        {
-            var complaint = await _context.BatteryComplaints
-                .Include(c => c.IssuedBattery)
-                .FirstOrDefaultAsync(c => c.Id == request.ComplaintId && c.ReportedByUserId == driverId);
-
-            if (complaint == null)
-                throw new KeyNotFoundException("Không tìm thấy khiếu nại hoặc khiếu nại không thuộc về bạn.");
-
-            if (complaint.Status != ComplaintStatus.Confirmed)
-                throw new InvalidOperationException($"Chỉ có thể đặt lịch đổi pin khi khiếu nại ở trạng thái Confirmed. Trạng thái hiện tại: {complaint.Status}.");
-
-            var existingReservation = await _context.Reservations
-                .AnyAsync(r => r.RelatedComplaintId == request.ComplaintId);
-
-            if (existingReservation)
-                throw new InvalidOperationException("Đã có lịch hẹn đổi pin miễn phí cho khiếu nại này.");
-
-            var newReservationId = Guid.NewGuid();
-            var qrCodeBase64 = GenerateQRCode(newReservationId);
-
-            var reservation = new Reservation
-            {
-                Id = newReservationId,
-                UserId = driverId,
-                StationId = request.StationId,
-                // Ensure the issued battery and its model id are present. Do not silently use Guid.Empty.
-                BatteryModelId = complaint.IssuedBattery?.BatteryModelId ?? throw new InvalidOperationException("Không thể xác định loại pin để đặt lịch hẹn đổi pin thay thế. Vui lòng liên hệ Staff."),
-                SlotDate = DateOnly.FromDateTime(request.SlotDateTime),
-                SlotStartTime = request.SlotDateTime.TimeOfDay,
-                SlotEndTime = request.SlotDateTime.TimeOfDay.Add(TimeSpan.FromMinutes(30)),
-                Status = ReservationStatus.Pending,
-                CreatedAt = DateTime.UtcNow,
-                RelatedComplaintId = complaint.Id,
-                QRCode = qrCodeBase64,
-                PaymentId = null,
-                UserSubscriptionId = null
-            };
-
-            _context.Reservations.Add(reservation);
-
-            complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty)
-                + $"\nDriver đã đặt lịch đổi pin miễn phí (Reservation ID: {reservation.Id}) tại trạm {request.StationId} vào lúc {request.SlotDateTime}.";
-
-            await _context.SaveChangesAsync();
-            return reservation;
-        }
-
-        /// <summary>
-        /// Staff/Hệ thống tự động đóng khiếu nại sau khi quá trình Re-swap hoàn tất.
-        /// </summary>
         public async Task<BatteryComplaint> FinalizeComplaintAsync(Guid staffId, Guid complaintId)
         {
             var complaint = await _context.BatteryComplaints
@@ -504,30 +291,201 @@ namespace EVBSS.Api.Services
             if (complaint == null)
                 throw new KeyNotFoundException("Không tìm thấy khiếu nại.");
 
-            // Chỉ có thể Resolved khi khiếu nại đã được xác nhận (Confirmed)
-            if (complaint.Status != ComplaintStatus.Confirmed)
-                throw new InvalidOperationException($"Chỉ có thể giải quyết (Resolve) khiếu nại đã được xác nhận (Confirmed). Trạng thái hiện tại: {complaint.Status}.");
-
-            complaint.Status = ComplaintStatus.Resolved;
-            complaint.HandledByStaffId = staffId; // Hoặc dùng StaffId đang thực hiện Re-swap
-            complaint.ResolvedAt = DateTime.UtcNow;
-            complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty) + "\n[System Note]: Complaint finalized after successful battery re-swap.";
-
-            _context.Notifications.Add(new Notification
+            // Force-close the complaint as Resolved (used by SwapTransactionService auto-finalize)
+            if (complaint.Status != ComplaintStatus.Resolved)
             {
-                Id = Guid.NewGuid(),
-                UserId = complaint.ReportedByUserId,
-                SenderId = staffId,
-                Message = $"Khiếu nại số {complaint.Id} đã được ĐÓNG (Resolved) sau khi bạn hoàn tất giao dịch đổi pin thay thế. Cảm ơn bạn.",
-                CreatedAt = DateTime.UtcNow,
-                IsRead = false,
-                Type = NotificationType.Generic,
-                RelatedEntityId = complaint.Id
-            });
+                complaint.Status = ComplaintStatus.Resolved;
+                complaint.HandledByStaffId = staffId;
+                complaint.ResolvedAt = DateTime.UtcNow;
+                complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty) + "\n[System Note]: Complaint finalized after related re-swap.";
+
+                _context.Notifications.Add(new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = complaint.ReportedByUserId,
+                    SenderId = staffId,
+                    Message = $"Khiếu nại số {complaint.Id} đã được ĐÓNG (Resolved) sau khi giao dịch đổi pin liên quan hoàn tất.",
+                    CreatedAt = DateTime.UtcNow,
+                    IsRead = false,
+                    Type = NotificationType.Generic,
+                    RelatedEntityId = complaint.Id
+                });
+
+                await _context.SaveChangesAsync();
+            }
+
+            return complaint;
+        }
+
+        // NOTE: Legacy/reservation-driven re-swap flows removed. If you need reservation-based flows,
+        // reintroduce them carefully and ensure ComplaintStatus enum mappings align with DB migrations.
+
+        /// <summary>
+        /// Staff thực hiện thu hồi pin lỗi và hoàn tất giao dịch đổi pin mới (Re-swap).
+        /// Chỉ được gọi sau khi Complaint đã được Staff Confirm (Status = Confirmed).
+        /// </summary>
+        public async Task<SwapTransaction> FinalizeConfirmedReswapAsync(
+            Guid staffId,
+            Guid complaintId,
+            Guid staffStationId,
+            CompleteReswapRequest request)
+        {
+            // Resolve SwapTransactionService lazily
+            var swapService = _serviceProvider?.GetService<SwapTransactionService>()
+                ?? throw new InvalidOperationException("SwapTransactionService is not available via IServiceProvider.");
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var complaint = await GetComplaintByIdAsync(complaintId);
+
+                // --- 1. KIỂM TRA TRẠNG THÁI ---
+                // Yêu cầu Complaint phải ở trạng thái Confirmed (Chờ finalize)
+                if (complaint.Status != ComplaintStatus.Confirmed)
+                {
+                    throw new InvalidOperationException($"Chỉ có thể hoàn tất đổi pin khi khiếu nại ở trạng thái Confirmed. Trạng thái hiện tại: {complaint.Status}.");
+                }
+
+                // --- 2. TÌM RESERVATION BAN ĐẦU ---
+                var reservation = await _context.Reservations
+                    .Include(r => r.User).ThenInclude(u => u.Vehicles)
+                    .Include(r => r.Station)
+                    .Include(r => r.BatteryUnit)
+                    // BUG FIX: require the reservation to be explicitly linked to this complaint
+                    .Where(r => r.RelatedComplaintId == complaint.Id
+                             && r.UserId == complaint.ReportedByUserId 
+                             && r.Status == ReservationStatus.CheckedIn)
+                    .OrderByDescending(r => r.SlotDate)
+                    .ThenByDescending(r => r.SlotStartTime)
+                    .FirstOrDefaultAsync();
+
+                if (reservation == null)
+                    throw new InvalidOperationException("Không tìm thấy lịch hẹn (Reservation) đang ở trạng thái CheckedIn để hoàn tất giao dịch. Driver phải Check-in trước.");
+                    
+                // Liên kết Reservation ban đầu với Complaint để audit
+                if (reservation.RelatedComplaintId == null)
+                {
+                    reservation.RelatedComplaintId = complaint.Id;
+                }
+                
+                // --- 3. THU HỒI PIN LỖI (VÀ CẬP NHẬT GHI CHÚ COMPLAINT) ---
+                var issuedBattery = complaint.IssuedBattery
+                    ?? throw new InvalidOperationException("Không tìm thấy thông tin pin bị lỗi.");
+
+                // NOTE: Inventory/status updates for the returned (old) battery are now handled
+                // centrally by SwapTransactionService.FinalizeFromReservationAsync so we avoid
+                // performing inventory changes here and rely on the outer transaction to commit
+                // everything atomically. We only record metadata (SOH) if provided and audit notes.
+                if (request.ReturnedBatteryHealth.HasValue)
+                {
+                    // If BatteryUnit contains a SOH-like property in the future, set it here.
+                    // For now we append the reported health to resolution notes for audit.
+                    complaint.ResolutionNotes += $"\nReported SOH: {request.ReturnedBatteryHealth.Value}%.";
+                }
+
+                complaint.HandledByStaffId = staffId;
+                complaint.ResolutionNotes += $"\nPin lỗi đã được thu hồi bởi Staff {staffId} tại trạm {staffStationId}.";
+                
+                // --- 4. HOÀN TẤT CẤP PIN MỚI (Finalize Swap) ---
+                // Delegate returned-battery detection/creation and inventory changes to
+                // SwapTransactionService.FinalizeFromReservationAsync. We only pass the
+                // reservation id and optional reported OldBatteryHealth.
+                var finalizeRequest = new FinalizeSwapRequest
+                {
+                    ReservationId = reservation.Id,
+                    OldBatteryHealth = request?.ReturnedBatteryHealth
+                };
+
+                var swapTransaction = await swapService.FinalizeFromReservationAsync(finalizeRequest, staffId);
+
+                // --- 5. CHUYỂN TRẠNG THÁI SANG RESOLVED VÀ GỬI THÔNG BÁO ---
+                if (swapTransaction.RelatedComplaintId.HasValue && swapTransaction.RelatedComplaintId.Value == complaint.Id)
+                {
+                    complaint.Status = ComplaintStatus.Resolved;
+                    complaint.HandledByStaffId = staffId;
+                    complaint.ResolvedAt = DateTime.UtcNow;
+                    complaint.ResolutionNotes += "\n[System Note]: Complaint finalized after successful battery re-swap.";
+
+                    _context.Notifications.Add(new Notification
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = complaint.ReportedByUserId,
+                        SenderId = staffId,
+                        Message = $"Khiếu nại số {complaint.Id} đã được ĐÓNG (Resolved) và giao dịch đổi pin thay thế đã hoàn tất. Cảm ơn bạn.",
+                        CreatedAt = DateTime.UtcNow,
+                        IsRead = false,
+                        Type = NotificationType.Generic,
+                        RelatedEntityId = complaint.Id
+                    });
+                }
+                
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("Successfully finalized Reswap for complaint {ComplaintId} by staff {StaffId}", complaintId, staffId);
+
+                return swapTransaction;
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Error finalizing Reswap for complaint {ComplaintId}", complaintId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Driver đặt lịch hẹn kiểm tra ban đầu (liên kết với Complaint) sau khi báo lỗi.
+        /// Tạo reservation thông qua SlotReservationService và cập nhật Complaint.Status -> Scheduled.
+        /// </summary>
+        public async Task<Reservation> DriverScheduleInitialInspectionAsync(Guid driverId, CreateInspectionReservationRequest request)
+        {
+            // Resolve SlotReservationService lazily to avoid DI cycle
+            var slotReservationService = _serviceProvider?.GetService<SlotReservationService>()
+                ?? throw new InvalidOperationException("SlotReservationService is not available via IServiceProvider.");
+
+            var complaint = await _context.BatteryComplaints
+                .FirstOrDefaultAsync(c => c.Id == request.ComplaintId && c.ReportedByUserId == driverId);
+
+            if (complaint == null)
+                throw new KeyNotFoundException("Không tìm thấy khiếu nại hoặc khiếu nại không thuộc về bạn.");
+
+            if (complaint.Status != ComplaintStatus.PendingScheduling)
+                throw new InvalidOperationException($"Chỉ có thể đặt lịch kiểm tra khi khiếu nại ở trạng thái PendingScheduling. Trạng thái hiện tại: {complaint.Status}.");
+
+            var existingActiveReservation = await _context.Reservations
+                .AnyAsync(r => r.RelatedComplaintId == request.ComplaintId
+                            && r.Status != ReservationStatus.Cancelled
+                            && r.Status != ReservationStatus.Expired
+                            && r.Status != ReservationStatus.Completed);
+
+            if (existingActiveReservation)
+                throw new InvalidOperationException("Đã có lịch hẹn kiểm tra ban đầu đang hoạt động cho khiếu nại này. Vui lòng kiểm tra trạng thái lịch hẹn hiện tại.");
+
+            // 1) Create reservation via SlotReservationService
+            var reservation = await slotReservationService.CreateReservationAsync(
+                userId: driverId,
+                stationId: request.StationId,
+                vehicleId: request.VehicleId,
+                slotDate: request.SlotDate,
+                slotStartTime: request.SlotStartTime,
+                slotEndTime: request.SlotEndTime,
+                paymentMethod: null,
+                // ⭐ ĐÃ SỬA: Truyền ComplaintId để bỏ qua kiểm tra thanh toán
+                relatedComplaintId: complaint.Id);
+
+            // 2) Link reservation <-> complaint and update status
+            // NOTE: reservation.RelatedComplaintId was set inside CreateReservationAsync
+            complaint.Status = ComplaintStatus.Scheduled;
+
+            complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty)
+                + $"\nDriver đã đặt lịch kiểm tra ban đầu (Reservation ID: {reservation.Id}) tại trạm {request.StationId} vào lúc {request.SlotDate} {request.SlotStartTime}.";
 
             await _context.SaveChangesAsync();
 
-            return complaint;
+            _logger.LogInformation("Scheduled initial inspection reservation {ReservationId} for complaint {ComplaintId}", reservation.Id, complaint.Id);
+
+            return reservation;
         }
     }
 }

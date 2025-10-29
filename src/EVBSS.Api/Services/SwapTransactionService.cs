@@ -27,8 +27,6 @@ public class SwapTransactionService
 
     public async Task<SwapTransaction> FinalizeFromReservationAsync(FinalizeSwapRequest request, Guid staffId)
     {
-        using var dbTransaction = await _context.Database.BeginTransactionAsync();
-
         try
         {
             // 1. Find and validate the reservation
@@ -50,16 +48,61 @@ public class SwapTransactionService
             if (newBattery == null)
                 throw new InvalidOperationException("Lịch hẹn chưa được gán pin mới.");
 
-            // The returned (old) battery is an external item provided by the customer.
-            // We do NOT create a new BatteryUnit for it here. We only record the serial
-            // supplied by staff/driver. Battery units that originate from customers are
-            // handled outside the station-managed BatteryUnit lifecycle (e.g. maintenance).
-            BatteryUnit? oldBattery = null;
-            var returnedBatterySerial = request.OldBatterySerial; // may be null or empty if not provided
+            // Determine the returned (old) battery serial/id.
+            // New behaviour: if this reservation is linked to a Complaint that has an
+            // IssuedBattery recorded, use that BatteryUnit as the returned battery.
+            // Otherwise, auto-create a placeholder BatteryUnit in inventory (Faulty)
+            // using the inventory service so we can reference it in the SwapTransaction
+            // and keep inventory counts consistent.
+            BatteryUnit? returnedBattery = null;
+            string? returnedBatterySerial = null;
 
             var vehicle = reservation.User.Vehicles.FirstOrDefault();
             if (vehicle == null)
                 throw new InvalidOperationException("Không tìm thấy thông tin xe của người dùng.");
+
+            if (reservation.RelatedComplaintId.HasValue)
+            {
+                // Try to load the complaint's issued battery
+                var complaint = await _context.BatteryComplaints
+                    .Include(c => c.IssuedBattery)
+                    .FirstOrDefaultAsync(c => c.Id == reservation.RelatedComplaintId.Value);
+
+                if (complaint != null && complaint.IssuedBattery != null && !string.IsNullOrWhiteSpace(complaint.IssuedBattery.Serial))
+                {
+                    // Use the complaint's recorded issued battery as the returned battery.
+                    returnedBattery = complaint.IssuedBattery;
+                    returnedBatterySerial = returnedBattery.Serial;
+
+                    // Move the battery back to this station and mark as Charging.
+                    var oldStatus = returnedBattery.Status;
+                    returnedBattery.Status = BatteryStatus.Charging;
+                    returnedBattery.StationId = reservation.StationId;
+                    returnedBattery.UpdatedAt = DateTime.UtcNow;
+
+                    // Sync inventory counts: from previous status -> Charging at this station
+                    await _inventoryService.UpdateInventoryCountAsync(
+                        returnedBattery.BatteryModelId,
+                        reservation.StationId,
+                        oldStatus,
+                        BatteryStatus.Charging,
+                        1);
+                }
+                else
+                {
+                    // Fallback: create a placeholder returned battery unit in inventory
+                    var auto = await _inventoryService.AutoCreateNewBatteryUnitAsync(reservation.BatteryModelId, reservation.StationId, staffId);
+                    returnedBattery = auto;
+                    returnedBatterySerial = auto.Serial;
+                }
+            }
+            else
+            {
+                // No complaint -> auto-create a placeholder returned battery unit in inventory
+                var auto = await _inventoryService.AutoCreateNewBatteryUnitAsync(reservation.BatteryModelId, reservation.StationId, staffId);
+                returnedBattery = auto;
+                returnedBatterySerial = auto.Serial;
+            }
 
             // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
             if (reservation.Payment == null) // This indicates a subscription-based swap
@@ -86,7 +129,7 @@ public class SwapTransactionService
                 Reservation = reservation,
                 Vehicle = vehicle,
                 IssuedBattery = newBattery,
-                ReturnedBattery = oldBattery, // kept null per new policy
+                ReturnedBattery = returnedBattery,
                 IssuedBatterySerial = newBattery.Serial,
                 ReturnedBatterySerial = returnedBatterySerial,
                 BatteryHealthReturned = request.OldBatteryHealth,
@@ -144,9 +187,8 @@ public class SwapTransactionService
                 }
             }
 
-            // 7. Save all changes
+            // 7. Save all changes (transaction is managed by the caller when needed)
             await _context.SaveChangesAsync();
-            await dbTransaction.CommitAsync();
 
             _logger.LogInformation("Successfully finalized swap from reservation {ReservationId}. New SwapTransaction ID: {SwapTransactionId}",
                 request.ReservationId, swapTransaction.Id);
@@ -158,14 +200,14 @@ public class SwapTransactionService
                 {
                     var relatedId = swapTransaction.RelatedComplaintId.Value;
                     var complaint = await _complaintService.GetComplaintByIdAsync(relatedId);
-                    if (complaint != null && complaint.Status == ComplaintStatus.Confirmed)
+                        if (complaint != null && complaint.Status != ComplaintStatus.Resolved)
                     {
                         await _complaintService.FinalizeComplaintAsync(staffId, relatedId);
                         _logger.LogInformation("Auto-finalized complaint {ComplaintId} after related re-swap {SwapId}", relatedId, swapTransaction.Id);
                     }
                     else
                     {
-                        _logger.LogInformation("Related complaint {ComplaintId} is not in Confirmed status (current: {Status}), skipping auto-finalize.", relatedId, complaint?.Status);
+                            _logger.LogInformation("Related complaint {ComplaintId} already resolved or not found (current: {Status}), skipping auto-finalize.", relatedId, complaint?.Status);
                     }
                 }
             }
@@ -179,9 +221,8 @@ public class SwapTransactionService
         }
         catch (Exception ex)
         {
-            await dbTransaction.RollbackAsync();
             _logger.LogError(ex, "Error finalizing swap from reservation {ReservationId}", request.ReservationId);
-            throw; // Re-throw the exception to be caught by the controller
+            throw; // Re-throw the exception to be caught by the caller
         }
     }
 

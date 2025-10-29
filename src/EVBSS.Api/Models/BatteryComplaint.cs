@@ -1,5 +1,3 @@
-// File mới: src/EVBSS.Api/Models/BatteryComplaint.cs
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -8,11 +6,26 @@ namespace EVBSS.Api.Models;
 
 public enum ComplaintStatus
 {
-    Pending = 0,      // Driver báo cáo, chờ Staff xác minh
-    Investigating = 1,  // Đang kiểm tra thực tế (có thể bỏ qua hoặc dùng tạm)
-    Confirmed = 2,      // Xác nhận lỗi Pin do Hệ thống/Bảo hành (System Fault)
-    Rejected = 3,       // Từ chối (Lỗi do người dùng/Pin ngoại lai)
-    Resolved = 4        // Đã giải quyết xong (Đã cấp Re-swap/Áp dụng phí phạt)
+    // Cập nhật Flow mới:
+    
+    // 1. Sau khi Driver báo cáo
+    PendingScheduling = 0,      // Driver báo cáo, chờ Driver đặt lịch kiểm tra Pin
+
+    // 2. Sau khi Driver đặt lịch
+    Scheduled = 1,              // Đã đặt lịch kiểm tra Pin, chờ tới ngày hẹn
+    
+    // 3. Staff Check-in tại trạm
+    CheckedIn = 2,              // Staff đã Check-in Pin, Pin đã ở trạm, chờ bắt đầu kiểm tra
+
+    // 4. Staff bắt đầu quá trình kiểm tra
+    Investigating = 3,          // Đang trong quá trình kiểm tra thực tế (Staff đang thực hiện)
+    
+    // 5. Staff ra quyết định
+    Confirmed = 4,              // Xác nhận lỗi Pin do Hệ thống/Bảo hành, CHỜ Staff thực hiện Finalize Reswap
+    Rejected = 5,               // Bị từ chối (Lỗi do người dùng/Pin ngoại lai) -> Complaint đóng
+
+    // 6. Reswap thành công (chỉ áp dụng sau Confirmed)
+    Resolved = 6                // Đã giải quyết xong (Đã cấp Re-swap thành công) -> Complaint đóng
 }
 
 public class BatteryComplaint
@@ -29,7 +42,8 @@ public class BatteryComplaint
     public Guid ReportedByUserId { get; set; }
 
     [Required]
-    public ComplaintStatus Status { get; set; } = ComplaintStatus.Pending;
+    // Trạng thái mặc định được cập nhật
+    public ComplaintStatus Status { get; set; } = ComplaintStatus.PendingScheduling;
 
     [MaxLength(500)]
     public string ComplaintDetails { get; set; } = null!; // Mô tả của Driver

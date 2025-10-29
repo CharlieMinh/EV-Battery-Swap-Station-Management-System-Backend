@@ -19,6 +19,7 @@ public class SlotReservationService
     private readonly IConfiguration _config;
     private readonly ILogger<SlotReservationService> _logger;
     private readonly VnPayConfig _vnPayConfig;
+    private readonly IServiceProvider? _serviceProvider;
     
     // Secret key để sign QR Code (nên lưu trong appsettings.json hoặc Azure Key Vault)
     private string QRSecret => _config["QRCode:SecretKey"] ?? "DEFAULT_SECRET_KEY_CHANGE_ME";
@@ -27,12 +28,14 @@ public class SlotReservationService
         AppDbContext db, 
         IConfiguration config, 
         ILogger<SlotReservationService> logger,
-        IOptions<VnPayConfig> vnPayConfig)
+        IOptions<VnPayConfig> vnPayConfig,
+        IServiceProvider? serviceProvider = null)
     {
         _db = db;
         _config = config;
         _logger = logger;
         _vnPayConfig = vnPayConfig.Value;
+        _serviceProvider = serviceProvider;
     }
 
     /// <summary>
@@ -96,7 +99,9 @@ public class SlotReservationService
         DateOnly slotDate,  // UPDATED: Changed from DateTime to DateOnly
         TimeSpan slotStartTime,
         TimeSpan slotEndTime,
-        PaymentMethod? paymentMethod = null)  // ⭐ NEW 2025-10-25: For pay-per-swap flow
+        PaymentMethod? paymentMethod = null,
+        // ⭐ ĐÃ THÊM: Cho phép truyền ComplaintId để đặt lịch MIỄN PHÍ
+        Guid? relatedComplaintId = null)  // ⭐ NEW: If provided, skip payment/subscription checks
     {
         // Validation 1: User chỉ được có 1 active reservation
         var hasActive = await _db.Reservations
@@ -109,11 +114,20 @@ public class SlotReservationService
             throw new ActiveReservationExistsException("Bạn đã có lịch đặt đang hoạt động. Vui lòng hủy hoặc hoàn thành lịch cũ trước khi đặt mới.");
         }
         
-        // ⭐ FIX 2025-10-25: Support both Subscription and Pay-per-swap flows
-        // Validation 2: Check subscription and determine payment requirement
+        // ⭐ BỔ SUNG LOGIC: Nếu có RelatedComplaintId, đây là lịch kiểm tra MIỄN PHÍ, bỏ qua kiểm tra thanh toán
         bool paymentRequired = false;
         Guid? userSubscriptionId = null;
-        
+        if (relatedComplaintId.HasValue)
+        {
+            _logger.LogInformation("Booking Complaint Inspection Reservation {ComplaintId}. Skipping Subscription/Payment checks.", relatedComplaintId.Value);
+            paymentRequired = false;
+            userSubscriptionId = null;
+            // skip subscription/payment checks by jumping to slot validation
+            goto SkipPaymentCheck;
+        }
+
+        // ⭐ FIX 2025-10-25: Support both Subscription and Pay-per-swap flows
+        // Validation 2: Check subscription and determine payment requirement
         var activeSubscription = await _db.UserSubscriptions
             .Include(s => s.SubscriptionPlan)
             .FirstOrDefaultAsync(s => 
@@ -149,6 +163,7 @@ public class SlotReservationService
             // ✅ LUỒNG PAY-PER-SWAP: User không có gói → Phải chọn phương thức thanh toán
             if (paymentMethod == null)
             {
+                // ⭐ DÒNG GÂY LỖI TRƯỚC ĐÂY
                 throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
             }
             
@@ -158,7 +173,9 @@ public class SlotReservationService
             paymentRequired = true;
             userSubscriptionId = null;  // Không dùng subscription
         }
-        
+
+SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
+
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var maxDate = today.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays);
         if (slotDate > maxDate)
@@ -209,6 +226,8 @@ public class SlotReservationService
             VehicleId = vehicleId,
             BatteryUnitId = null,
             UserSubscriptionId = userSubscriptionId,  // ⭐ Set subscription ID (null if pay-per-swap)
+            // ⭐ SỬA: Đã thêm RelatedComplaintId vào Model Reservation trước đó
+            RelatedComplaintId = relatedComplaintId,
             SlotDate = slotDate,
             SlotStartTime = slotStartTime,
             SlotEndTime = slotEndTime,
@@ -221,28 +240,37 @@ public class SlotReservationService
         _db.Reservations.Add(reservation);
         await _db.SaveChangesAsync();  // Save to get reservation.Id for Payment
         
-        // ⭐ FIXED 2025-10-25: Create Payment if pay-per-swap
+        // ⭐ SỬ DỤNG 'paymentRequired' ĐÃ ĐƯỢC THIẾT LẬP (Hoặc là true/false từ logic Subscription, hoặc là false khi có relatedComplaintId)
         if (paymentRequired && paymentMethod.HasValue)
         {
+            var batteryModelForPayment = await _db.BatteryModels
+                 .FirstOrDefaultAsync(bm => bm.Id == batteryModelId)
+                 ?? throw new InvalidOperationException("Không tìm thấy thông tin giá pin để tạo Payment.");
+                 
             var payment = new Payment
             {
                 UserId = userId,
-                ReservationId = reservation.Id,  // ⭐ Link to reservation (EF Core will auto-set reservation.PaymentId)
+                ReservationId = reservation.Id,
                 Method = paymentMethod.Value,
-                Type = PaymentType.PayPerSwap,  // ⭐ FIXED: Use PayPerSwap enum value
-                Amount = batteryModel.SwapPricePerSession,  // ⭐ FIXED: Get price from BatteryModel
+                Type = PaymentType.PayPerSwap,
+                Amount = batteryModelForPayment.SwapPricePerSession,
                 Status = PaymentStatus.Pending,
                 VnpTxnRef = GenerateTransactionReference(),
                 PaymentReference = GenerateTransactionReference(),
-                Description = $"Đổi pin {batteryModel.Name} - Slot {slotStartTime:hh\\:mm}-{slotEndTime:hh\\:mm}",  // ⭐ FIXED: Use battery model name
+                Description = $"Đổi pin {batteryModelForPayment.Name} - Slot {slotStartTime:hh\\:mm}-{slotEndTime:hh\\:mm}",
                 CreatedAt = DateTime.UtcNow
             };
             
             _db.Payments.Add(payment);
-            await _db.SaveChangesAsync();  // ⭐ EF Core will auto-update reservation.PaymentId via relationship
+            await _db.SaveChangesAsync();
             
             _logger.LogInformation("✅ Created pay-per-swap reservation {ReservationId} with Payment {PaymentId} ({Method}, {Amount} VND) for {BatteryModel}",
-                reservation.Id, payment.Id, paymentMethod.Value, payment.Amount, batteryModel.Name);
+                reservation.Id, payment.Id, paymentMethod.Value, payment.Amount, batteryModelForPayment.Name);
+        }
+        else if (relatedComplaintId.HasValue)
+        {
+            _logger.LogInformation("✅ Created Complaint Inspection Reservation {ReservationId} for user {UserId} (no payment required)", 
+                reservation.Id, userId);
         }
         else
         {
@@ -403,23 +431,43 @@ public class SlotReservationService
             throw new NoBatteryException("Không có pin phù hợp hoặc pin đã được sạc đầy tại trạm.");
         }
         
-        // Atomically update reservation and battery status
-        reservation.Status = ReservationStatus.CheckedIn;
-        reservation.CheckedInAt = now;
-        reservation.VerifiedByStaffId = staffId;
-        reservation.BatteryUnitId = battery.Id;
-        
-        // Set battery status to 'Reserved' to prevent other transactions from picking it.
-        // This is more robust than a separate 'IsReserved' flag.
-        battery.Status = BatteryStatus.Reserved;
-        battery.UpdatedAt = now;
-        
-        await _db.SaveChangesAsync();
-        
-        _logger.LogInformation("Checked in reservation {ReservationId}, assigned battery {BatteryId}", 
-            reservationId, battery.Id);
-        
-        return reservation;
+        // Atomically update reservation and battery status and optionally transition complaint
+        using var tx = await _db.Database.BeginTransactionAsync();
+
+            reservation.Status = ReservationStatus.CheckedIn;
+            reservation.CheckedInAt = now;
+            reservation.VerifiedByStaffId = staffId;
+            reservation.BatteryUnitId = battery.Id;
+
+            // Set battery status to 'Reserved' to prevent other transactions from picking it.
+            battery.Status = BatteryStatus.Reserved;
+            battery.UpdatedAt = now;
+
+            // If this reservation is linked to a complaint, try to transition the complaint to CheckedIn
+            if (reservation.RelatedComplaintId.HasValue && _serviceProvider != null)
+            {
+                try
+                {
+                    var complaintService = _serviceProvider.GetService(typeof(BatteryComplaintService)) as BatteryComplaintService;
+                    if (complaintService != null)
+                    {
+                        await complaintService.TransitionToCheckedInAsync(reservation.RelatedComplaintId.Value, staffId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the error and rethrow to ensure callers are aware of partial failures
+                    _logger.LogError(ex, "Failed to transition Complaint status during reservation check-in (Reservation: {ReservationId})", reservationId);
+                    throw new InvalidOperationException("Check-in thành công nhưng không thể cập nhật trạng thái khiếu nại liên quan.", ex);
+                }
+            }
+
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            _logger.LogInformation("Checked in reservation {ReservationId}, assigned battery {BatteryId}", reservationId, battery.Id);
+
+            return reservation;
     }
 
     /// <summary>

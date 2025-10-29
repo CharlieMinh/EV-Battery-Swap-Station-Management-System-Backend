@@ -45,4 +45,10 @@ public interface IBatteryInventoryService
     /// at a given station (e.g., decrement InUse at source station when a battery is returned elsewhere).
     /// </summary>
     Task ChangeInventoryCountByStatusAsync(Guid batteryModelId, Guid stationId, Models.BatteryStatus status, int delta);
+
+    /// <summary>
+    /// Tự động tạo pin mới với Serial VF3-XXX (XXX là 3 số tự tăng)
+    /// Phục vụ trường hợp pin trả về không nằm trong hệ thống (tạo đại diện đợi kiểm tra)
+    /// </summary>
+    Task<Models.BatteryUnit> AutoCreateNewBatteryUnitAsync(Guid batteryModelId, Guid stationId, Guid staffId);
 }
