@@ -91,7 +91,8 @@ public class SlotReservationService
     public async Task<Reservation> CreateReservationAsync(
         Guid userId,
         Guid stationId,
-        Guid batteryModelId,
+        // NOTE: vehicleId is used to resolve BatteryModelId server-side
+        Guid vehicleId,
         DateOnly slotDate,  // UPDATED: Changed from DateTime to DateOnly
         TimeSpan slotStartTime,
         TimeSpan slotEndTime,
@@ -165,6 +166,18 @@ public class SlotReservationService
             throw new SlotNotAvailableException($"Chỉ có thể đặt lịch trong vòng {ReservationSlotConfig.MaxAdvanceBookingDays} ngày tới.");
         }
         
+        // Resolve vehicle -> batteryModel
+        var vehicle = await _db.Vehicles
+            .Include(v => v.VehicleModel)
+            .FirstOrDefaultAsync(v => v.Id == vehicleId && v.UserId == userId);
+
+        if (vehicle == null)
+        {
+            throw new ArgumentException($"Không tìm thấy xe (ID: {vehicleId}) cho người dùng này.");
+        }
+
+        var batteryModelId = vehicle.CompatibleBatteryModelId;
+
         var currentCount = await _db.Reservations
             .CountAsync(r =>
                 r.StationId == stationId &&
@@ -193,6 +206,7 @@ public class SlotReservationService
             UserId = userId,
             StationId = stationId,
             BatteryModelId = batteryModelId,
+            VehicleId = vehicleId,
             BatteryUnitId = null,
             UserSubscriptionId = userSubscriptionId,  // ⭐ Set subscription ID (null if pay-per-swap)
             SlotDate = slotDate,

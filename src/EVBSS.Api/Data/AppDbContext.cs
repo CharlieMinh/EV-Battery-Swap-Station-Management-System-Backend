@@ -134,6 +134,7 @@ public class AppDbContext : DbContext
         b.Entity<Reservation>().HasOne(r => r.Station).WithMany().HasForeignKey(r => r.StationId);
         b.Entity<Reservation>().HasOne(r => r.BatteryModel).WithMany().HasForeignKey(r => r.BatteryModelId);
         b.Entity<Reservation>().HasOne(r => r.BatteryUnit).WithMany().HasForeignKey(r => r.BatteryUnitId);
+        b.Entity<Reservation>().HasOne(r => r.Vehicle).WithMany().HasForeignKey(r => r.VehicleId).OnDelete(DeleteBehavior.Restrict);
 
             // Link Reservation back to BatteryComplaint (if this reservation was created as a re-swap)
             b.Entity<Reservation>()

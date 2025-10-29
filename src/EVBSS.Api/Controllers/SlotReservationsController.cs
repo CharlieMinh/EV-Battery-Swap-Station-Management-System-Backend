@@ -90,7 +90,7 @@ public class SlotReservationsController : ControllerBase
             var reservation = await _service.CreateReservationAsync(
                 userId,
                 req.StationId,
-                req.BatteryModelId,
+                req.VehicleId,
                 req.SlotDate,
                 req.SlotStartTime,
                 req.SlotEndTime,
@@ -261,7 +261,7 @@ public class SlotReservationsController : ControllerBase
 
 public record CreateSlotReservationRequest(
     Guid StationId,
-    Guid BatteryModelId,
+    Guid VehicleId,
     DateOnly SlotDate,  // UPDATED: Changed from DateTime to DateOnly to fix timezone issue
     TimeSpan SlotStartTime,
     TimeSpan SlotEndTime,
