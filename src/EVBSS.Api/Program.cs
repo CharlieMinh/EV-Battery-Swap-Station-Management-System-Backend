@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -115,8 +116,10 @@ builder.Services.AddControllers()
     {
         // Ignore object reference cycles when serializing to JSON (prevents "A possible object cycle was detected")
         options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        // Keep property names as defined in C# (PascalCase) instead of camelCasing
-        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+        // Đảm bảo rằng việc deserialization (từ JSON gửi đến) và serialization 
+        // (từ C# trả về) sử dụng camelCase cho các khóa JSON, 
+        // bất kể casing của thuộc tính C# (PascalCase).
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     });
 builder.Services.AddSignalR();
 
