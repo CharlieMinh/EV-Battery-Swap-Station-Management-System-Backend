@@ -4,17 +4,15 @@ public class Payment
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string PaymentReference { get; set; } = null!;        // Mã giao dịch (VNPay, etc.)
-    
-    // ✅ REFACTORED: Link to either Subscription OR Reservation (mutual exclusive)
     public Guid? UserSubscriptionId { get; set; }                // Thanh toán cho gói subscription (LUỒNG 1)
     public Guid? ReservationId { get; set; }                     // Thanh toán cho đặt lịch lẻ (LUỒNG 2 - Pay-per-Swap)
     public Guid UserId { get; set; }
 
     // Payment details
-    public PaymentMethod Method { get; set; }
-    public PaymentType Type { get; set; }
-    public decimal Amount { get; set; }
-    public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+    public PaymentMethod Method { get; set; }                    // Phương thức thanh toán (VNPay, Cash, BankTransfer, Momo)
+    public PaymentType Type { get; set; }                         // Loại thanh toán (Subscription, PayPerSwap)
+    public decimal Amount { get; set; }                           // Số tiền thanh toán
+    public PaymentStatus Status { get; set; } = PaymentStatus.Pending; // Trạng thái thanh toán (Pending, Processing, Completed, Failed, Cancelled, Refunded, PartiallyPaid)
     
     public string Description { get; set; } = null!;             // Mô tả thanh toán
 
@@ -25,7 +23,7 @@ public class Payment
     public string? VnpSecureHash { get; set; }                   // Chữ ký điện tử (verify callback)
 
     // Cash payment fields (for staff)
-    public Guid? ProcessedByStaffId { get; set; }                // Staff xử lý thanh toán
+    public Guid? ProcessedByStaffId { get; set; }                // Staff xử lý thanh toán nếu thanh toán bằng cash
     public Guid? StationId { get; set; }                         // Trạm thanh toán
 
     // Timestamps
