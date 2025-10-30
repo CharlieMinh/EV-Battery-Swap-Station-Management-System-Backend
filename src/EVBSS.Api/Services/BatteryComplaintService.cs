@@ -445,6 +445,7 @@ namespace EVBSS.Api.Services
                 ?? throw new InvalidOperationException("SlotReservationService is not available via IServiceProvider.");
 
             var complaint = await _context.BatteryComplaints
+                .Include(c => c.SwapTransaction) // <--- Eager load SwapTransaction
                 .FirstOrDefaultAsync(c => c.Id == request.ComplaintId && c.ReportedByUserId == driverId);
 
             if (complaint == null)
@@ -452,6 +453,12 @@ namespace EVBSS.Api.Services
 
             if (complaint.Status != ComplaintStatus.PendingScheduling)
                 throw new InvalidOperationException($"Chỉ có thể đặt lịch kiểm tra khi khiếu nại ở trạng thái PendingScheduling. Trạng thái hiện tại: {complaint.Status}.");
+            
+            // ⭐ Lấy VehicleId từ SwapTransaction
+            if (complaint.SwapTransaction == null)
+                throw new InvalidOperationException("Không tìm thấy giao dịch đổi pin liên quan đến khiếu nại này.");
+
+            var vehicleId = complaint.SwapTransaction.VehicleId; // <<-- RESOLVE VEHICLE ID TỪ SWAP TRANSACTION
 
             var existingActiveReservation = await _context.Reservations
                 .AnyAsync(r => r.RelatedComplaintId == request.ComplaintId
@@ -466,16 +473,15 @@ namespace EVBSS.Api.Services
             var reservation = await slotReservationService.CreateReservationAsync(
                 userId: driverId,
                 stationId: request.StationId,
-                vehicleId: request.VehicleId,
+                vehicleId: vehicleId, // <<-- PASS RESOLVED VEHICLE ID
                 slotDate: request.SlotDate,
                 slotStartTime: request.SlotStartTime,
                 slotEndTime: request.SlotEndTime,
                 paymentMethod: null,
-                // ⭐ ĐÃ SỬA: Truyền ComplaintId để bỏ qua kiểm tra thanh toán
+                // Truyền ComplaintId để bỏ qua kiểm tra thanh toán
                 relatedComplaintId: complaint.Id);
 
             // 2) Link reservation <-> complaint and update status
-            // NOTE: reservation.RelatedComplaintId was set inside CreateReservationAsync
             complaint.Status = ComplaintStatus.Scheduled;
 
             complaint.ResolutionNotes = (complaint.ResolutionNotes ?? string.Empty)
