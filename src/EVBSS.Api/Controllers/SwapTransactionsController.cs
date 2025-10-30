@@ -9,7 +9,7 @@ using EVBSS.Api.Models;
 namespace EVBSS.Api.Controllers;
 
 [ApiController]
-[Route("api/swap-transactions")]
+[Route("api/v1/swaps")]
 [Authorize]
 public class SwapTransactionsController : ControllerBase
 {
