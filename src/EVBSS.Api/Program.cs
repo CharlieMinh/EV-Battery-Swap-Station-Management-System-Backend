@@ -1,11 +1,9 @@
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using EVBSS.Api.Data;
-using EVBSS.Api.Extensions;
 using Microsoft.OpenApi.Models;
 using EVBSS.Api.Models;
 using EVBSS.Api.Services;
@@ -65,7 +63,9 @@ builder.Services.AddCors(opt =>
 // EF Core DbContext
 var conn = builder.Configuration.GetConnectionString("Default")
            ?? throw new InvalidOperationException("Missing ConnectionStrings:Default");
-builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlServer(conn));
+// Increase command timeout to 180 seconds to allow longer-running migrations/seed operations
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseSqlServer(conn, sqlServerOptions => sqlServerOptions.CommandTimeout(180)));
 
 // Configurations
 builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPayOld"));
@@ -110,22 +110,14 @@ builder.Services.AddAuthorization(options =>
 
 
 // Controllers
-// Đăng ký dịch vụ Controllers
-builder.Services.AddControllers(options =>
-{
-    // Thêm các bộ lọc toàn cục nếu có (ví dụ: exception filters)
-}).AddJsonOptions(options =>
-{
-    // 💡 QUAN TRỌNG: Thiết lập PropertyNamingPolicy thành camelCase
-    // Điều này sẽ biến `Token`, `Name`, `Role` (PascalCase trong C#) thành `token`, `name`, `role` (camelCase trong JSON)
-    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-
-    // (Tùy chọn) Bỏ qua các thuộc tính có giá trị null
-    // options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-    
-    // (Tùy chọn) Xử lý tham chiếu vòng lặp
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-});
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Ignore object reference cycles when serializing to JSON (prevents "A possible object cycle was detected")
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        // Keep property names as defined in C# (PascalCase) instead of camelCasing
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+    });
 builder.Services.AddSignalR();
 
 // Application Services
