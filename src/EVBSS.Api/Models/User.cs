@@ -19,19 +19,19 @@ public class User
     public string? Name { get; set; }
     public string? Phone { get; set; }
     public Role Role { get; set; } = Role.Driver;
-    public UserStatus Status { get; set; } = UserStatus.Active; // Default: Active
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public UserStatus Status { get; set; } = UserStatus.Active;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow; 
     public DateTime? LastLogin { get; set; }
     
     // Authentication fields
     public AuthMethod AuthMethod { get; set; } = AuthMethod.Local;
     public string? GoogleId { get; set; }
     public string? ProfilePictureUrl { get; set; }
-    // Navigation property: Một user có nhiều xe
-    public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
+
+    public ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();    // Navigation property: Một user có nhiều xe
 
     // Navigation property: Một user có nhiều subscription
-    public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
+    public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();    // Navigation property: Một user có nhiều subscription
 
     // Staff-specific fields: A staff member can be assigned to one station
     public Guid? StationId { get; set; }

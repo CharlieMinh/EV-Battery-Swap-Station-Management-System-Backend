@@ -3,14 +3,12 @@ namespace EVBSS.Api.Models;
 public class SubscriptionPlan
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public string Name { get; set; } = null!;                    // "Gói Basic - 10 lần/tháng"
+    public string Name { get; set; } = null!;                    /// Tên gói (VD: "Gói Basic - 10 lần/tháng")
     public string Description { get; set; } = null!;             // Mô tả chi tiết gói
-    
-    // ✅ SIMPLIFIED PRICING - Giá cố định hàng tháng
-    public decimal MonthlyPrice { get; set; }                    // VD: 450,000 VND (giá đã bao gồm tất cả)
+    public decimal MonthlyPrice { get; set; }                    /// Giá tháng (VD: 450,000 VND)
     public int? MaxSwapsPerMonth { get; set; }                   // VD: 10 lần (null = không giới hạn)
     
-    // ✅ REFUND & BENEFITS
+    // Chính sách hoàn tiền & Quyền lợi
     public string? RefundPolicy { get; set; }                    // "Hoàn tiền theo tỷ lệ ngày còn lại"
     public string? Benefits { get; set; }                        // "Tiết kiệm 10%, Ưu tiên đặt chỗ"
     

@@ -12,38 +12,16 @@ public class BatteryInventory
 {
     [Key]
     public Guid Id { get; set; }
-
-    /// <summary>
-    /// Reference to the battery model type
-    /// </summary>
     [Required]
-    public Guid BatteryModelId { get; set; }
-
-    /// <summary>
-    /// Reference to the station where batteries are stored
-    /// </summary>
+    public Guid BatteryModelId { get; set; }    /// Reference to the battery model type
     [Required]
-    public Guid StationId { get; set; }
-
-    /// <summary>
-    /// Current status of batteries in this inventory group
-    /// </summary>
+    public Guid StationId { get; set; }    /// Reference to the station where batteries are stored
     [Required]
-    public BatteryStatus Status { get; set; }
-
-    /// <summary>
-    /// Total quantity of batteries with this model, at this station, with this status
-    /// IMPORTANT: Must always match COUNT(*) of BatteryUnits with same criteria
-    /// </summary>
+    public BatteryStatus Status { get; set; }    /// Current status of batteries in this inventory group
     [Required]
-    [Range(0, int.MaxValue, ErrorMessage = "Quantity cannot be negative")]
-    public int Quantity { get; set; }
-
-    /// <summary>
-    /// Last time this inventory record was updated
-    /// Used for audit and debugging sync issues
-    /// </summary>
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    [Range(0, int.MaxValue, ErrorMessage = "Quantity cannot be negative")] 
+    public int Quantity { get; set; }    /// Total quantity of batteries with this model, at this station, with this status
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; 
 
     // Navigation properties
     public BatteryModel? BatteryModel { get; set; }

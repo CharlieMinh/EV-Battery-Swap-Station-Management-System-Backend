@@ -14,18 +14,18 @@ public enum SwapTransactionStatus
 public class SwapTransaction
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public string TransactionNumber { get; set; } = null!;       // EVB-SWT-2025090001
+    public string TransactionNumber { get; set; } = null!;       /// Mã giao dịch (EVB-SWT-YYYYMMDD####)
     
     // Related entities
     public Guid UserId { get; set; }
     public Guid? ReservationId { get; set; }                     // Từ reservation (có thể null nếu walk-in)
-    public Guid StationId { get; set; }
-    public Guid VehicleId { get; set; }
+    public Guid StationId { get; set; }                          // Trạm đổi pin
+    public Guid VehicleId { get; set; }                          // Xe đổi pin
     public Guid? UserSubscriptionId { get; set; }               // Gói thuê đang sử dụng
 
     // Battery swap details
     public Guid IssuedBatteryId { get; set; }                    // Pin cấp cho khách
-    public Guid? ReturnedBatteryId { get; set; }                 // Pin khách trả lại (có thể null nếu lần đầu)
+    public Guid? ReturnedBatteryId { get; set; }                 // Pin khách trả lại 
     public string IssuedBatterySerial { get; set; } = null!;     // Serial pin cấp
     public string? ReturnedBatterySerial { get; set; }           // Serial pin trả
 

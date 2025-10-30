@@ -5,25 +5,9 @@ namespace EVBSS.Api.Models;
 /// </summary>
 public static class ReservationSlotConfig
 {
-    /// <summary>
-    /// Thời lượng mỗi slot (30 phút)
-    /// </summary>
-    public static readonly TimeSpan SlotDuration = TimeSpan.FromMinutes(30);
-    
-    /// <summary>
-    /// Buffer time cho check-in (±15 phút)
-    /// VD: Slot 9:00-9:30 → Có thể check-in từ 8:45 đến 9:45
-    /// </summary>
-    public static readonly TimeSpan CheckInBuffer = TimeSpan.FromMinutes(15);
-    
-    /// <summary>
-    /// Giờ mở cửa trạm (8:00 AM)
-    /// </summary>
-    public static readonly TimeSpan StationOpenTime = new TimeSpan(8, 0, 0);
-    
-    /// <summary>
-    /// Giờ đóng cửa trạm (6:00 PM)
-    /// </summary>
+    public static readonly TimeSpan SlotDuration = TimeSpan.FromMinutes(30);    /// Thời lượng mỗi slot (30 phút)
+    public static readonly TimeSpan CheckInBuffer = TimeSpan.FromMinutes(15);    /// Buffer time cho check-in (±15 phút)
+    public static readonly TimeSpan StationOpenTime = new TimeSpan(8, 0, 0);    /// Giờ mở cửa trạm (8:00 AM)
     public static readonly TimeSpan StationCloseTime = new TimeSpan(18, 0, 0);
     
     /// <summary>
@@ -31,22 +15,9 @@ public static class ReservationSlotConfig
     /// </summary>
     public static int TotalSlotsPerDay => 
         (int)((StationCloseTime - StationOpenTime).TotalMinutes / SlotDuration.TotalMinutes);
-    
-    /// <summary>
-    /// Capacity mặc định mỗi slot (số xe tối đa có thể phục vụ cùng lúc)
-    /// Có thể override per station nếu cần
-    /// </summary>
-    public const int DefaultSlotCapacity = 5;
-    
-    /// <summary>
-    /// Số ngày tối đa có thể đặt trước
-    /// </summary>
-    public const int MaxAdvanceBookingDays = 7;
-    
-    /// <summary>
-    /// Lấy tất cả các slot trong một ngày
-    /// </summary>
-    public static List<(TimeSpan Start, TimeSpan End)> GetAllSlotsForDay()
+    public const int DefaultSlotCapacity = 5;    /// Capacity mặc định mỗi slot (số xe tối đa có thể phục vụ cùng lúc)
+    public const int MaxAdvanceBookingDays = 14;    /// Số ngày tối đa có thể đặt trước 
+    public static List<(TimeSpan Start, TimeSpan End)> GetAllSlotsForDay()   /// Lấy tất cả các slot trong một ngày
     {
         var slots = new List<(TimeSpan, TimeSpan)>();
         var current = StationOpenTime;
