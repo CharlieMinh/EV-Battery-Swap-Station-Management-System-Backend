@@ -100,21 +100,26 @@ public class PaymentsController : ControllerBase
             var isValid = _vnPayService.ValidateCallback(returnData);
             var isSuccess = returnData.vnp_ResponseCode == "00" && returnData.vnp_TransactionStatus == "00";
             
+            // Redirect về FE theo cấu hình PaymentBackReturnUrl
+            var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var backUrl = config["Vnpay:PaymentBackReturnUrl"];
+            if (string.IsNullOrWhiteSpace(backUrl)) backUrl = "/payment-result";
+
             if (isValid && isSuccess)
             {
-                // Payment successful - redirect to success page
-                return Redirect($"/payment/success?ref={returnData.vnp_TxnRef}&amount={returnData.vnp_Amount}");
+                return Redirect($"{backUrl}?status=success&ref={returnData.vnp_TxnRef}&amount={returnData.vnp_Amount}");
             }
             else
             {
-                // Payment failed - redirect to failure page
-                return Redirect($"/payment/failure?ref={returnData.vnp_TxnRef}&code={returnData.vnp_ResponseCode}");
+                return Redirect($"{backUrl}?status=failure&ref={returnData.vnp_TxnRef}&code={returnData.vnp_ResponseCode}");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing VNPay return");
-            return Redirect("/payment/error");
+            var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var backUrl = config["Vnpay:PaymentBackReturnUrl"] ?? "/payment-result";
+            return Redirect($"{backUrl}?status=error");
         }
     }
 

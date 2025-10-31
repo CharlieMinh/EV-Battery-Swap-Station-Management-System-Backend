@@ -69,7 +69,8 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseSqlServer(conn, sqlServerOptions => sqlServerOptions.CommandTimeout(180)));
 
 // Configurations
-builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPayOld"));
+// Bind VNPay config from "Vnpay" section (supports ReturnUrl, IpnUrl, PaymentBackReturnUrl)
+builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("Vnpay"));
 
 // JWT Authentication
 var jwt = builder.Configuration.GetSection("Jwt");
