@@ -81,7 +81,7 @@ public static class VehicleModelSeeder
                 FullName = "VinFast VF3",
                 Brand = "VinFast",
                 CompatibleBatteryModelId = batteryVF3.Id,
-                ImageUrl = "https://example.com/images/vf3.jpg",
+                ImageUrl = "https://s3-ap-southeast-1.amazonaws.com/motoristprod/editors%2Fimages%2F1716533175324-thong-so-ky-thuat-xe-oto-dien-vinfast-vf3.png",
                 Description = "Xe điện mini city, phù hợp di chuyển trong thành phố",
                 IsActive = true
             },
@@ -91,7 +91,7 @@ public static class VehicleModelSeeder
                 FullName = "VinFast VF5 Plus",
                 Brand = "VinFast",
                 CompatibleBatteryModelId = batteryVF5.Id,
-                ImageUrl = "https://example.com/images/vf5.jpg",
+                ImageUrl = "https://vinfast-cars.vn/wp-content/uploads/2024/10/vinfast-vf5-13-1536x1536.jpg",
                 Description = "Crossover cỡ nhỏ, phù hợp gia đình trẻ",
                 IsActive = true
             },
@@ -101,7 +101,7 @@ public static class VehicleModelSeeder
                 FullName = "VinFast VF8",
                 Brand = "VinFast",
                 CompatibleBatteryModelId = batteryVF8.Id,
-                ImageUrl = "https://example.com/images/vf8.jpg",
+                ImageUrl = "https://vinfast-cars.vn/wp-content/uploads/2024/10/vinfast-vf8-16.jpg",
                 Description = "SUV cỡ trung, mạnh mẽ và sang trọng",
                 IsActive = true
             },
@@ -111,7 +111,7 @@ public static class VehicleModelSeeder
                 FullName = "VinFast VF9",
                 Brand = "VinFast",
                 CompatibleBatteryModelId = batteryVF9.Id,
-                ImageUrl = "https://example.com/images/vf9.jpg",
+                ImageUrl = "https://i1-vnexpress.vnecdn.net/2023/03/27/VF9thumjpg-1679907708.jpg?w=750&h=450&q=100&dpr=1&fit=crop&s=Swpqo7PubMKfM8H_JnC3Pw",
                 Description = "SUV 3 hàng ghế, rộng rãi và tiện nghi",
                 IsActive = true
             }
