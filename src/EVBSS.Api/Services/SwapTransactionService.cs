@@ -524,7 +524,6 @@ public class SwapTransactionService
             swap.IssuedBatteryId = battery.Id;
             swap.IssuedBatterySerial = battery.Serial;
             swap.BatteryHealthIssued = 100; // Pin mới luôn 100%
-            swap.BatteryIssuedByStaffId = staffId;
             swap.BatteryIssuedAt = DateTime.UtcNow;
             swap.Status = SwapTransactionStatus.BatteryIssued;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
@@ -593,7 +592,6 @@ public class SwapTransactionService
             swap.ReturnedBatteryId = null; // Pin khách hàng không có trong hệ thống trạm
             swap.ReturnedBatterySerial = request.ReturnedBatterySerial;
             swap.BatteryHealthReturned = request.BatteryHealthReturned;
-            swap.BatteryReceivedByStaffId = staffId;
             swap.BatteryReturnedAt = DateTime.UtcNow;
             swap.Status = SwapTransactionStatus.BatteryReturned; // Chờ Driver complete
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";

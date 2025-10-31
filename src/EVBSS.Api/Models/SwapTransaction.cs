@@ -31,8 +31,6 @@ public class SwapTransaction
 
     // Staff operations
     public Guid? CheckedInByStaffId { get; set; }                // Staff check-in
-    public Guid? BatteryIssuedByStaffId { get; set; }            // Staff cấp pin
-    public Guid? BatteryReceivedByStaffId { get; set; }          // Staff nhận pin cũ
     public Guid? CompletedByStaffId { get; set; }                // Staff hoàn thành
 
     // Optional technical tracking (health only)
@@ -78,7 +76,5 @@ public class SwapTransaction
     public BatteryUnit? ReturnedBattery { get; set; }
     
     public User? CheckedInByStaff { get; set; }
-    public User? BatteryIssuedByStaff { get; set; }
-    public User? BatteryReceivedByStaff { get; set; }
     public User? CompletedByStaff { get; set; }
 }
