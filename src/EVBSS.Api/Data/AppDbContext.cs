@@ -257,8 +257,7 @@ public class AppDbContext : DbContext
             .Property(st => st.TransactionNumber).HasMaxLength(50);
         b.Entity<SwapTransaction>()
             .Property(st => st.SwapFee).HasPrecision(18, 2);
-        b.Entity<SwapTransaction>()
-            .Property(st => st.KmChargeAmount).HasPrecision(18, 2);
+        // Removed km-based charges precision (field dropped by migration)
         b.Entity<SwapTransaction>()
             .Property(st => st.TotalAmount).HasPrecision(18, 2);
         b.Entity<SwapTransaction>()

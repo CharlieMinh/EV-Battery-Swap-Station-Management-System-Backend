@@ -35,8 +35,7 @@ public class SwapTransaction
     public Guid? BatteryReceivedByStaffId { get; set; }          // Staff nhận pin cũ
     public Guid? CompletedByStaffId { get; set; }                // Staff hoàn thành
 
-    // VinFast-style tracking
-    public int VehicleOdoAtSwap { get; set; }                    // Số km xe tại thời điểm đổi
+    // Optional technical tracking (health only)
     public int? BatteryHealthIssued { get; set; }                // % sức khỏe pin cấp
     public int? BatteryHealthReturned { get; set; }              // % sức khỏe pin trả
     // NOTE: ParentComplaintId removed; use RelatedComplaintId instead to avoid duplication
@@ -49,7 +48,6 @@ public class SwapTransaction
     // Pricing & Payment
     public PaymentType PaymentType { get; set; }
     public decimal SwapFee { get; set; } = 0;                    // Phí đổi pin (nếu trả theo lần)
-    public decimal KmChargeAmount { get; set; } = 0;             // Phí tính theo km (subscription)
     public decimal TotalAmount { get; set; } = 0;                // Tổng phí
     public bool IsPaid { get; set; } = false;
 

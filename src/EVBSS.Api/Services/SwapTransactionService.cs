@@ -297,7 +297,7 @@ public class SwapTransactionService
                 Notes = request.Notes
             };
 
-            // 8. Calculate fees
+            // 8. Calculate fees (km-based removed)
             await CalculateSwapFeesAsync(swapTransaction, activeSubscription);
 
             _context.SwapTransactions.Add(swapTransaction);
@@ -466,14 +466,12 @@ public class SwapTransactionService
                 StationAddress = s.Station.Address,
                 VehicleLicensePlate = s.Vehicle.Plate,
                 VehicleModel = s.Vehicle.VIN, // Using VIN as model identifier
-                VehicleOdoAtSwap = s.VehicleOdoAtSwap,
                 IssuedBatterySerial = s.IssuedBatterySerial,
                 ReturnedBatterySerial = s.ReturnedBatterySerial,
                 BatteryHealthIssued = s.BatteryHealthIssued,
                 BatteryHealthReturned = s.BatteryHealthReturned,
                 PaymentType = s.PaymentType.ToString(),
                 SwapFee = s.SwapFee,
-                KmChargeAmount = s.KmChargeAmount,
                 TotalAmount = s.TotalAmount,
                 IsPaid = s.IsPaid,
                 StartedAt = s.StartedAt,
@@ -666,11 +664,7 @@ public class SwapTransactionService
             // Thống kê tài chính
             TotalAmount = completedSwaps.Sum(s => s.TotalAmount),
             AverageSwapFee = completedSwaps.Any() ? Math.Round(completedSwaps.Average(s => s.SwapFee), 0) : 0,
-            TotalKmCharges = completedSwaps.Sum(s => s.KmChargeAmount),
-
-            // Thống kê xe và pin
-            TotalKilometers = completedSwaps.Sum(s => s.VehicleOdoAtSwap),
-            AverageKmPerSwap = completedSwaps.Any() ? (int)Math.Round(completedSwaps.Average(s => s.VehicleOdoAtSwap)) : 0,
+            // km-based statistics removed
             AverageBatteryHealthIssued = completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Any() ? 
                 (int)Math.Round(completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Average(s => s.BatteryHealthIssued!.Value)) : 0,
             AverageBatteryHealthReturned = completedSwaps.Where(s => s.BatteryHealthReturned.HasValue).Any() ? 
@@ -753,21 +747,13 @@ public class SwapTransactionService
             // Subscription-based pricing
             swap.PaymentType = PaymentType.Subscription;
             swap.SwapFee = 0; // Free swaps with subscription
-            
-            // Calculate km-based charges if applicable
-            var plan = subscription.SubscriptionPlan;
-            // For now, subscription doesn't charge per km in our model
-            // This would be calculated based on subscription plan tiers
-            swap.KmChargeAmount = 0;
-            
-            swap.TotalAmount = swap.SwapFee + swap.KmChargeAmount;
+            swap.TotalAmount = swap.SwapFee; // No km-based charges
         }
         else
         {
             // Per-swap pricing - get from station or default rate
             swap.PaymentType = PaymentType.PayPerSwap;
             swap.SwapFee = await GetPerSwapFeeAsync(swap.StationId);
-            swap.KmChargeAmount = 0;
             swap.TotalAmount = swap.SwapFee;
         }
     }

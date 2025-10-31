@@ -38,7 +38,7 @@ public class SwapTransactionResponse
     // Thông tin xe
     public string VehicleLicensePlate { get; set; } = null!;   // Biển số xe
     public string VehicleModel { get; set; } = null!;          // Model/VIN xe
-    public int VehicleOdoAtSwap { get; set; }                  // Số km xe khi đổi pin
+    // Removed: odo tracking (legacy km-based pricing)
     
     // Thông tin pin
     public string IssuedBatterySerial { get; set; } = null!;   // Serial pin được cấp
@@ -49,7 +49,6 @@ public class SwapTransactionResponse
     // Thông tin thanh toán
     public string PaymentType { get; set; } = null!;           // Loại thanh toán (Thuê bao/Trả theo lần)
     public decimal SwapFee { get; set; }                       // Phí đổi pin
-    public decimal KmChargeAmount { get; set; }                // Phí tính theo km
     public decimal TotalAmount { get; set; }                   // Tổng phí
     public bool IsPaid { get; set; }                           // Đã thanh toán chưa
     
@@ -117,11 +116,7 @@ public class SwapStatisticsResponse
     // Thống kê tài chính
     public decimal TotalAmount { get; set; }                   // Tổng chi phí
     public decimal AverageSwapFee { get; set; }                // Chi phí trung bình mỗi lần đổi
-    public decimal TotalKmCharges { get; set; }                // Tổng phí theo km
-    
-    // Thống kê xe và pin
-    public int TotalKilometers { get; set; }                   // Tổng số km đã chạy (tracking qua swap)
-    public int AverageKmPerSwap { get; set; }                  // Trung bình km mỗi lần đổi
+    // (km-based statistics removed)
     public int AverageBatteryHealthIssued { get; set; }        // Sức khỏe pin trung bình được cấp
     public int AverageBatteryHealthReturned { get; set; }      // Sức khỏe pin trung bình được trả
     
