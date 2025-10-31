@@ -45,11 +45,9 @@ public class SwapTransaction
 
     // Navigation property
     public BatteryComplaint? RelatedComplaint { get; set; }
-    // Pricing & Payment
-    public PaymentType PaymentType { get; set; }
-    public decimal SwapFee { get; set; } = 0;                    // Phí đổi pin (nếu trả theo lần)
-    public decimal TotalAmount { get; set; } = 0;                // Tổng phí
-    public bool IsPaid { get; set; } = false;
+    // Pricing & Payment (simplified to PaymentId reference)
+    public Guid? PaymentId { get; set; }                         // Tham chiếu Payment (null nếu subscription)
+    public Payment? Payment { get; set; }
 
     // Status & Timestamps
     public SwapTransactionStatus Status { get; set; } = SwapTransactionStatus.Reserved;

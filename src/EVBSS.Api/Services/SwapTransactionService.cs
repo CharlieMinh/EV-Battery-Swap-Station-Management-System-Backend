@@ -138,9 +138,7 @@ public class SwapTransactionService
                 Status = SwapTransactionStatus.Completed,
                 CompletedAt = DateTime.UtcNow,
                 CompletedByStaffId = staffId,
-                PaymentType = reservation.Payment != null ? PaymentType.PayPerSwap : PaymentType.Subscription,
-                TotalAmount = reservation.Payment?.Amount ?? 0,
-                IsPaid = reservation.Payment?.Status == PaymentStatus.Completed || reservation.Payment == null,
+                PaymentId = reservation.Payment?.Id,
                 StartedAt = reservation.CreatedAt,
                 CheckedInAt = reservation.CheckedInAt,
                 BatteryIssuedAt = DateTime.UtcNow, // Or use a more precise time from check-in if available
@@ -290,15 +288,14 @@ public class SwapTransactionService
                 StationId = request.StationId,
                 VehicleId = request.VehicleId,
                 UserSubscriptionId = activeSubscription?.Id,
-                PaymentType = activeSubscription != null ? PaymentType.Subscription : PaymentType.PayPerSwap,
+                PaymentId = null,
                 Status = SwapTransactionStatus.CheckedIn,
                 StartedAt = DateTime.UtcNow,
                 CheckedInAt = DateTime.UtcNow,
                 Notes = request.Notes
             };
 
-            // 8. Calculate fees (km-based removed)
-            await CalculateSwapFeesAsync(swapTransaction, activeSubscription);
+            // 8. Fees normalized via Payments; no calculation here
 
             _context.SwapTransactions.Add(swapTransaction);
 
@@ -453,7 +450,7 @@ public class SwapTransactionService
         var totalCount = await query.CountAsync();
         var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-        var transactions = await query
+            var transactions = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(s => new SwapTransactionResponse
@@ -470,10 +467,10 @@ public class SwapTransactionService
                 ReturnedBatterySerial = s.ReturnedBatterySerial,
                 BatteryHealthIssued = s.BatteryHealthIssued,
                 BatteryHealthReturned = s.BatteryHealthReturned,
-                PaymentType = s.PaymentType.ToString(),
-                SwapFee = s.SwapFee,
-                TotalAmount = s.TotalAmount,
-                IsPaid = s.IsPaid,
+                PaymentType = (s.PaymentId != null ? PaymentType.PayPerSwap.ToString() : PaymentType.Subscription.ToString()),
+                SwapFee = s.Payment != null ? s.Payment.Amount : 0,
+                TotalAmount = s.Payment != null ? s.Payment.Amount : 0,
+                IsPaid = s.PaymentId != null ? (s.Payment != null && s.Payment.Status == PaymentStatus.Completed) : true,
                 StartedAt = s.StartedAt,
                 CheckedInAt = s.CheckedInAt,
                 BatteryIssuedAt = s.BatteryIssuedAt,
@@ -661,9 +658,9 @@ public class SwapTransactionService
             FailedSwaps = failedSwaps.Count,
             SuccessRate = allSwaps.Count > 0 ? Math.Round((decimal)completedSwaps.Count / allSwaps.Count * 100, 2) : 0,
 
-            // Thống kê tài chính
-            TotalAmount = completedSwaps.Sum(s => s.TotalAmount),
-            AverageSwapFee = completedSwaps.Any() ? Math.Round(completedSwaps.Average(s => s.SwapFee), 0) : 0,
+            // Thống kê tài chính (đọc từ Payment)
+            TotalAmount = completedSwaps.Sum(s => s.PaymentId != null && s.Payment != null ? s.Payment.Amount : 0),
+            AverageSwapFee = completedSwaps.Any() ? Math.Round(completedSwaps.Average(s => (s.PaymentId != null && s.Payment != null ? s.Payment.Amount : 0)), 0) : 0,
             // km-based statistics removed
             AverageBatteryHealthIssued = completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Any() ? 
                 (int)Math.Round(completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Average(s => s.BatteryHealthIssued!.Value)) : 0,
@@ -739,30 +736,4 @@ public class SwapTransactionService
         
         return $"{prefix}{nextNumber:D4}";
     }
-
-    private async Task CalculateSwapFeesAsync(SwapTransaction swap, UserSubscription? subscription)
-    {
-        if (subscription != null)
-        {
-            // Subscription-based pricing
-            swap.PaymentType = PaymentType.Subscription;
-            swap.SwapFee = 0; // Free swaps with subscription
-            swap.TotalAmount = swap.SwapFee; // No km-based charges
-        }
-        else
-        {
-            // Per-swap pricing - get from station or default rate
-            swap.PaymentType = PaymentType.PayPerSwap;
-            swap.SwapFee = await GetPerSwapFeeAsync(swap.StationId);
-            swap.TotalAmount = swap.SwapFee;
-        }
-    }
-
-    private Task<decimal> GetPerSwapFeeAsync(Guid stationId)
-    {
-        // Get per-swap fee from station configuration or use default
-        // For now, return a default value - this could be configurable per station
-        return Task.FromResult(50000m); // 50,000 VND per swap
-    }
-    // Note: ReportFaultyBattery moved to BatteryComplaintService to centralize complaint logic
 }
