@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251031153424_AddPaymentIdToSwapTransactions")]
+    partial class AddPaymentIdToSwapTransactions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -590,6 +593,12 @@ namespace EVBSS.Api.Migrations
                     b.Property<DateTime?>("BatteryIssuedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("BatteryIssuedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BatteryReceivedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("BatteryReturnedAt")
                         .HasColumnType("datetime2");
 
@@ -669,6 +678,10 @@ namespace EVBSS.Api.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BatteryIssuedByStaffId");
+
+                    b.HasIndex("BatteryReceivedByStaffId");
 
                     b.HasIndex("CheckedInByStaffId");
 
@@ -1160,6 +1173,14 @@ namespace EVBSS.Api.Migrations
 
             modelBuilder.Entity("EVBSS.Api.Models.SwapTransaction", b =>
                 {
+                    b.HasOne("EVBSS.Api.Models.User", "BatteryIssuedByStaff")
+                        .WithMany()
+                        .HasForeignKey("BatteryIssuedByStaffId");
+
+                    b.HasOne("EVBSS.Api.Models.User", "BatteryReceivedByStaff")
+                        .WithMany()
+                        .HasForeignKey("BatteryReceivedByStaffId");
+
                     b.HasOne("EVBSS.Api.Models.User", "CheckedInByStaff")
                         .WithMany()
                         .HasForeignKey("CheckedInByStaffId");
@@ -1216,6 +1237,10 @@ namespace EVBSS.Api.Migrations
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("BatteryIssuedByStaff");
+
+                    b.Navigation("BatteryReceivedByStaff");
 
                     b.Navigation("CheckedInByStaff");
 

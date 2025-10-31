@@ -255,12 +255,7 @@ public class AppDbContext : DbContext
             .HasIndex(st => st.TransactionNumber).IsUnique();
         b.Entity<SwapTransaction>()
             .Property(st => st.TransactionNumber).HasMaxLength(50);
-        b.Entity<SwapTransaction>()
-            .Property(st => st.SwapFee).HasPrecision(18, 2);
-        b.Entity<SwapTransaction>()
-            .Property(st => st.KmChargeAmount).HasPrecision(18, 2);
-        b.Entity<SwapTransaction>()
-            .Property(st => st.TotalAmount).HasPrecision(18, 2);
+        // Payment for swap is normalized via PaymentId; monetary fields moved to Payments
         b.Entity<SwapTransaction>()
             .HasOne(st => st.User)
             .WithMany()
@@ -295,6 +290,13 @@ public class AppDbContext : DbContext
             .HasOne(st => st.ReturnedBattery)
             .WithMany()
             .HasForeignKey(st => st.ReturnedBatteryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Link SwapTransaction to Payment via PaymentId (nullable)
+        b.Entity<SwapTransaction>()
+            .HasOne(st => st.Payment)
+            .WithMany()
+            .HasForeignKey(st => st.PaymentId)
             .OnDelete(DeleteBehavior.SetNull);
 
         // RelatedComplaint: link a re-swap SwapTransaction back to the original BatteryComplaint

@@ -4,6 +4,7 @@ using EVBSS.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EVBSS.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251031144838_DropKmAndOdoFromSwapTransaction")]
+    partial class DropKmAndOdoFromSwapTransaction
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -590,6 +593,12 @@ namespace EVBSS.Api.Migrations
                     b.Property<DateTime?>("BatteryIssuedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("BatteryIssuedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BatteryReceivedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("BatteryReturnedAt")
                         .HasColumnType("datetime2");
 
@@ -614,6 +623,9 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("Feedback")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IsPaid")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("IssuedBatteryId")
                         .HasColumnType("uniqueidentifier");
 
@@ -624,8 +636,8 @@ namespace EVBSS.Api.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("PaymentId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<int>("PaymentType")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("RatedAt")
                         .HasColumnType("datetime2");
@@ -654,6 +666,14 @@ namespace EVBSS.Api.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("SwapFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("TransactionNumber")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -670,13 +690,15 @@ namespace EVBSS.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BatteryIssuedByStaffId");
+
+                    b.HasIndex("BatteryReceivedByStaffId");
+
                     b.HasIndex("CheckedInByStaffId");
 
                     b.HasIndex("CompletedByStaffId");
 
                     b.HasIndex("IssuedBatteryId");
-
-                    b.HasIndex("PaymentId");
 
                     b.HasIndex("RelatedComplaintId");
 
@@ -1160,6 +1182,14 @@ namespace EVBSS.Api.Migrations
 
             modelBuilder.Entity("EVBSS.Api.Models.SwapTransaction", b =>
                 {
+                    b.HasOne("EVBSS.Api.Models.User", "BatteryIssuedByStaff")
+                        .WithMany()
+                        .HasForeignKey("BatteryIssuedByStaffId");
+
+                    b.HasOne("EVBSS.Api.Models.User", "BatteryReceivedByStaff")
+                        .WithMany()
+                        .HasForeignKey("BatteryReceivedByStaffId");
+
                     b.HasOne("EVBSS.Api.Models.User", "CheckedInByStaff")
                         .WithMany()
                         .HasForeignKey("CheckedInByStaffId");
@@ -1173,11 +1203,6 @@ namespace EVBSS.Api.Migrations
                         .HasForeignKey("IssuedBatteryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("EVBSS.Api.Models.Payment", "Payment")
-                        .WithMany()
-                        .HasForeignKey("PaymentId")
-                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("EVBSS.Api.Models.BatteryComplaint", "RelatedComplaint")
                         .WithMany()
@@ -1217,13 +1242,15 @@ namespace EVBSS.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("BatteryIssuedByStaff");
+
+                    b.Navigation("BatteryReceivedByStaff");
+
                     b.Navigation("CheckedInByStaff");
 
                     b.Navigation("CompletedByStaff");
 
                     b.Navigation("IssuedBattery");
-
-                    b.Navigation("Payment");
 
                     b.Navigation("RelatedComplaint");
 

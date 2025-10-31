@@ -318,14 +318,12 @@ public class UsersController : ControllerBase
         // Count swap transactions where this staff was involved in any capacity
         var totalSwapTransactions = await _db.SwapTransactions
             .CountAsync(st => st.CheckedInByStaffId == id 
-                           || st.BatteryIssuedByStaffId == id 
-                           || st.BatteryReceivedByStaffId == id 
+                           
                            || st.CompletedByStaffId == id);
 
         var recentSwapTransactions = await _db.SwapTransactions
             .CountAsync(st => (st.CheckedInByStaffId == id 
-                            || st.BatteryIssuedByStaffId == id 
-                            || st.BatteryReceivedByStaffId == id 
+                            
                             || st.CompletedByStaffId == id) 
                            && st.StartedAt >= thirtyDaysAgo);
 

@@ -31,12 +31,9 @@ public class SwapTransaction
 
     // Staff operations
     public Guid? CheckedInByStaffId { get; set; }                // Staff check-in
-    public Guid? BatteryIssuedByStaffId { get; set; }            // Staff cấp pin
-    public Guid? BatteryReceivedByStaffId { get; set; }          // Staff nhận pin cũ
     public Guid? CompletedByStaffId { get; set; }                // Staff hoàn thành
 
-    // VinFast-style tracking
-    public int VehicleOdoAtSwap { get; set; }                    // Số km xe tại thời điểm đổi
+    // Optional technical tracking (health only)
     public int? BatteryHealthIssued { get; set; }                // % sức khỏe pin cấp
     public int? BatteryHealthReturned { get; set; }              // % sức khỏe pin trả
     // NOTE: ParentComplaintId removed; use RelatedComplaintId instead to avoid duplication
@@ -46,12 +43,9 @@ public class SwapTransaction
 
     // Navigation property
     public BatteryComplaint? RelatedComplaint { get; set; }
-    // Pricing & Payment
-    public PaymentType PaymentType { get; set; }
-    public decimal SwapFee { get; set; } = 0;                    // Phí đổi pin (nếu trả theo lần)
-    public decimal KmChargeAmount { get; set; } = 0;             // Phí tính theo km (subscription)
-    public decimal TotalAmount { get; set; } = 0;                // Tổng phí
-    public bool IsPaid { get; set; } = false;
+    // Pricing & Payment (simplified to PaymentId reference)
+    public Guid? PaymentId { get; set; }                         // Tham chiếu Payment (null nếu subscription)
+    public Payment? Payment { get; set; }
 
     // Status & Timestamps
     public SwapTransactionStatus Status { get; set; } = SwapTransactionStatus.Reserved;
@@ -82,7 +76,5 @@ public class SwapTransaction
     public BatteryUnit? ReturnedBattery { get; set; }
     
     public User? CheckedInByStaff { get; set; }
-    public User? BatteryIssuedByStaff { get; set; }
-    public User? BatteryReceivedByStaff { get; set; }
     public User? CompletedByStaff { get; set; }
 }
