@@ -576,4 +576,63 @@ public class UsersController : ControllerBase
             newUsersThisMonth
         });
     }
+
+    /// <summary>
+    /// Change user's own password
+    /// - Any authenticated user can change their own password
+    /// - Requires current password verification
+    /// </summary>
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<ActionResult<ChangePasswordResponse>> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        // Get current user ID from JWT claims
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new { error = "Invalid user token" });
+        }
+
+        // Get user from database
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null)
+        {
+            return NotFound(new { error = "User not found" });
+        }
+
+        // Check if user uses email/password authentication
+        if (user.AuthMethod != AuthMethod.Local)
+        {
+            return BadRequest(new { error = "Password change is only available for email/password accounts. Google accounts should change password through Google." });
+        }
+
+        // Verify current password
+        if (string.IsNullOrEmpty(user.PasswordHash))
+        {
+            return BadRequest(new { error = "No password set for this account" });
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+        {
+            return BadRequest(new { error = "Current password is incorrect" });
+        }
+
+        // Hash new password
+        var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+        // Update password
+        user.PasswordHash = newPasswordHash;
+        await _db.SaveChangesAsync();
+
+        return Ok(new ChangePasswordResponse
+        {
+            Message = "Password changed successfully",
+            ChangedAt = DateTime.UtcNow
+        });
+    }
 }
