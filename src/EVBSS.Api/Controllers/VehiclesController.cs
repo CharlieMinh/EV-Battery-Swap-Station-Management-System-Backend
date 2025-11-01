@@ -236,18 +236,6 @@ public class VehiclesController : ControllerBase
         if (vehicle is null)
             return NotFound(new { error = new { code = "VEHICLE_NOT_FOUND", message = "Vehicle not found" } });
 
-        // Update Plate nếu có
-        if (!string.IsNullOrWhiteSpace(req.Plate))
-        {
-            var plate = req.Plate.Trim().ToUpperInvariant();
-            
-            // Plate phải là duy nhất trên toàn hệ thống
-            if (plate != vehicle.Plate && await _db.Vehicles.AnyAsync(v => v.Plate == plate && v.Id != id))
-                return Conflict(new { error = new { code = "PLATE_EXISTS", message = "Plate already exists in the system." } });
-
-            vehicle.Plate = plate;
-        }
-
         // Update PhotoUrl nếu có file ảnh mới
         if (req.Photo != null)
         {
