@@ -1,6 +1,8 @@
 using EVBSS.Api.Data;
 using EVBSS.Api.Dtos.Users;
+using EVBSS.Api.Dtos.Vehicles;
 using EVBSS.Api.Models;
+using EVBSS.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,10 +14,12 @@ namespace EVBSS.Api.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IFileStorageService _fileStorageService;
 
-    public UsersController(AppDbContext db)
+    public UsersController(AppDbContext db, IFileStorageService fileStorageService)
     {
         _db = db;
+        _fileStorageService = fileStorageService;
     }
 
     /// <summary>
@@ -88,6 +92,7 @@ public class UsersController : ControllerBase
                 Email = user.Email,
                 Name = user.Name,
                 PhoneNumber = user.Phone,
+                ProfilePictureUrl = user.ProfilePictureUrl,
                 Role = user.Role.ToString(),
                 Status = user.Status.ToString(),
                 CreatedAt = user.CreatedAt,
@@ -149,6 +154,7 @@ public class UsersController : ControllerBase
                 Email = u.Email,
                 Name = u.Name,
                 PhoneNumber = u.Phone,
+                ProfilePictureUrl = u.ProfilePictureUrl,
                 Role = u.Role.ToString(),
                 Status = u.Status.ToString(),
                 CreatedAt = u.CreatedAt,
@@ -268,6 +274,7 @@ public class UsersController : ControllerBase
                 Email = u.Email,
                 Name = u.Name,
                 PhoneNumber = u.Phone,
+                ProfilePictureUrl = u.ProfilePictureUrl,
                 Role = u.Role.ToString(),
                 Status = u.Status.ToString(),
                 CreatedAt = u.CreatedAt,
@@ -382,13 +389,14 @@ public class UsersController : ControllerBase
 
     /// <summary>
     /// Update user info
-    /// - Driver: Can only update their own profile (Name, Phone only)
-    /// - Staff: Can update Driver profiles (Name, Phone only)
+    /// - Driver: Can only update their own profile (Name, Phone, ProfilePicture only)
+    /// - Staff: Can update Driver profiles (Name, Phone, ProfilePicture only)
     /// - Admin: Full access to update any user
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Consumes("multipart/form-data")]
     [Authorize(Roles = "Admin,Staff,Driver")]
-    public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest req)
+    public async Task<IActionResult> UpdateUser(Guid id, [FromForm] UpdateUserRequest req)
     {
         if (!ModelState.IsValid)
         {
@@ -460,6 +468,26 @@ public class UsersController : ControllerBase
             user.Phone = req.PhoneNumber.Trim();
         }
 
+        // Update ProfilePicture if uploaded
+        if (req.ProfilePicture != null)
+        {
+            try
+            {
+                // Validate file
+                var validationResult = ValidateImageFile(req.ProfilePicture);
+                if (validationResult != null)
+                    return BadRequest(validationResult);
+
+                // Upload file và lấy URL
+                var profilePictureUrl = await _fileStorageService.SaveFileAsync(req.ProfilePicture, "profiles");
+                user.ProfilePictureUrl = profilePictureUrl;
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { error = new { code = "FILE_SAVE_ERROR", message = $"Error saving profile picture: {ex.Message}" } });
+            }
+        }
+
         // Only Admin can change roles
         if (req.Role.HasValue && currentUserRole == Role.Admin)
         {
@@ -500,6 +528,7 @@ public class UsersController : ControllerBase
             Email = user.Email,
             Name = user.Name,
             PhoneNumber = user.Phone,
+            ProfilePictureUrl = user.ProfilePictureUrl,
             Role = user.Role.ToString(),
             Status = user.Status.ToString(),
             CreatedAt = user.CreatedAt,
@@ -632,5 +661,43 @@ public class UsersController : ControllerBase
             Message = "Password changed successfully",
             ChangedAt = DateTime.UtcNow
         });
+    }
+
+    /// <summary>
+    /// Validate image file for upload
+    /// </summary>
+    private FileUploadResponse? ValidateImageFile(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+        {
+            return new FileUploadResponse
+            {
+                Success = false,
+                Message = "Vui lòng chọn file ảnh"
+            };
+        }
+
+        // Kiểm tra file type
+        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
+        if (!allowedTypes.Contains(file.ContentType.ToLower()))
+        {
+            return new FileUploadResponse
+            {
+                Success = false,
+                Message = "Chỉ chấp nhận file ảnh định dạng JPEG hoặc PNG"
+            };
+        }
+
+        // Kiểm tra file size (max 10MB)
+        if (file.Length > 10 * 1024 * 1024)
+        {
+            return new FileUploadResponse
+            {
+                Success = false,
+                Message = "Kích thước file không được vượt quá 10MB"
+            };
+        }
+
+        return null; // Valid
     }
 }
