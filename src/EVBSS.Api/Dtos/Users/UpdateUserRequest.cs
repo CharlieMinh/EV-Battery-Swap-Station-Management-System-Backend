@@ -15,6 +15,11 @@ public class UpdateUserRequest
     [StringLength(20)]
     public string? PhoneNumber { get; set; }
 
+    /// <summary>
+    /// Profile picture file upload (optional)
+    /// </summary>
+    public IFormFile? ProfilePicture { get; set; }
+
     public Role? Role { get; set; }
 
     /// <summary>

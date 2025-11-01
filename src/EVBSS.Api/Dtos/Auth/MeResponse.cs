@@ -6,6 +6,7 @@ public class MeResponse
     public string Email { get; set; } = default!;
     public string? Name { get; set; }
     public string? PhoneNumber { get; set; }
+    public string? ProfilePictureUrl { get; set; }
     public string Role { get; set; } = default!;
     public Guid? StationId { get; set; }  // ⭐ Staff's assigned station
     public DateTime CreatedAt { get; set; }

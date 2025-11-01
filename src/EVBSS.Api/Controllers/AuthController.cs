@@ -202,6 +202,7 @@ public class AuthController : ControllerBase
             Email = u.Email, 
             Name = u.Name, 
             PhoneNumber = u.Phone,
+            ProfilePictureUrl = u.ProfilePictureUrl,
             Role = u.Role.ToString(),
             StationId = u.StationId,  // ⭐ Return StationId for staff
             CreatedAt = u.CreatedAt, 
