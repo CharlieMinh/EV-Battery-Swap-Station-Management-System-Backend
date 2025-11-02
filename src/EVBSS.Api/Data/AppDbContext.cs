@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
         public DbSet<BulkCreateRequest> BulkCreateRequests { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<BatteryComplaint> BatteryComplaints { get; set; }
+        public DbSet<BatteryStockRequest> BatteryStockRequests { get; set; }
 
     
         // Password Reset System
@@ -387,6 +388,50 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.HandledByStaffId)
                 .OnDelete(DeleteBehavior.SetNull); // Nếu Staff nghỉ việc, chỉ SetNull
+        });
+
+        // BatteryStockRequest configuration
+        b.Entity<BatteryStockRequest>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.Property(e => e.StaffNote)
+                .HasMaxLength(500);
+            
+            entity.Property(e => e.AdminNote)
+                .HasMaxLength(500);
+            
+            // Indexes for performance
+            entity.HasIndex(e => new { e.Status, e.RequestDate });
+            entity.HasIndex(e => e.StationId);
+            entity.HasIndex(e => e.RequestedByStaffId);
+            entity.HasIndex(e => e.RelatedBulkCreateRequestId);
+            
+            // Relationships
+            entity.HasOne(e => e.Station)
+                .WithMany()
+                .HasForeignKey(e => e.StationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.BatteryModel)
+                .WithMany()
+                .HasForeignKey(e => e.BatteryModelId)
+                .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.RequestedByStaff)
+                .WithMany()
+                .HasForeignKey(e => e.RequestedByStaffId)
+                .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.AdminReviewer)
+                .WithMany()
+                .HasForeignKey(e => e.AdminReviewerId)
+                .OnDelete(DeleteBehavior.Restrict); // Changed from SetNull to Restrict
+            
+            entity.HasOne(e => e.RelatedBulkCreateRequest)
+                .WithMany()
+                .HasForeignKey(e => e.RelatedBulkCreateRequestId)
+                .OnDelete(DeleteBehavior.Restrict); // Changed from SetNull to Restrict
         });
     }
 }

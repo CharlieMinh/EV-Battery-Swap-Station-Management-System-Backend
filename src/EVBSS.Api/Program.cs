@@ -138,6 +138,7 @@ builder.Services.AddScoped<PasswordResetService>();
 builder.Services.AddScoped<GoogleAuthService>();
 builder.Services.AddScoped<StationService>();
 builder.Services.AddScoped<IBatteryInventoryService, BatteryInventoryService>();
+builder.Services.AddScoped<IBatteryStockRequestService, BatteryStockRequestService>(); // ⭐ NEW: Battery Stock Request Service
 
 // File Storage & Image Services
 builder.Services.AddHttpContextAccessor();

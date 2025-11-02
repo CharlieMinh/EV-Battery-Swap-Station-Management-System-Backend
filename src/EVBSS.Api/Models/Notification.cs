@@ -38,6 +38,9 @@ namespace EVBSS.Api.Models
         Generic,
         NewBulkRequest,
         BulkRequestConfirmed,
-        BulkRequestRejected
+        BulkRequestRejected,
+        StockRequestCreated,      // Staff tạo yêu cầu tăng pin
+        StockRequestApproved,     // Admin duyệt yêu cầu
+        StockRequestRejected      // Admin từ chối yêu cầu
     }
 }
