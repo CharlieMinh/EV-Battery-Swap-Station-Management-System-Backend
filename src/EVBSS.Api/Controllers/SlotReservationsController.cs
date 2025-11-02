@@ -43,6 +43,33 @@ public class SlotReservationsController : ControllerBase
     }
 
     /// <summary>
+    /// Xem các slot còn trống trong ngày cho việc đặt lịch kiểm tra pin (từ khiếu nại)
+    /// </summary>
+    [HttpGet("inspection-slots")]
+    [ProducesResponseType(typeof(IEnumerable<SlotAvailabilityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetAvailableInspectionSlots(
+        [FromQuery] Guid stationId,
+        [FromQuery] DateOnly date,
+        [FromQuery] Guid complaintId)
+    {
+        try
+        {
+            var slots = await _service.GetAvailableInspectionSlotsAsync(stationId, date, complaintId);
+            return Ok(slots);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = new { code = "COMPLAINT_NOT_FOUND", message = ex.Message } });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = new { code = "INVALID_COMPLAINT_STATE", message = ex.Message } });
+        }
+    }
+
+    /// <summary>
     /// Xem danh sách reservations (Admin/Staff Dashboard)
     /// </summary>
     [HttpGet]

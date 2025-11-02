@@ -87,6 +87,60 @@ public class SlotReservationService
     }
 
     /// <summary>
+    /// Lấy danh sách slots available cho một ngày cho việc đặt lịch kiểm tra pin (từ khiếu nại)
+    /// </summary>
+    public async Task<List<SlotAvailabilityDto>> GetAvailableInspectionSlotsAsync(
+        Guid stationId, 
+        DateOnly date,
+        Guid complaintId)
+    {
+        // 1. Resolve Complaint -> Vehicle -> BatteryModelId
+        var complaint = await _db.BatteryComplaints
+            .Include(c => c.IssuedBattery)
+            .Include(c => c.SwapTransaction!)
+                .ThenInclude(t => t.Vehicle)
+            .FirstOrDefaultAsync(c => c.Id == complaintId);
+
+        if (complaint == null)
+        {
+            throw new KeyNotFoundException($"Không tìm thấy khiếu nại (ID: {complaintId}).");
+        }
+        
+        // Xác định loại pin cần kiểm tra/đổi lại.
+        // Dựa trên luồng, pin mới cần tương thích với xe của người dùng
+        Guid batteryModelId;
+        if (complaint.SwapTransaction != null && complaint.SwapTransaction.Vehicle != null)
+        {
+            // Lấy BatteryModel tương thích với xe của giao dịch đổi pin liên quan
+            batteryModelId = complaint.SwapTransaction.Vehicle.CompatibleBatteryModelId;
+            
+            _logger.LogInformation("Resolved BatteryModelId {BatteryModelId} from SwapTransaction.Vehicle for Complaint {ComplaintId}",
+                batteryModelId, complaintId);
+        }
+        else if (complaint.IssuedBatteryId != Guid.Empty && complaint.IssuedBattery != null)
+        {
+             // Fallback: Lấy BatteryModel từ pin bị lỗi
+             batteryModelId = complaint.IssuedBattery.BatteryModelId;
+             
+             _logger.LogInformation("Resolved BatteryModelId {BatteryModelId} from IssuedBattery for Complaint {ComplaintId}",
+                 batteryModelId, complaintId);
+        }
+        else
+        {
+            // Xử lý kịch bản không có thông tin pin/xe liên quan
+            throw new InvalidOperationException("Không thể xác định loại pin cần kiểm tra. Khiếu nại không có thông tin xe hoặc pin liên quan.");
+        }
+
+        // 2. Tái sử dụng logic lấy slots có sẵn
+        var slots = await GetAvailableSlotsAsync(stationId, date, batteryModelId);
+        
+        _logger.LogInformation("Found {Count} inspection slots for Complaint {ComplaintId} (BatteryModel {BatteryModelId}) at Station {StationId} on {Date}",
+            slots.Count, complaintId, batteryModelId, stationId, date);
+            
+        return slots;
+    }
+
+    /// <summary>
     /// ⭐ LUỒNG 3 & 4: Tạo reservation mới theo slot
     /// - Nếu có subscription → MIỄN PHÍ (paymentRequired = false)
     /// - Nếu không có subscription → PAY-PER-SWAP (paymentRequired = true, tạo Payment)
@@ -619,7 +673,18 @@ public class SlotAvailabilityDto
 {
     public TimeSpan SlotStartTime { get; set; }
     public TimeSpan SlotEndTime { get; set; }
+    
+    /// <summary>
+    /// Thời gian slot dạng range (VD: "09:00 - 10:00")
+    /// </summary>
+    public string TimeRange => $"{SlotStartTime:hh\\:mm} - {SlotEndTime:hh\\:mm}";
+    
     public int TotalCapacity { get; set; }
     public int CurrentReservations { get; set; }
     public bool IsAvailable { get; set; }
+    
+    /// <summary>
+    /// Số slot còn trống
+    /// </summary>
+    public int AvailableSlots => TotalCapacity - CurrentReservations;
 }
