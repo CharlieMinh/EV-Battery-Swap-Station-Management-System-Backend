@@ -675,19 +675,9 @@ public class SlotAvailabilityDto
     public TimeSpan SlotEndTime { get; set; }
     
     /// <summary>
-    /// Thời gian bắt đầu slot dạng chuỗi (HH:mm)
-    /// </summary>
-    public string SlotStartTimeFormatted => SlotStartTime.ToString(@"hh\:mm");
-    
-    /// <summary>
-    /// Thời gian kết thúc slot dạng chuỗi (HH:mm)
-    /// </summary>
-    public string SlotEndTimeFormatted => SlotEndTime.ToString(@"hh\:mm");
-    
-    /// <summary>
     /// Thời gian slot dạng range (VD: "09:00 - 10:00")
     /// </summary>
-    public string TimeRange => $"{SlotStartTimeFormatted} - {SlotEndTimeFormatted}";
+    public string TimeRange => $"{SlotStartTime:hh\\:mm} - {SlotEndTime:hh\\:mm}";
     
     public int TotalCapacity { get; set; }
     public int CurrentReservations { get; set; }
