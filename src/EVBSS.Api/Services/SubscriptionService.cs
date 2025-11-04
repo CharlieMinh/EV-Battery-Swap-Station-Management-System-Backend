@@ -253,7 +253,7 @@ public class SubscriptionService : ISubscriptionService
             SubscriptionPlanId = request.SubscriptionPlanId,
             VehicleId = request.VehicleId,
             IsActive = false,  // ⭐ QUAN TRỌNG: Chưa kích hoạt
-            StartDate = DateTime.MinValue,  // Placeholder, sẽ set khi thanh toán
+            StartDate = null,  // ⭐ NULL = chưa kích hoạt, sẽ set khi thanh toán thành công
             CurrentBillingPeriodStart = DateTime.MinValue,
             CurrentBillingPeriodEnd = DateTime.MinValue,
             CurrentMonthSwapCount = 0,
@@ -326,8 +326,6 @@ public class SubscriptionService : ISubscriptionService
             CurrentBillingPeriodStart = firstSub.CurrentBillingPeriodStart,
             CurrentBillingPeriodEnd = firstSub.CurrentBillingPeriodEnd,
             CurrentMonthSwapCount = firstSub.CurrentMonthSwapCount,
-            DepositPaid = firstSub.DepositPaid,
-            DepositPaidDate = firstSub.DepositPaidDate,
             LastPaymentDate = firstSub.LastPaymentDate,
             CreatedAt = firstSub.CreatedAt,
             SubscriptionPlan = new SubscriptionPlanDto
@@ -387,8 +385,6 @@ public class SubscriptionService : ISubscriptionService
             CurrentBillingPeriodStart = sub.CurrentBillingPeriodStart,
             CurrentBillingPeriodEnd = sub.CurrentBillingPeriodEnd,
             CurrentMonthSwapCount = sub.CurrentMonthSwapCount,
-            DepositPaid = sub.DepositPaid,
-            DepositPaidDate = sub.DepositPaidDate,
             LastPaymentDate = sub.LastPaymentDate,
             CreatedAt = sub.CreatedAt,
             SubscriptionPlan = new SubscriptionPlanDto
@@ -462,15 +458,12 @@ public class SubscriptionService : ISubscriptionService
 
         _logger.LogInformation("User {UserId} cancelled subscription {SubscriptionId}", userId, subscription.Id);
 
-        // Calculate deposit refund (simplified logic)
-        decimal? depositRefund = subscription.DepositPaid > 0 ? subscription.DepositPaid : null;
-
         return new CancelSubscriptionResponse
         {
             Success = true,
             Message = "Hủy gói dịch vụ thành công!",
             EndDate = subscription.EndDate,
-            DepositRefund = depositRefund
+            DepositRefund = null  // Không còn deposit
         };
     }
 

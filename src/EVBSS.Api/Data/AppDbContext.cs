@@ -203,8 +203,6 @@ public class AppDbContext : DbContext
         b.Entity<UserSubscription>()
             .HasIndex(us => new { us.UserId, us.VehicleId, us.IsActive });
         b.Entity<UserSubscription>()
-            .Property(us => us.DepositPaid).HasPrecision(18, 2);
-        b.Entity<UserSubscription>()
             .HasOne(us => us.User)
             .WithMany(u => u.UserSubscriptions)
             .HasForeignKey(us => us.UserId)

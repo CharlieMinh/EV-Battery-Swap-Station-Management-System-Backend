@@ -9,8 +9,8 @@ public class UserSubscriptionDto
     public List<Guid> VehicleIds { get; set; } = new();
     
     // Subscription details
-    public DateTime StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
+    public DateTime? StartDate { get; set; }  // NULL = chưa kích hoạt
+    public DateTime? EndDate { get; set; }    // NULL = chưa kích hoạt hoặc vô thời hạn
     public bool IsActive { get; set; }
     public Guid VehicleId { get; set; } 
     public SubscriptionVehicleDto? Vehicle { get; set; }
@@ -46,8 +46,6 @@ public class UserSubscriptionDto
     public int? SwapsRemaining => SwapsLimit.HasValue ? SwapsLimit.Value - SwapsUsed : null;
     
     // Payment info
-    public decimal DepositPaid { get; set; }
-    public DateTime? DepositPaidDate { get; set; }
     public DateTime? LastPaymentDate { get; set; }
     
     public DateTime CreatedAt { get; set; }
