@@ -279,7 +279,8 @@ public class SlotReservationsController : ControllerBase
                 EarliestTime = earliest,
                 LatestTime = latest
             },
-            UserId = reservation.UserId
+            UserId = reservation.UserId,
+            RelatedComplaintId = reservation.RelatedComplaintId
         };
     }
 }
@@ -310,6 +311,7 @@ public record SlotReservationResponse
     public string QRCode { get; set; } = null!;
     public CheckInWindowDto CheckInWindow { get; set; } = null!;
     public Guid UserId { get; set; }
+    public Guid? RelatedComplaintId { get; set; }  // Complaint that triggered this reservation
 }
 
 public record CheckInWindowDto
