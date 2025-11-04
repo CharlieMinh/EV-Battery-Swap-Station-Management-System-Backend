@@ -20,13 +20,13 @@ public class SlotReservationService
     private readonly ILogger<SlotReservationService> _logger;
     private readonly VnPayConfig _vnPayConfig;
     private readonly IServiceProvider? _serviceProvider;
-    
+
     // Secret key để sign QR Code (nên lưu trong appsettings.json hoặc Azure Key Vault)
     private string QRSecret => _config["QRCode:SecretKey"] ?? "DEFAULT_SECRET_KEY_CHANGE_ME";
 
     public SlotReservationService(
-        AppDbContext db, 
-        IConfiguration config, 
+        AppDbContext db,
+        IConfiguration config,
         ILogger<SlotReservationService> logger,
         IOptions<VnPayConfig> vnPayConfig,
         IServiceProvider? serviceProvider = null)
@@ -42,16 +42,16 @@ public class SlotReservationService
     /// Lấy danh sách slots available cho một ngày
     /// </summary>
     public async Task<List<SlotAvailabilityDto>> GetAvailableSlotsAsync(
-        Guid stationId, 
+        Guid stationId,
         DateOnly date,  // UPDATED: Changed from DateTime to DateOnly
         Guid batteryModelId)
     {
         // Lấy tất cả slots trong ngày
         var allSlots = ReservationSlotConfig.GetAllSlotsForDay();
-        
+
         // Đếm số reservations cho mỗi slot
         var reservationCounts = await _db.Reservations
-            .Where(r => 
+            .Where(r =>
                 r.StationId == stationId &&
                 r.SlotDate == date &&  // UPDATED: Direct DateOnly comparison, no need for .Date
                 r.BatteryModelId == batteryModelId &&
@@ -64,15 +64,15 @@ public class SlotReservationService
                 Count = g.Count()
             })
             .ToListAsync();
-        
+
         var result = new List<SlotAvailabilityDto>();
-        
+
         foreach (var slot in allSlots)
         {
             var reserved = reservationCounts
                 .FirstOrDefault(r => r.SlotStartTime == slot.Start && r.SlotEndTime == slot.End)
                 ?.Count ?? 0;
-            
+
             result.Add(new SlotAvailabilityDto
             {
                 SlotStartTime = slot.Start,
@@ -82,7 +82,7 @@ public class SlotReservationService
                 IsAvailable = reserved < ReservationSlotConfig.DefaultSlotCapacity
             });
         }
-        
+
         return result;
     }
 
@@ -90,7 +90,7 @@ public class SlotReservationService
     /// Lấy danh sách slots available cho một ngày cho việc đặt lịch kiểm tra pin (từ khiếu nại)
     /// </summary>
     public async Task<List<SlotAvailabilityDto>> GetAvailableInspectionSlotsAsync(
-        Guid stationId, 
+        Guid stationId,
         DateOnly date,
         Guid complaintId)
     {
@@ -105,7 +105,7 @@ public class SlotReservationService
         {
             throw new KeyNotFoundException($"Không tìm thấy khiếu nại (ID: {complaintId}).");
         }
-        
+
         // Xác định loại pin cần kiểm tra/đổi lại.
         // Dựa trên luồng, pin mới cần tương thích với xe của người dùng
         Guid batteryModelId;
@@ -113,17 +113,17 @@ public class SlotReservationService
         {
             // Lấy BatteryModel tương thích với xe của giao dịch đổi pin liên quan
             batteryModelId = complaint.SwapTransaction.Vehicle.CompatibleBatteryModelId;
-            
+
             _logger.LogInformation("Resolved BatteryModelId {BatteryModelId} from SwapTransaction.Vehicle for Complaint {ComplaintId}",
                 batteryModelId, complaintId);
         }
         else if (complaint.IssuedBatteryId != Guid.Empty && complaint.IssuedBattery != null)
         {
-             // Fallback: Lấy BatteryModel từ pin bị lỗi
-             batteryModelId = complaint.IssuedBattery.BatteryModelId;
-             
-             _logger.LogInformation("Resolved BatteryModelId {BatteryModelId} from IssuedBattery for Complaint {ComplaintId}",
-                 batteryModelId, complaintId);
+            // Fallback: Lấy BatteryModel từ pin bị lỗi
+            batteryModelId = complaint.IssuedBattery.BatteryModelId;
+
+            _logger.LogInformation("Resolved BatteryModelId {BatteryModelId} from IssuedBattery for Complaint {ComplaintId}",
+                batteryModelId, complaintId);
         }
         else
         {
@@ -133,10 +133,10 @@ public class SlotReservationService
 
         // 2. Tái sử dụng logic lấy slots có sẵn
         var slots = await GetAvailableSlotsAsync(stationId, date, batteryModelId);
-        
+
         _logger.LogInformation("Found {Count} inspection slots for Complaint {ComplaintId} (BatteryModel {BatteryModelId}) at Station {StationId} on {Date}",
             slots.Count, complaintId, batteryModelId, stationId, date);
-            
+
         return slots;
     }
 
@@ -159,15 +159,27 @@ public class SlotReservationService
     {
         // Validation 1: User chỉ được có 1 active reservation
         var hasActive = await _db.Reservations
-            .AnyAsync(r => 
+            .AnyAsync(r =>
                 r.UserId == userId &&
                 (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.CheckedIn));
-        
+
         if (hasActive)
         {
             throw new ActiveReservationExistsException("Bạn đã có lịch đặt đang hoạt động. Vui lòng hủy hoặc hoàn thành lịch cũ trước khi đặt mới.");
         }
-        
+
+        // Resolve vehicle -> batteryModel (needed for selecting correct subscription)
+        var vehicle = await _db.Vehicles
+            .Include(v => v.VehicleModel)
+            .FirstOrDefaultAsync(v => v.Id == vehicleId && v.UserId == userId);
+
+        if (vehicle == null)
+        {
+            throw new ArgumentException($"Không tìm thấy xe (ID: {vehicleId}) cho người dùng này.");
+        }
+
+        var batteryModelId = vehicle.CompatibleBatteryModelId;
+
         // ⭐ BỔ SUNG LOGIC: Nếu có RelatedComplaintId, đây là lịch kiểm tra MIỄN PHÍ, bỏ qua kiểm tra thanh toán
         bool paymentRequired = false;
         Guid? userSubscriptionId = null;
@@ -180,19 +192,18 @@ public class SlotReservationService
             goto SkipPaymentCheck;
         }
 
-        // ⭐ FIX 2025-10-25: Support both Subscription and Pay-per-swap flows
-        // Validation 2: Check subscription and determine payment requirement
+        // ⭐ New rule: Match subscription by vehicle's battery model
         var activeSubscription = await _db.UserSubscriptions
             .Include(s => s.SubscriptionPlan)
-            .FirstOrDefaultAsync(s => 
-                s.UserId == userId && 
+            .FirstOrDefaultAsync(s =>
+                s.UserId == userId &&
                 s.IsActive &&
-                s.CurrentBillingPeriodEnd >= DateTime.UtcNow); // Gói chưa hết hạn
-        
+                s.CurrentBillingPeriodEnd >= DateTime.UtcNow &&
+                s.SubscriptionPlan.BatteryModelId == batteryModelId);
+
         if (activeSubscription != null)
         {
-            // ✅ LUỒNG SUBSCRIPTION: User có gói → Đặt lịch miễn phí
-            // Validate swap count limit
+            // ✅ LUỒNG SUBSCRIPTION: User có gói phù hợp model pin → Đặt lịch miễn phí
             if (activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
             {
                 if (activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
@@ -200,35 +211,34 @@ public class SlotReservationService
                     throw new NoActiveSubscriptionException("Bạn đã hết lượt đổi pin trong tháng này của gói. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
                 }
             }
-            
+
             var swapsRemaining = activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue
                 ? activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value - activeSubscription.CurrentMonthSwapCount
                 : int.MaxValue;
-                
-            _logger.LogInformation("User {UserId} has active subscription {SubscriptionId} ({PlanName}) with {SwapsRemaining} swaps remaining",
-                userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, 
+
+            _logger.LogInformation("User {UserId} has active subscription {SubscriptionId} ({PlanName}) for BatteryModel {BatteryModelId} with {SwapsRemaining} swaps remaining",
+                userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, batteryModelId,
                 swapsRemaining == int.MaxValue ? "unlimited" : swapsRemaining);
-            
+
             paymentRequired = false;
             userSubscriptionId = activeSubscription.Id;
         }
         else
         {
-            // ✅ LUỒNG PAY-PER-SWAP: User không có gói → Phải chọn phương thức thanh toán
+            // ✅ LUỒNG PAY-PER-SWAP: User không có gói phù hợp → Phải chọn phương thức thanh toán
             if (paymentMethod == null)
             {
-                // ⭐ DÒNG GÂY LỖI TRƯỚC ĐÂY
-                throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
+                throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động phù hợp với xe này. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
             }
-            
-            _logger.LogInformation("User {UserId} booking pay-per-swap with payment method {PaymentMethod}",
-                userId, paymentMethod);
-            
+
+            _logger.LogInformation("User {UserId} booking pay-per-swap with payment method {PaymentMethod} (BatteryModel {BatteryModelId})",
+                userId, paymentMethod, batteryModelId);
+
             paymentRequired = true;
             userSubscriptionId = null;  // Không dùng subscription
         }
 
-SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
+    SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var maxDate = today.AddDays(ReservationSlotConfig.MaxAdvanceBookingDays);
@@ -236,18 +246,6 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
         {
             throw new SlotNotAvailableException($"Chỉ có thể đặt lịch trong vòng {ReservationSlotConfig.MaxAdvanceBookingDays} ngày tới.");
         }
-        
-        // Resolve vehicle -> batteryModel
-        var vehicle = await _db.Vehicles
-            .Include(v => v.VehicleModel)
-            .FirstOrDefaultAsync(v => v.Id == vehicleId && v.UserId == userId);
-
-        if (vehicle == null)
-        {
-            throw new ArgumentException($"Không tìm thấy xe (ID: {vehicleId}) cho người dùng này.");
-        }
-
-        var batteryModelId = vehicle.CompatibleBatteryModelId;
 
         var currentCount = await _db.Reservations
             .CountAsync(r =>
@@ -257,21 +255,21 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
                 r.SlotEndTime == slotEndTime &&
                 r.BatteryModelId == batteryModelId &&
                 (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.CheckedIn));
-        
+
         if (currentCount >= ReservationSlotConfig.DefaultSlotCapacity)
         {
             throw new SlotNotAvailableException("Slot này đã đầy. Vui lòng chọn slot khác.");
         }
-        
+
         // ⭐ Query BatteryModel để lấy SwapPricePerSession cho pay-per-swap
         var batteryModel = await _db.BatteryModels
             .FirstOrDefaultAsync(bm => bm.Id == batteryModelId);
-        
+
         if (batteryModel == null)
         {
             throw new ArgumentException("Loại pin không tồn tại.");
         }
-        
+
         var reservation = new Reservation
         {
             UserId = userId,
@@ -288,19 +286,19 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
             Status = ReservationStatus.Pending,
             CreatedAt = DateTime.UtcNow
         };
-        
+
         reservation.QRCode = GenerateQRCode(reservation.Id);
-        
+
         _db.Reservations.Add(reservation);
         await _db.SaveChangesAsync();  // Save to get reservation.Id for Payment
-        
+
         // ⭐ SỬ DỤNG 'paymentRequired' ĐÃ ĐƯỢC THIẾT LẬP (Hoặc là true/false từ logic Subscription, hoặc là false khi có relatedComplaintId)
         if (paymentRequired && paymentMethod.HasValue)
         {
             var batteryModelForPayment = await _db.BatteryModels
                  .FirstOrDefaultAsync(bm => bm.Id == batteryModelId)
                  ?? throw new InvalidOperationException("Không tìm thấy thông tin giá pin để tạo Payment.");
-                 
+
             var payment = new Payment
             {
                 UserId = userId,
@@ -314,24 +312,24 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
                 Description = $"Đổi pin {batteryModelForPayment.Name} - Slot {slotStartTime:hh\\:mm}-{slotEndTime:hh\\:mm}",
                 CreatedAt = DateTime.UtcNow
             };
-            
+
             _db.Payments.Add(payment);
             await _db.SaveChangesAsync();
-            
+
             _logger.LogInformation("✅ Created pay-per-swap reservation {ReservationId} with Payment {PaymentId} ({Method}, {Amount} VND) for {BatteryModel}",
                 reservation.Id, payment.Id, paymentMethod.Value, payment.Amount, batteryModelForPayment.Name);
         }
         else if (relatedComplaintId.HasValue)
         {
-            _logger.LogInformation("✅ Created Complaint Inspection Reservation {ReservationId} for user {UserId} (no payment required)", 
+            _logger.LogInformation("✅ Created Complaint Inspection Reservation {ReservationId} for user {UserId} (no payment required)",
                 reservation.Id, userId);
         }
         else
         {
-            _logger.LogInformation("✅ Created subscription-based reservation {ReservationId} for user {UserId} (no payment required)", 
+            _logger.LogInformation("✅ Created subscription-based reservation {ReservationId} for user {UserId} (no payment required)",
                 reservation.Id, userId);
         }
-        
+
         return reservation;
     }
 
@@ -407,17 +405,17 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
         {
             throw new InvalidOperationException("QR Code không hợp lệ hoặc đã hết hạn.");
         }
-        
+
         var reservation = await _db.Reservations
             .Include(r => r.BatteryModel)
             .Include(r => r.Payment) // Eager load the associated payment
             .FirstOrDefaultAsync(r => r.Id == reservationId);
-        
+
         if (reservation == null)
         {
             throw new KeyNotFoundException("Không tìm thấy reservation.");
         }
-        
+
         if (reservation.Status != ReservationStatus.Pending)
         {
             throw new InvalidOperationException($"Reservation đã ở trạng thái {reservation.Status}. Không thể check-in.");
@@ -455,73 +453,73 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
             }
             // Nếu payment.Status == Completed, không làm gì cả, tiếp tục quy trình
         }
-        
+
         if (!ReservationSlotConfig.IsWithinCheckInWindow(
-            reservation.SlotDate, 
-            reservation.SlotStartTime, 
-            reservation.SlotEndTime, 
+            reservation.SlotDate,
+            reservation.SlotStartTime,
+            reservation.SlotEndTime,
             now))
         {
             var (earliest, latest) = ReservationSlotConfig.GetCheckInWindow(
-                reservation.SlotDate, 
-                reservation.SlotStartTime, 
+                reservation.SlotDate,
+                reservation.SlotStartTime,
                 reservation.SlotEndTime);
-            
+
             throw new InvalidCheckInTimeException(
                 $"Check-in chỉ được phép từ {earliest:HH:mm} đến {latest:HH:mm}. Hiện tại: {now:HH:mm}");
         }
-        
+
         // Find the best available battery (longest time in 'Full' status)
         var battery = await _db.BatteryUnits
-            .Where(b => 
+            .Where(b =>
                 b.StationId == reservation.StationId &&
                 b.BatteryModelId == reservation.BatteryModelId &&
                 b.Status == BatteryStatus.Full) // We only care if the battery is 'Full'
             .OrderBy(b => b.UpdatedAt)
             .FirstOrDefaultAsync();
-        
+
         if (battery == null)
         {
             throw new NoBatteryException("Không có pin phù hợp hoặc pin đã được sạc đầy tại trạm.");
         }
-        
+
         // Atomically update reservation and battery status and optionally transition complaint
         using var tx = await _db.Database.BeginTransactionAsync();
 
-            reservation.Status = ReservationStatus.CheckedIn;
-            reservation.CheckedInAt = now;
-            reservation.VerifiedByStaffId = staffId;
-            reservation.BatteryUnitId = battery.Id;
+        reservation.Status = ReservationStatus.CheckedIn;
+        reservation.CheckedInAt = now;
+        reservation.VerifiedByStaffId = staffId;
+        reservation.BatteryUnitId = battery.Id;
 
-            // Set battery status to 'Reserved' to prevent other transactions from picking it.
-            battery.Status = BatteryStatus.Reserved;
-            battery.UpdatedAt = now;
+        // Set battery status to 'Reserved' to prevent other transactions from picking it.
+        battery.Status = BatteryStatus.Reserved;
+        battery.UpdatedAt = now;
 
-            // If this reservation is linked to a complaint, try to transition the complaint to CheckedIn
-            if (reservation.RelatedComplaintId.HasValue && _serviceProvider != null)
+        // If this reservation is linked to a complaint, try to transition the complaint to CheckedIn
+        if (reservation.RelatedComplaintId.HasValue && _serviceProvider != null)
+        {
+            try
             {
-                try
+                var complaintService = _serviceProvider.GetService(typeof(BatteryComplaintService)) as BatteryComplaintService;
+                if (complaintService != null)
                 {
-                    var complaintService = _serviceProvider.GetService(typeof(BatteryComplaintService)) as BatteryComplaintService;
-                    if (complaintService != null)
-                    {
-                        await complaintService.TransitionToCheckedInAsync(reservation.RelatedComplaintId.Value, staffId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log the error and rethrow to ensure callers are aware of partial failures
-                    _logger.LogError(ex, "Failed to transition Complaint status during reservation check-in (Reservation: {ReservationId})", reservationId);
-                    throw new InvalidOperationException("Check-in thành công nhưng không thể cập nhật trạng thái khiếu nại liên quan.", ex);
+                    await complaintService.TransitionToCheckedInAsync(reservation.RelatedComplaintId.Value, staffId);
                 }
             }
+            catch (Exception ex)
+            {
+                // Log the error and rethrow to ensure callers are aware of partial failures
+                _logger.LogError(ex, "Failed to transition Complaint status during reservation check-in (Reservation: {ReservationId})", reservationId);
+                throw new InvalidOperationException("Check-in thành công nhưng không thể cập nhật trạng thái khiếu nại liên quan.", ex);
+            }
+        }
 
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
 
-            _logger.LogInformation("Checked in reservation {ReservationId}, assigned battery {BatteryId}", reservationId, battery.Id);
+        _logger.LogInformation("Checked in reservation {ReservationId}, assigned battery {BatteryId}", reservationId, battery.Id);
 
-            return reservation;
+        return reservation;
     }
 
     /// <summary>
@@ -536,30 +534,30 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
     {
         var reservation = await _db.Reservations
             .FirstOrDefaultAsync(r => r.Id == reservationId);
-        
+
         if (reservation == null)
         {
             throw new KeyNotFoundException("Không tìm thấy reservation.");
         }
-        
+
         if (!isStaff && reservation.UserId != userId)
         {
             throw new UnauthorizedAccessException("Bạn không có quyền hủy reservation này.");
         }
-        
+
         if (reservation.Status != ReservationStatus.Pending)
         {
             throw new InvalidOperationException($"Không thể hủy reservation có status {reservation.Status}.");
         }
-        
+
         reservation.Status = ReservationStatus.Cancelled;
         reservation.CancelReason = reason;
         reservation.CancelNote = note;
         reservation.CancelledAt = DateTime.UtcNow;
-        
+
         await _db.SaveChangesAsync();
-        
-        _logger.LogInformation("Cancelled reservation {ReservationId}, reason: {Reason}", 
+
+        _logger.LogInformation("Cancelled reservation {ReservationId}, reason: {Reason}",
             reservationId, reason);
     }
 
@@ -571,31 +569,31 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
         var now = DateTime.UtcNow;
         var today = DateOnly.FromDateTime(now);
         var currentTime = now.TimeOfDay;
-        
+
         var allPendingReservations = await _db.Reservations
             .Where(r => r.Status == ReservationStatus.Pending)
             .ToListAsync();
-        
+
         var overdueReservations = allPendingReservations
-            .Where(r => 
+            .Where(r =>
                 r.SlotDate < today ||
-                (r.SlotDate == today && 
+                (r.SlotDate == today &&
                  currentTime > r.SlotEndTime.Add(ReservationSlotConfig.CheckInBuffer)))
             .ToList();
-        
+
         foreach (var reservation in overdueReservations)
         {
             reservation.Status = ReservationStatus.Expired;
             reservation.CancelReason = Models.CancelReason.NoShow;
             reservation.CancelledAt = now;
         }
-        
+
         if (overdueReservations.Any())
         {
             await _db.SaveChangesAsync();
             _logger.LogInformation("Expired {Count} overdue reservations", overdueReservations.Count);
         }
-        
+
         return overdueReservations.Count;
     }
 
@@ -606,10 +604,10 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
             rid = reservationId.ToString(),
             ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         };
-        
+
         var json = JsonSerializer.Serialize(payload);
         var signature = ComputeHMAC(json);
-        
+
         var combined = $"{json}|{signature}";
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(combined));
     }
@@ -620,27 +618,27 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
         {
             var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(qrCodeData));
             var parts = decoded.Split('|');
-            
+
             if (parts.Length != 2) return false;
-            
+
             var json = parts[0];
             var signature = parts[1];
-            
+
             var computedSignature = ComputeHMAC(json);
             if (signature != computedSignature) return false;
-            
+
             var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
             if (payload == null) return false;
-            
+
             var rid = payload["rid"].GetString();
             if (rid != reservationId.ToString()) return false;
-            
+
             var ts = payload["ts"].GetInt64();
             var qrTime = DateTimeOffset.FromUnixTimeSeconds(ts);
             var age = DateTimeOffset.UtcNow - qrTime;
-            
+
             if (age.TotalHours > 24) return false;
-            
+
             return true;
         }
         catch
@@ -655,7 +653,7 @@ SkipPaymentCheck: // ⭐ ĐIỂM NHẢY TỪ LOGIC KHIẾU NẠI
         var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
         return Convert.ToBase64String(hash);
     }
-    
+
     /// <summary>
     /// ⭐ Helper method: Generate unique transaction reference for Payment
     /// Format: EVByyyyMMddHHmmssRAND (e.g., EVB202510251630001234)
@@ -673,16 +671,16 @@ public class SlotAvailabilityDto
 {
     public TimeSpan SlotStartTime { get; set; }
     public TimeSpan SlotEndTime { get; set; }
-    
+
     /// <summary>
     /// Thời gian slot dạng range (VD: "09:00 - 10:00")
     /// </summary>
     public string TimeRange => $"{SlotStartTime:hh\\:mm} - {SlotEndTime:hh\\:mm}";
-    
+
     public int TotalCapacity { get; set; }
     public int CurrentReservations { get; set; }
     public bool IsAvailable { get; set; }
-    
+
     /// <summary>
     /// Số slot còn trống
     /// </summary>

@@ -14,7 +14,7 @@ public class SwapTransactionService
     private readonly BatteryComplaintService? _complaintService;
 
     public SwapTransactionService(
-        AppDbContext context, 
+        AppDbContext context,
         ILogger<SwapTransactionService> logger,
         IBatteryInventoryService inventoryService,
         BatteryComplaintService? complaintService = null)
@@ -168,20 +168,41 @@ public class SwapTransactionService
             // 6. Update subscription swap count if applicable
             if (reservation.Payment == null)
             {
-                var activeSubscription = await _context.UserSubscriptions
-                    .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
-
-                if (activeSubscription != null)
+                if (reservation.UserSubscriptionId.HasValue)
                 {
-                    activeSubscription.CurrentMonthSwapCount++;
-                    swapTransaction.UserSubscriptionId = activeSubscription.Id;
-                    _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}",
-                        activeSubscription.Id, activeSubscription.CurrentMonthSwapCount);
+                    var subscription = await _context.UserSubscriptions
+                        .FirstOrDefaultAsync(s => s.Id == reservation.UserSubscriptionId.Value);
+
+                    if (subscription != null && subscription.IsActive)
+                    {
+                        subscription.CurrentMonthSwapCount++;
+                        swapTransaction.UserSubscriptionId = subscription.Id;
+                        _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}",
+                            subscription.Id, subscription.CurrentMonthSwapCount);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Reservation {ReservationId} has UserSubscriptionId but subscription not found or inactive.", reservation.Id);
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("Could not find active subscription for user {UserId} to increment swap count on a non-payment reservation {ReservationId}.",
-                        reservation.UserId, reservation.Id);
+                    // Fallback legacy behavior: find any active subscription for user
+                    var activeSubscription = await _context.UserSubscriptions
+                        .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
+
+                    if (activeSubscription != null)
+                    {
+                        activeSubscription.CurrentMonthSwapCount++;
+                        swapTransaction.UserSubscriptionId = activeSubscription.Id;
+                        _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}",
+                            activeSubscription.Id, activeSubscription.CurrentMonthSwapCount);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Could not find active subscription for user {UserId} to increment swap count on a non-payment reservation {ReservationId}.",
+                            reservation.UserId, reservation.Id);
+                    }
                 }
             }
 
@@ -198,14 +219,14 @@ public class SwapTransactionService
                 {
                     var relatedId = swapTransaction.RelatedComplaintId.Value;
                     var complaint = await _complaintService.GetComplaintByIdAsync(relatedId);
-                        if (complaint != null && complaint.Status != ComplaintStatus.Resolved)
+                    if (complaint != null && complaint.Status != ComplaintStatus.Resolved)
                     {
                         await _complaintService.FinalizeComplaintAsync(staffId, relatedId);
                         _logger.LogInformation("Auto-finalized complaint {ComplaintId} after related re-swap {SwapId}", relatedId, swapTransaction.Id);
                     }
                     else
                     {
-                            _logger.LogInformation("Related complaint {ComplaintId} already resolved or not found (current: {Status}), skipping auto-finalize.", relatedId, complaint?.Status);
+                        _logger.LogInformation("Related complaint {ComplaintId} already resolved or not found (current: {Status}), skipping auto-finalize.", relatedId, complaint?.Status);
                     }
                 }
             }
@@ -224,10 +245,10 @@ public class SwapTransactionService
         }
     }
 
-     public async Task<SwapTransaction> StartSwapAsync(Guid userId, StartSwapRequest request)
+    public async Task<SwapTransaction> StartSwapAsync(Guid userId, StartSwapRequest request)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
-        
+
         try
         {
             // 1. Validate vehicle belongs to user
@@ -247,8 +268,8 @@ public class SwapTransactionService
 
             // 3. Check if station has compatible batteries available
             var availableBattery = await _context.BatteryUnits
-                .FirstOrDefaultAsync(b => b.StationId == request.StationId && 
-                                        b.BatteryModelId == vehicle.CompatibleBatteryModelId && 
+                .FirstOrDefaultAsync(b => b.StationId == request.StationId &&
+                                        b.BatteryModelId == vehicle.CompatibleBatteryModelId &&
                                         b.Status == BatteryStatus.Full);
 
             if (availableBattery == null)
@@ -271,9 +292,9 @@ public class SwapTransactionService
             // 5. Get user's active subscription (if any)
             var activeSubscription = await _context.UserSubscriptions
                 .Include(us => us.SubscriptionPlan)
-                .FirstOrDefaultAsync(us => us.UserId == userId && 
-                                         us.IsActive == true && 
-                                         us.StartDate <= DateTime.UtcNow && 
+                .FirstOrDefaultAsync(us => us.UserId == userId &&
+                                         us.IsActive == true &&
+                                         us.StartDate <= DateTime.UtcNow &&
                                          (us.EndDate == null || us.EndDate > DateTime.UtcNow));
 
             // 6. Generate transaction number
@@ -320,7 +341,7 @@ public class SwapTransactionService
 
             await transaction.CommitAsync();
 
-            _logger.LogInformation("Swap transaction started: {TransactionNumber} for user {UserId} at station {StationId}", 
+            _logger.LogInformation("Swap transaction started: {TransactionNumber} for user {UserId} at station {StationId}",
                 transactionNumber, userId, request.StationId);
 
             return swapTransaction;
@@ -335,7 +356,7 @@ public class SwapTransactionService
     public async Task<SwapTransaction> CompleteSwapAsync(Guid swapId, Guid userId, CompleteSwapRequest request)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
-        
+
         try
         {
             // 1. Get swap transaction
@@ -375,7 +396,7 @@ public class SwapTransactionService
 
             // Pin trả về là pin cũ của khách hàng (không có trong database trạm)
             // Chỉ cần lưu thông tin serial và sức khỏe pin
-            
+
             // 3. Update swap transaction
             if (swap.Status == SwapTransactionStatus.CheckedIn)
             {
@@ -386,7 +407,7 @@ public class SwapTransactionService
                 swap.BatteryReturnedAt = DateTime.UtcNow;
             }
             // Nếu status = BatteryReturned, thông tin pin đã được Staff cập nhật rồi
-            
+
             swap.Status = SwapTransactionStatus.Completed;
             swap.CompletedAt = DateTime.UtcNow;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
@@ -401,7 +422,7 @@ public class SwapTransactionService
                 if (subscription != null)
                 {
                     subscription.CurrentMonthSwapCount++;
-                    
+
                     _logger.LogInformation(
                         "Incremented swap count for user {UserId}, subscription {SubscriptionId}: {CurrentCount}/{MaxCount}",
                         userId,
@@ -450,40 +471,40 @@ public class SwapTransactionService
         var totalCount = await query.CountAsync();
         var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-            var transactions = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(s => new SwapTransactionResponse
-            {
-                Id = s.Id,
-                TransactionNumber = s.TransactionNumber,
-                Status = s.Status.ToString(),
-                UserEmail = s.User.Email,
-                StationName = s.Station.Name,
-                StationAddress = s.Station.Address,
-                VehicleLicensePlate = s.Vehicle.Plate,
-                VehicleModel = s.Vehicle.VIN, // Using VIN as model identifier
-                IssuedBatterySerial = s.IssuedBatterySerial,
-                ReturnedBatterySerial = s.ReturnedBatterySerial,
-                BatteryHealthIssued = s.BatteryHealthIssued,
-                BatteryHealthReturned = s.BatteryHealthReturned,
-                PaymentType = (s.PaymentId != null ? PaymentType.PayPerSwap.ToString() : PaymentType.Subscription.ToString()),
-                SwapFee = s.Payment != null ? s.Payment.Amount : 0,
-                TotalAmount = s.Payment != null ? s.Payment.Amount : 0,
-                IsPaid = s.PaymentId != null ? (s.Payment != null && s.Payment.Status == PaymentStatus.Completed) : true,
-                StartedAt = s.StartedAt,
-                CheckedInAt = s.CheckedInAt,
-                BatteryIssuedAt = s.BatteryIssuedAt,
-                BatteryReturnedAt = s.BatteryReturnedAt,
-                CompletedAt = s.CompletedAt,
-                Notes = s.Notes,
-                ReservationId = s.ReservationId,
-                UserSubscriptionId = s.UserSubscriptionId,
-                Rating = s.Rating,
-                Feedback = s.Feedback,
-                RatedAt = s.RatedAt
-            })
-            .ToListAsync();
+        var transactions = await query
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .Select(s => new SwapTransactionResponse
+        {
+            Id = s.Id,
+            TransactionNumber = s.TransactionNumber,
+            Status = s.Status.ToString(),
+            UserEmail = s.User.Email,
+            StationName = s.Station.Name,
+            StationAddress = s.Station.Address,
+            VehicleLicensePlate = s.Vehicle.Plate,
+            VehicleModel = s.Vehicle.VIN, // Using VIN as model identifier
+            IssuedBatterySerial = s.IssuedBatterySerial,
+            ReturnedBatterySerial = s.ReturnedBatterySerial,
+            BatteryHealthIssued = s.BatteryHealthIssued,
+            BatteryHealthReturned = s.BatteryHealthReturned,
+            PaymentType = (s.PaymentId != null ? PaymentType.PayPerSwap.ToString() : PaymentType.Subscription.ToString()),
+            SwapFee = s.Payment != null ? s.Payment.Amount : 0,
+            TotalAmount = s.Payment != null ? s.Payment.Amount : 0,
+            IsPaid = s.PaymentId != null ? (s.Payment != null && s.Payment.Status == PaymentStatus.Completed) : true,
+            StartedAt = s.StartedAt,
+            CheckedInAt = s.CheckedInAt,
+            BatteryIssuedAt = s.BatteryIssuedAt,
+            BatteryReturnedAt = s.BatteryReturnedAt,
+            CompletedAt = s.CompletedAt,
+            Notes = s.Notes,
+            ReservationId = s.ReservationId,
+            UserSubscriptionId = s.UserSubscriptionId,
+            Rating = s.Rating,
+            Feedback = s.Feedback,
+            RatedAt = s.RatedAt
+        })
+        .ToListAsync();
 
         return new SwapHistoryResponse
         {
@@ -498,7 +519,7 @@ public class SwapTransactionService
     public async Task<SwapTransaction> IssueBatteryAsync(Guid swapId, Guid staffId, IssueBatteryRequest request)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
-        
+
         try
         {
             var swap = await _context.SwapTransactions
@@ -540,10 +561,10 @@ public class SwapTransactionService
             try
             {
                 await _inventoryService.UpdateInventoryCountAsync(
-                    battery.BatteryModelId, 
-                    battery.StationId, 
-                    oldStatus, 
-                    BatteryStatus.InUse, 
+                    battery.BatteryModelId,
+                    battery.StationId,
+                    oldStatus,
+                    BatteryStatus.InUse,
                     quantity: 1);
             }
             catch (Exception ex)
@@ -554,7 +575,7 @@ public class SwapTransactionService
 
             await transaction.CommitAsync();
 
-            _logger.LogInformation("Battery {BatterySerial} issued for swap {TransactionNumber} by staff {StaffId}", 
+            _logger.LogInformation("Battery {BatterySerial} issued for swap {TransactionNumber} by staff {StaffId}",
                 battery.Serial, swap.TransactionNumber, staffId);
 
             return swap;
@@ -569,7 +590,7 @@ public class SwapTransactionService
     public async Task<SwapTransaction> ReceiveBatteryAsync(Guid swapId, Guid staffId, ReceiveBatteryRequest request)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
-        
+
         try
         {
             var swap = await _context.SwapTransactions
@@ -587,7 +608,7 @@ public class SwapTransactionService
 
             // Pin trả về là pin cũ của khách hàng (không có trong database trạm)
             // Chỉ cần lưu thông tin serial và sức khỏe pin, không cần validate tồn tại trong DB
-            
+
             // Update swap transaction
             swap.ReturnedBatteryId = null; // Pin khách hàng không có trong hệ thống trạm
             swap.ReturnedBatterySerial = request.ReturnedBatterySerial;
@@ -601,7 +622,7 @@ public class SwapTransactionService
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            _logger.LogInformation("Battery {BatterySerial} received for swap {TransactionNumber} by staff {StaffId}, waiting for driver to complete", 
+            _logger.LogInformation("Battery {BatterySerial} received for swap {TransactionNumber} by staff {StaffId}, waiting for driver to complete",
                 request.ReturnedBatterySerial, swap.TransactionNumber, staffId);
 
             return swap;
@@ -660,9 +681,9 @@ public class SwapTransactionService
             TotalAmount = completedSwaps.Sum(s => s.PaymentId != null && s.Payment != null ? s.Payment.Amount : 0),
             AverageSwapFee = completedSwaps.Any() ? Math.Round(completedSwaps.Average(s => (s.PaymentId != null && s.Payment != null ? s.Payment.Amount : 0)), 0) : 0,
             // km-based statistics removed
-            AverageBatteryHealthIssued = completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Any() ? 
+            AverageBatteryHealthIssued = completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Any() ?
                 (int)Math.Round(completedSwaps.Where(s => s.BatteryHealthIssued.HasValue).Average(s => s.BatteryHealthIssued!.Value)) : 0,
-            AverageBatteryHealthReturned = completedSwaps.Where(s => s.BatteryHealthReturned.HasValue).Any() ? 
+            AverageBatteryHealthReturned = completedSwaps.Where(s => s.BatteryHealthReturned.HasValue).Any() ?
                 (int)Math.Round(completedSwaps.Where(s => s.BatteryHealthReturned.HasValue).Average(s => s.BatteryHealthReturned!.Value)) : 0,
 
             // Thống kê thời gian
@@ -676,7 +697,7 @@ public class SwapTransactionService
             MostUsedStationCount = stationUsage?.Count() ?? 0,
 
             // Feedback và đánh giá
-            AverageRating = completedSwaps.Where(s => s.Rating.HasValue).Any() ? 
+            AverageRating = completedSwaps.Where(s => s.Rating.HasValue).Any() ?
                 Math.Round(completedSwaps.Where(s => s.Rating.HasValue).Average(s => s.Rating!.Value), 1) : null,
             TotalFeedbacks = completedSwaps.Count(s => !string.IsNullOrEmpty(s.Feedback)),
 
@@ -706,7 +727,7 @@ public class SwapTransactionService
 
         await _context.SaveChangesAsync();
 
-        _logger.LogInformation("Swap {TransactionNumber} rated {Rating} stars by user {UserId}", 
+        _logger.LogInformation("Swap {TransactionNumber} rated {Rating} stars by user {UserId}",
             swap.TransactionNumber, request.Rating, userId);
 
         return swap;
@@ -716,12 +737,12 @@ public class SwapTransactionService
     {
         var today = DateTime.UtcNow.Date;
         var prefix = $"EVB-SWT-{today:yyyyMMdd}";
-        
+
         var lastTransaction = await _context.SwapTransactions
             .Where(s => s.TransactionNumber.StartsWith(prefix))
             .OrderByDescending(s => s.TransactionNumber)
             .FirstOrDefaultAsync();
-        
+
         int nextNumber = 1;
         if (lastTransaction != null)
         {
@@ -731,7 +752,7 @@ public class SwapTransactionService
                 nextNumber = lastNumber + 1;
             }
         }
-        
+
         return $"{prefix}{nextNumber:D4}";
     }
 }
