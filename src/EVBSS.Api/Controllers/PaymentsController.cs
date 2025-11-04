@@ -1,8 +1,10 @@
+using EVBSS.Api.Data;
 using EVBSS.Api.Dtos.Payments;
 using EVBSS.Api.Models;
 using EVBSS.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace EVBSS.Api.Controllers;
@@ -15,15 +17,18 @@ public class PaymentsController : ControllerBase
     private readonly IVnPayService _vnPayService;
     private readonly IPaymentService _paymentService;
     private readonly ILogger<PaymentsController> _logger;
+    private readonly AppDbContext _db;
 
     public PaymentsController(
         IVnPayService vnPayService, 
         IPaymentService paymentService,
-        ILogger<PaymentsController> logger)
+        ILogger<PaymentsController> logger,
+        AppDbContext db)
     {
         _vnPayService = vnPayService;
         _paymentService = paymentService;
         _logger = logger;
+        _db = db;
     }
 
     /// <summary>
@@ -324,26 +329,116 @@ public class PaymentsController : ControllerBase
 
 /// <summary>
 /// ⭐ LUỒNG 4A: Staff xác nhận đã nhận tiền mặt cho một thanh toán đang chờ.
+/// Response bao gồm đầy đủ thông tin: người thanh toán, gói dịch vụ, xe, staff xử lý
 /// </summary>
-[HttpPost("{paymentId:guid}/complete-cash")] // Đổi tên endpoint cho nhất quán
+[HttpPost("{paymentId:guid}/complete-cash")]
 [Authorize(Roles = "Staff,Admin")]
 [ProducesResponseType(typeof(CompleteCashPaymentResponse), StatusCodes.Status200OK)]
 [ProducesResponseType(StatusCodes.Status400BadRequest)]
-public async Task<ActionResult<CompleteCashPaymentResponse>> CompleteCashPayment(Guid paymentId) // Bỏ tham số request body
+public async Task<ActionResult<CompleteCashPaymentResponse>> CompleteCashPayment(Guid paymentId)
 {
     try
     {
         var staffId = GetCurrentUserId();
         
-        // 1. Gọi đúng phương thức từ service
+        // 1. Gọi service để complete payment
         var result = await _paymentService.CompleteCashPaymentAsync(paymentId, staffId);
         
         _logger.LogInformation("Staff {StaffId} completed CASH payment {PaymentId}", staffId, paymentId);
         
-        // 2. Tạo đối tượng response thành công
-        return Ok(new CompleteCashPaymentResponse { Success = true, PaymentId = result.Id, Status = result.Status.ToString() });
+        // 2. Load đầy đủ thông tin liên quan để trả về
+        var paymentDetail = await _db.Payments
+            .Include(p => p.User)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.SubscriptionPlan)
+                    .ThenInclude(sp => sp.BatteryModel)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.Vehicle)
+                    .ThenInclude(v => v!.VehicleModel)
+            .Include(p => p.Reservation)
+            .Include(p => p.ProcessedByStaff)
+            .Include(p => p.Station)
+            .FirstOrDefaultAsync(p => p.Id == paymentId);
+
+        if (paymentDetail == null)
+        {
+            return NotFound(new CompleteCashPaymentResponse { Success = false, Message = "Không tìm thấy thông tin thanh toán" });
+        }
+
+        // 3. Map sang response DTO với đầy đủ thông tin
+        var response = new CompleteCashPaymentResponse
+        {
+            Success = true,
+            PaymentId = paymentDetail.Id,
+            Status = paymentDetail.Status.ToString(),
+            Message = "Xác nhận thanh toán tiền mặt thành công",
+            PaymentDetail = new PaymentDetailInfo
+            {
+                Amount = paymentDetail.Amount,
+                Method = paymentDetail.Method.ToString(),
+                Type = paymentDetail.Type.ToString(),
+                CreatedAt = paymentDetail.CreatedAt,
+                CompletedAt = paymentDetail.CompletedAt,
+                Description = paymentDetail.Description,
+                
+                // Thông tin người thanh toán
+                User = new UserInfo
+                {
+                    Id = paymentDetail.User.Id,
+                    Name = paymentDetail.User.Name ?? "N/A",
+                    Email = paymentDetail.User.Email,
+                    PhoneNumber = paymentDetail.User.Phone
+                },
+                
+                // Thông tin gói dịch vụ (nếu là Subscription)
+                SubscriptionPlan = paymentDetail.UserSubscription?.SubscriptionPlan != null ? new SubscriptionPlanInfo
+                {
+                    Id = paymentDetail.UserSubscription.SubscriptionPlan.Id,
+                    Name = paymentDetail.UserSubscription.SubscriptionPlan.Name,
+                    MonthlyPrice = paymentDetail.UserSubscription.SubscriptionPlan.MonthlyPrice,
+                    MaxSwapsPerMonth = paymentDetail.UserSubscription.SubscriptionPlan.MaxSwapsPerMonth ?? 0,
+                    BatteryModelName = paymentDetail.UserSubscription.SubscriptionPlan.BatteryModel?.Name ?? "N/A"
+                } : null,
+                
+                // Thông tin xe
+                Vehicle = paymentDetail.UserSubscription?.Vehicle != null ? new VehicleInfo
+                {
+                    Id = paymentDetail.UserSubscription.Vehicle.Id,
+                    Plate = paymentDetail.UserSubscription.Vehicle.Plate,
+                    VIN = paymentDetail.UserSubscription.Vehicle.VIN,
+                    VehicleModelName = paymentDetail.UserSubscription.Vehicle.VehicleModel?.Name
+                } : null,
+                
+                // Thông tin đặt lịch (nếu là Pay-per-Swap)
+                Reservation = paymentDetail.Reservation != null ? new ReservationInfo
+                {
+                    Id = paymentDetail.Reservation.Id,
+                    SlotDate = paymentDetail.Reservation.SlotDate,
+                    SlotStartTime = paymentDetail.Reservation.SlotStartTime,
+                    SlotEndTime = paymentDetail.Reservation.SlotEndTime,
+                    Status = paymentDetail.Reservation.Status.ToString()
+                } : null,
+                
+                // Thông tin staff xử lý
+                ProcessedByStaff = paymentDetail.ProcessedByStaff != null ? new StaffInfo
+                {
+                    Id = paymentDetail.ProcessedByStaff.Id,
+                    Name = paymentDetail.ProcessedByStaff.Name ?? "N/A",
+                    Email = paymentDetail.ProcessedByStaff.Email
+                } : null,
+                
+                // Thông tin trạm
+                Station = paymentDetail.Station != null ? new StationInfo
+                {
+                    Id = paymentDetail.Station.Id,
+                    Name = paymentDetail.Station.Name,
+                    Address = paymentDetail.Station.Address
+                } : null
+            }
+        };
+        
+        return Ok(response);
     }
-    // 3. Bắt các exception cụ thể mà service ném ra
     catch (KeyNotFoundException ex)
     {
         _logger.LogWarning("Failed to complete cash payment. Payment not found: {PaymentId}. Message: {Message}", paymentId, ex.Message);

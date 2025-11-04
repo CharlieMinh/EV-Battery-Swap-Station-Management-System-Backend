@@ -8,8 +8,8 @@ public class UserSubscription
     public Guid? VehicleId { get; set; }                          // Xe được áp dụng gói (nullable theo mô hình mới)
 
     // Subscription details
-    public DateTime StartDate { get; set; }                      // Ngày bắt đầu gói
-    public DateTime? EndDate { get; set; }                       // Ngày kết thúc (null = vô thời hạn)
+    public DateTime? StartDate { get; set; }                     // Ngày bắt đầu gói (NULL = chưa kích hoạt)
+    public DateTime? EndDate { get; set; }                       // Ngày kết thúc (NULL = chưa kích hoạt hoặc vô thời hạn)
     public bool IsActive { get; set; } = true;
 
     // ✅ SIMPLIFIED: 30-day billing period (từ ngày đăng ký)
@@ -18,10 +18,8 @@ public class UserSubscription
 
     // ✅ SWAP COUNTER (thay vì tracking km)
     public int CurrentMonthSwapCount { get; set; } = 0;          // Số lần đổi pin trong tháng
-
-    // Deposit & Payment tracking (không dùng cọc nữa)
-    public decimal DepositPaid { get; set; } = 0;                // Luôn = 0
-    public DateTime? DepositPaidDate { get; set; }               // Luôn = null
+    
+    // Payment tracking
     public DateTime? LastPaymentDate { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
