@@ -161,7 +161,7 @@
 | **Payments** | `GET` | `/api/v1/payments` | Xem danh sách payments (Admin/Staff dashboard) | Admin, Staff |
 | **Payments** | `GET` | `/api/v1/payments/my-payments` | Driver xem lịch sử thanh toán của mình | Driver |
 | **Payments** | `GET` | `/api/v1/payments/{paymentId}` | Xem chi tiết một payment | Admin, Staff |
-| **Payments** | `POST` | `/api/v1/payments/{paymentId}/complete-cash` | Staff xác nhận đã nhận tiền mặt | Staff, Admin |
+| **Payments** | `POST` | `/api/v1/payments/{paymentId}/complete-cash` | Staff xác nhận đã nhận tiền mặt. Response bao gồm đầy đủ thông tin: người thanh toán, gói dịch vụ, xe, staff xử lý, trạm | Staff, Admin |
 
 ### 6.2. Subscriptions
 
