@@ -127,15 +127,24 @@ public class PaymentService : IPaymentService
         if (payment.Type == PaymentType.Subscription && payment.UserSubscriptionId.HasValue && payment.UserSubscription != null)
         {
             var userSubscription = payment.UserSubscription;
+            var now = DateTime.UtcNow;
 
-            // Activate the subscription and set its dates
+            // Activate the subscription and set its dates (đồng bộ với VnPayService)
             userSubscription.IsActive = true;
-            userSubscription.StartDate = DateTime.UtcNow;
-            userSubscription.CurrentBillingPeriodStart = DateTime.UtcNow;
-            userSubscription.CurrentBillingPeriodEnd = DateTime.UtcNow.AddDays(30); // As agreed
-            userSubscription.UpdatedAt = DateTime.UtcNow;
+            userSubscription.StartDate = now;
+            userSubscription.EndDate = now.AddDays(30);  // ⭐ THÊM EndDate để đồng bộ
+            userSubscription.CurrentBillingPeriodStart = now;
+            userSubscription.CurrentBillingPeriodEnd = now.AddDays(30);
+            userSubscription.LastPaymentDate = now;
+            userSubscription.UpdatedAt = now;
 
-            _logger.LogInformation("Subscription {UserSubscriptionId} activated for user {UserId} upon cash payment.", userSubscription.Id, userSubscription.UserId);
+            _logger.LogInformation(
+                "Subscription {UserSubscriptionId} ACTIVATED for user {UserId} upon cash payment. Valid from {Start} to {End}", 
+                userSubscription.Id, 
+                userSubscription.UserId,
+                now.ToString("yyyy-MM-dd HH:mm:ss"),
+                now.AddDays(30).ToString("yyyy-MM-dd HH:mm:ss")
+            );
         }
         // --- End of new logic ---
 

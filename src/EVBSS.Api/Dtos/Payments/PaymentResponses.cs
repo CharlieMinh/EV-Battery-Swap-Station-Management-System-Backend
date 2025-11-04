@@ -127,8 +127,8 @@ public class PaymentSubscriptionInfo
     public string PlanName { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public int? MaxSwapsPerMonth { get; set; }
-    public DateTime StartDate { get; set; }
-    public DateTime? EndDate { get; set; }
+    public DateTime? StartDate { get; set; }  // NULL = chưa kích hoạt
+    public DateTime? EndDate { get; set; }    // NULL = chưa kích hoạt hoặc vô thời hạn
 }
 
 public class PaymentReservationInfo
