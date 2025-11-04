@@ -14,20 +14,20 @@ namespace EVBSS.Api.Services;
 public interface ISubscriptionService
 {
     Task<SubscriptionCreatedResponse> CreateSubscriptionAsync(Guid userId, CreateSubscriptionRequest request);
-    
+
     /// <summary>
     /// Tạo subscription pending (chờ thanh toán) theo flow Frontend yêu cầu
     /// Tạo UserSubscription với IsActive=false + Payment pending + VNPay URL
     /// </summary>
     Task<CreatePendingSubscriptionResponse> CreatePendingSubscriptionAsync(Guid userId, CreatePendingSubscriptionRequest request, string ipAddress);
-    
+
     Task<UserSubscriptionDto?> GetUserActiveSubscriptionAsync(Guid userId);
-    
+
     /// <summary>
     /// Lấy tất cả subscriptions của user (bao gồm cả active và inactive)
     /// </summary>
     Task<IEnumerable<UserSubscriptionDto>> GetUserAllSubscriptionsAsync(Guid userId);
-    
+
     Task<CancelSubscriptionResponse> CancelSubscriptionAsync(Guid userId);
     Task<SubscriptionUsageDto?> GetSubscriptionUsageAsync(Guid userId);
     Task CheckAndExpireSubscriptionsAsync(); // ⭐ NEW: Auto-expire logic
@@ -41,8 +41,8 @@ public class SubscriptionService : ISubscriptionService
     private readonly IVnPayServiceV2 _vnPayServiceV2;
 
     public SubscriptionService(
-        AppDbContext context, 
-        ILogger<SubscriptionService> logger, 
+        AppDbContext context,
+        ILogger<SubscriptionService> logger,
         IOptions<VnPayConfig> vnPayConfig,
         IVnPayServiceV2 vnPayServiceV2)
     {
@@ -51,36 +51,36 @@ public class SubscriptionService : ISubscriptionService
         _vnPayConfig = vnPayConfig.Value;
         _vnPayServiceV2 = vnPayServiceV2;
     }
-    
+
     // ⭐ NEW: Check and expire subscriptions that passed their billing end date
     // Called automatically by middleware on each request, no background job needed
     public async Task CheckAndExpireSubscriptionsAsync()
     {
         var now = DateTime.UtcNow;
-        
+
         // Find active subscriptions that have passed their billing end date
         var expiredSubscriptions = await _context.UserSubscriptions
             .Where(us => us.IsActive && us.CurrentBillingPeriodEnd < now)
             .ToListAsync();
-        
+
         if (!expiredSubscriptions.Any())
             return;
-        
+
         foreach (var subscription in expiredSubscriptions)
         {
             subscription.IsActive = false;
             subscription.UpdatedAt = now;
-            
+
             _logger.LogInformation(
                 "Auto-expired subscription {SubscriptionId} for user {UserId}. " +
                 "Billing period ended on {EndDate}",
                 subscription.Id, subscription.UserId, subscription.CurrentBillingPeriodEnd);
         }
-        
+
         await _context.SaveChangesAsync();
-        
+
         _logger.LogInformation(
-            "Auto-expired {Count} subscriptions that passed their billing end date", 
+            "Auto-expired {Count} subscriptions that passed their billing end date",
             expiredSubscriptions.Count);
     }
 
@@ -88,7 +88,10 @@ public class SubscriptionService : ISubscriptionService
     {
         // Check if user already has active subscription for any vehicle
         var existingSubscriptions = await _context.UserSubscriptions
-            .Where(us => us.UserId == userId && us.IsActive && request.VehicleIds.Contains(us.VehicleId))
+            .Where(us => us.UserId == userId
+                         && us.IsActive
+                         && us.VehicleId.HasValue
+                         && request.VehicleIds.Contains(us.VehicleId.Value))
             .ToListAsync();
 
         if (existingSubscriptions.Any())
@@ -101,7 +104,8 @@ public class SubscriptionService : ISubscriptionService
             .Include(p => p.UserSubscription)
             .Where(p => p.UserId == userId
                      && p.UserSubscription != null
-                     && request.VehicleIds.Contains(p.UserSubscription.VehicleId)
+                     && p.UserSubscription.VehicleId.HasValue
+                     && request.VehicleIds.Contains(p.UserSubscription.VehicleId.Value)
                      && p.Status == PaymentStatus.Pending
                      && p.Type == PaymentType.Subscription)
             .ToListAsync();
@@ -189,69 +193,55 @@ public class SubscriptionService : ISubscriptionService
     /// 4. Return tất cả thông tin cần thiết cho FE
     /// </summary>
     public async Task<CreatePendingSubscriptionResponse> CreatePendingSubscriptionAsync(
-        Guid userId, 
-        CreatePendingSubscriptionRequest request, 
+        Guid userId,
+        CreatePendingSubscriptionRequest request,
         string ipAddress)
     {
         // 1. Validate subscription plan exists and is active
         var subscriptionPlan = await _context.SubscriptionPlans
             .Include(sp => sp.BatteryModel)
             .FirstOrDefaultAsync(sp => sp.Id == request.SubscriptionPlanId && sp.IsActive);
-        
+
         if (subscriptionPlan == null)
         {
             throw new ArgumentException("Gói subscription không tồn tại hoặc đã bị vô hiệu hóa.");
         }
+        // 2. Enforce: one active/pending subscription per BatteryModel per user
+        var batteryModelId = subscriptionPlan.BatteryModelId;
 
-        // 2. Validate vehicle belongs to user and is compatible
-        var vehicle = await _context.Vehicles
-            .Include(v => v.CompatibleModel)
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.UserId == userId);
-        
-        if (vehicle == null)
+        // 2.a Active subscription exists on same BatteryModel?
+        var hasActiveSameModel = await _context.UserSubscriptions
+            .Include(us => us.SubscriptionPlan)
+            .AnyAsync(us => us.UserId == userId
+                           && us.IsActive
+                           && us.SubscriptionPlan.BatteryModelId == batteryModelId);
+
+        if (hasActiveSameModel)
         {
-            throw new ArgumentException("Xe không tồn tại hoặc không thuộc về bạn.");
+            throw new InvalidOperationException("Bạn đã có gói đang hoạt động cho cùng loại pin. Vui lòng hủy hoặc chờ hết hạn trước khi mua gói mới.");
         }
 
-        if (vehicle.CompatibleBatteryModelId != subscriptionPlan.BatteryModelId)
+        // 2.b Pending payment for same BatteryModel?
+        var hasPendingPaymentSameModel = await _context.Payments
+            .Include(p => p.UserSubscription)!
+                .ThenInclude(us => us!.SubscriptionPlan)
+            .AnyAsync(p => p.UserId == userId
+                           && p.Status == PaymentStatus.Pending
+                           && p.Type == PaymentType.Subscription
+                           && p.UserSubscription != null
+                           && p.UserSubscription.SubscriptionPlan.BatteryModelId == batteryModelId);
+
+        if (hasPendingPaymentSameModel)
         {
-            throw new InvalidOperationException($"Xe {vehicle.Plate} không tương thích với gói pin {subscriptionPlan.Name}.");
+            throw new InvalidOperationException("Bạn đang có một gói chờ thanh toán cho cùng loại pin. Vui lòng hoàn tất hoặc hủy trước khi tạo gói mới.");
         }
 
-        // 3. Check if THIS VEHICLE already has ACTIVE subscription OR PENDING payment  
-        // ⭐ FIX 2025-10-25: Prevent spam subscription creation while payment pending
-        var activeSubscription = await _context.UserSubscriptions
-            .Where(us => us.UserId == userId 
-                      && us.VehicleId == request.VehicleId
-                      && us.IsActive)
-            .FirstOrDefaultAsync();
-
-        if (activeSubscription != null)
-        {
-            throw new InvalidOperationException($"Xe {vehicle.Plate} đã có gói subscription đang hoạt động. Vui lòng hủy gói hiện tại trước khi đăng ký mới.");
-        }
-
-        // Kiểm tra xem có payment pending không (chặn spam)
-        var pendingPayment = await _context.Payments
-            .Include(p => p.UserSubscription)
-            .Where(p => p.UserId == userId
-                     && p.UserSubscription != null
-                     && p.UserSubscription.VehicleId == request.VehicleId
-                     && p.Status == PaymentStatus.Pending
-                     && p.Type == PaymentType.Subscription)
-            .FirstOrDefaultAsync();
-
-        if (pendingPayment != null)
-        {
-            throw new InvalidOperationException($"Xe {vehicle.Plate} đã có gói subscription đang chờ thanh toán. Vui lòng hoàn tất thanh toán hoặc hủy gói cũ trước khi mua gói mới.");
-        }
-
-        // 4. ⭐ Tạo UserSubscription với IsActive = FALSE (chờ thanh toán)
+        // 3. ⭐ Tạo UserSubscription với IsActive = FALSE (chờ thanh toán) và không gắn Vehicle
         var subscription = new UserSubscription
         {
             UserId = userId,
             SubscriptionPlanId = request.SubscriptionPlanId,
-            VehicleId = request.VehicleId,
+            VehicleId = null,
             IsActive = false,  // ⭐ QUAN TRỌNG: Chưa kích hoạt
             StartDate = null,  // ⭐ NULL = chưa kích hoạt, sẽ set khi thanh toán thành công
             CurrentBillingPeriodStart = DateTime.MinValue,
@@ -274,7 +264,7 @@ public class SubscriptionService : ISubscriptionService
             Status = PaymentStatus.Pending,
             VnpTxnRef = GenerateTransactionReference(),
             PaymentReference = GenerateTransactionReference(),
-            Description = $"Thanh toán gói {subscriptionPlan.Name} - {vehicle.Plate}",
+            Description = $"Thanh toán gói {subscriptionPlan.Name} (Pin: {subscriptionPlan.BatteryModel.Name})",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -282,9 +272,9 @@ public class SubscriptionService : ISubscriptionService
         await _context.SaveChangesAsync();
 
         // 6. ⭐ Generate VNPay payment URL
-        var paymentUrl = GenerateVnPayUrl(payment, subscription, subscriptionPlan, vehicle, ipAddress);
+        var paymentUrl = GenerateVnPayUrl(payment, subscription, subscriptionPlan, null, ipAddress);
 
-        _logger.LogInformation("User {UserId} created PENDING subscription {SubscriptionId}, payment {PaymentId}", 
+        _logger.LogInformation("User {UserId} created PENDING subscription {SubscriptionId}, payment {PaymentId}",
             userId, subscription.Id, payment.Id);
 
         // 7. Return full response with all info FE needs
@@ -319,7 +309,7 @@ public class SubscriptionService : ISubscriptionService
             Id = firstSub.Id,
             UserId = firstSub.UserId,
             SubscriptionPlanId = firstSub.SubscriptionPlanId,
-            VehicleIds = subscriptions.Select(s => s.VehicleId).ToList(),
+            VehicleIds = subscriptions.Where(s => s.VehicleId.HasValue).Select(s => s.VehicleId!.Value).ToList(),
             StartDate = firstSub.StartDate,
             EndDate = firstSub.EndDate,
             IsActive = firstSub.IsActive,
@@ -341,16 +331,18 @@ public class SubscriptionService : ISubscriptionService
                 BatteryModelName = firstSub.SubscriptionPlan.BatteryModel.Name,
                 IsActive = firstSub.SubscriptionPlan.IsActive
             },
-            Vehicles = subscriptions.Select(s => new SubscriptionVehicleDto
-            {
-                Id = s.Vehicle.Id,
-                Brand = "VinFast",
-                Model = "Unknown",
-                VIN = s.Vehicle.VIN,
-                Plate = s.Vehicle.Plate,
-                Color = "Unknown",
-                Year = DateTime.UtcNow.Year
-            }).ToList()
+            Vehicles = subscriptions
+                .Where(s => s.Vehicle != null)
+                .Select(s => new SubscriptionVehicleDto
+                {
+                    Id = s.Vehicle!.Id,
+                    Brand = "VinFast",
+                    Model = "Unknown",
+                    VIN = s.Vehicle!.VIN,
+                    Plate = s.Vehicle!.Plate,
+                    Color = "Unknown",
+                    Year = DateTime.UtcNow.Year
+                }).ToList()
         };
     }
 
@@ -377,8 +369,8 @@ public class SubscriptionService : ISubscriptionService
             Id = sub.Id,
             UserId = sub.UserId,
             SubscriptionPlanId = sub.SubscriptionPlanId,
-            VehicleIds = new List<Guid> { sub.VehicleId },
-            VehicleId = sub.VehicleId,
+            VehicleIds = sub.VehicleId.HasValue ? new List<Guid> { sub.VehicleId.Value } : new List<Guid>(),
+            VehicleId = sub.VehicleId ?? Guid.Empty,
             StartDate = sub.StartDate,
             EndDate = sub.EndDate,
             IsActive = sub.IsActive,
@@ -400,19 +392,21 @@ public class SubscriptionService : ISubscriptionService
                 BatteryModelName = sub.SubscriptionPlan.BatteryModel.Name,
                 IsActive = sub.SubscriptionPlan.IsActive
             },
-            Vehicles = new List<SubscriptionVehicleDto>
-            {
-                new SubscriptionVehicleDto
+            Vehicles = sub.Vehicle != null
+                ? new List<SubscriptionVehicleDto>
                 {
-                    Id = sub.Vehicle.Id,
-                    Brand = "VinFast",
-                    Model = "Unknown",
-                    VIN = sub.Vehicle.VIN,
-                    Plate = sub.Vehicle.Plate,
-                    Color = "Unknown",
-                    Year = DateTime.UtcNow.Year
+                    new SubscriptionVehicleDto
+                    {
+                        Id = sub.Vehicle.Id,
+                        Brand = "VinFast",
+                        Model = "Unknown",
+                        VIN = sub.Vehicle.VIN,
+                        Plate = sub.Vehicle.Plate,
+                        Color = "Unknown",
+                        Year = DateTime.UtcNow.Year
+                    }
                 }
-            }
+                : new List<SubscriptionVehicleDto>()
         }).ToList();
 
         return result;
@@ -436,7 +430,7 @@ public class SubscriptionService : ISubscriptionService
 
         // ✅ Check for outstanding payments (refactored to use Payment table)
         var outstandingPayments = await _context.Payments
-            .Where(p => p.UserSubscriptionId == subscription.Id && 
+            .Where(p => p.UserSubscriptionId == subscription.Id &&
                        p.Status == Models.PaymentStatus.Pending)
             .CountAsync();
 
@@ -492,7 +486,7 @@ public class SubscriptionService : ISubscriptionService
         // ✅ FIXED PRICE - No tier calculation needed
         var currentMonthFee = subscription.SubscriptionPlan.MonthlyPrice;
         var plan = subscription.SubscriptionPlan;
-        var usageTier = plan.MaxSwapsPerMonth.HasValue 
+        var usageTier = plan.MaxSwapsPerMonth.HasValue
             ? $"{subscription.CurrentMonthSwapCount}/{plan.MaxSwapsPerMonth} lần"
             : $"{subscription.CurrentMonthSwapCount} lần (không giới hạn)";
 
@@ -503,14 +497,14 @@ public class SubscriptionService : ISubscriptionService
         {
             SubscriptionId = subscription.Id,
             SubscriptionPlanName = subscription.SubscriptionPlan.Name,
-            VehiclePlate = subscription.Vehicle.Plate,
+            VehiclePlate = subscription.Vehicle?.Plate ?? "N/A",
             CurrentBillingPeriodStart = subscription.CurrentBillingPeriodStart,
             CurrentBillingPeriodEnd = subscription.CurrentBillingPeriodEnd,
-            
+
             // ✅ SIMPLIFIED: Swap count instead of km
             CurrentMonthSwapCount = subscription.CurrentMonthSwapCount,
             MaxSwapsPerMonth = plan.MaxSwapsPerMonth,
-            
+
             CurrentMonthFee = currentMonthFee,
             UsageTier = usageTier,
             TotalSwapTransactions = swapTransactions.Count,
@@ -552,7 +546,7 @@ public class SubscriptionService : ISubscriptionService
         var subscription = await _context.UserSubscriptions
             .Include(s => s.SubscriptionPlan)
             .FirstOrDefaultAsync(s => s.Id == subscriptionId);
-        
+
         if (subscription == null) return monthlyUsage;
 
         for (int i = 5; i >= 0; i--)
@@ -565,7 +559,7 @@ public class SubscriptionService : ISubscriptionService
                 .ToList();
 
             var swapCount = monthTransactions.Count;
-            
+
             // ✅ Get payment for this period (refactored from invoice)
             var payment = await _context.Payments
                 .FirstOrDefaultAsync(p => p.UserSubscriptionId == subscriptionId &&
@@ -575,12 +569,12 @@ public class SubscriptionService : ISubscriptionService
 
             // ✅ SIMPLIFIED: Usage tier based on swap count
             var maxSwaps = subscription.SubscriptionPlan.MaxSwapsPerMonth;
-            var usageTier = maxSwaps.HasValue 
+            var usageTier = maxSwaps.HasValue
                 ? $"{swapCount}/{maxSwaps} lần"
                 : $"{swapCount} lần (không giới hạn)";
 
             monthlyUsage.Add(new MonthlyUsageDto
-{
+            {
                 Year = periodEnd.Year,
                 Month = periodEnd.Month,
                 MonthName = CultureInfo.GetCultureInfo("vi-VN").DateTimeFormat.GetMonthName(targetMonth.Month),
@@ -601,7 +595,7 @@ public class SubscriptionService : ISubscriptionService
         return $"EVB{DateTime.Now:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
     }
 
-    private string GenerateVnPayUrl(Payment payment, UserSubscription subscription, SubscriptionPlan plan, Vehicle vehicle, string ipAddress)
+    private string GenerateVnPayUrl(Payment payment, UserSubscription subscription, SubscriptionPlan plan, Vehicle? vehicle, string ipAddress)
     {
         // ⭐ SỬ DỤNG VnPayServiceV2 (theo hướng dẫn chính thức VNPay)
         var paymentModel = new PaymentInformationModel
@@ -609,7 +603,7 @@ public class SubscriptionService : ISubscriptionService
             OrderType = "billpayment", // subscription payment
             Amount = (double)payment.Amount,
             OrderDescription = $"Thanh toan {plan.Name}",
-            Name = $"{vehicle.Plate}"
+            Name = vehicle?.Plate ?? plan.BatteryModel.Name
         };
 
         // Create fake HttpContext with IP address
@@ -617,9 +611,9 @@ public class SubscriptionService : ISubscriptionService
         httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(ipAddress);
 
         var paymentUrl = _vnPayServiceV2.CreatePaymentUrl(paymentModel, httpContext);
-        
+
         _logger.LogInformation("Generated VNPay URL for payment {PaymentId}: {Url}", payment.Id, paymentUrl);
-        
+
         return paymentUrl;
     }
 
@@ -627,10 +621,10 @@ public class SubscriptionService : ISubscriptionService
     {
         var keyBytes = Encoding.UTF8.GetBytes(key);
         var dataBytes = Encoding.UTF8.GetBytes(data);
-        
+
         using var hmac = new HMACSHA512(keyBytes);
         var hashBytes = hmac.ComputeHash(dataBytes);
-        
+
         return Convert.ToHexString(hashBytes).ToLower();
     }
 }
