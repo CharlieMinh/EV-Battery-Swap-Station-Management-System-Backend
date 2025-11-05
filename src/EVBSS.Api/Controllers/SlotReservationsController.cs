@@ -154,7 +154,10 @@ public class SlotReservationsController : ControllerBase
 
         try
         {
-            var reservation = await _service.GetReservationByIdAsync(id, userId);
+            // Check if user is Staff or Admin
+            var isStaffOrAdmin = User.IsInRole("Staff") || User.IsInRole("Admin");
+            
+            var reservation = await _service.GetReservationByIdAsync(id, userId, isStaffOrAdmin);
             return Ok(MapToResponse(reservation));
         }
         catch (KeyNotFoundException)
