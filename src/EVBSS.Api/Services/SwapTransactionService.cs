@@ -133,6 +133,7 @@ public class SwapTransactionService
                 IssuedBatterySerial = newBattery.Serial,
                 ReturnedBatterySerial = returnedBatterySerial,
                 BatteryHealthReturned = request.OldBatteryHealth,
+                Notes = request.Notes,
                 // If this reservation was created due to a complaint, propagate the link to the swap
                 RelatedComplaintId = reservation.RelatedComplaintId,
                 Status = SwapTransactionStatus.Completed,
