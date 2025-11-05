@@ -168,6 +168,7 @@ builder.Services.AddHttpClient<IAwsRekognitionService, AwsRekognitionService>();
 
 // Background Services
 builder.Services.AddHostedService<SlotReservationBackgroundService>();
+builder.Services.AddHostedService<PaymentTimeoutBackgroundService>();  // ⭐ Auto-cancel payments pending > 72h
 
 // =========================================================================
 // 2. CONFIGURE HTTP REQUEST PIPELINE (MIDDLEWARE)
