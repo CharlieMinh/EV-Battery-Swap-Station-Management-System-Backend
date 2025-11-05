@@ -336,7 +336,7 @@ public class SlotReservationService
     /// <summary>
     /// Lấy thông tin chi tiết reservation theo ID
     /// </summary>
-    public async Task<Reservation> GetReservationByIdAsync(Guid reservationId, Guid userId)
+    public async Task<Reservation> GetReservationByIdAsync(Guid reservationId, Guid userId, bool isStaffOrAdmin = false)
     {
         var reservation = await _db.Reservations
             .Include(r => r.Station)
@@ -349,7 +349,8 @@ public class SlotReservationService
         if (reservation == null)
             throw new KeyNotFoundException("Không tìm thấy lịch đặt");
 
-        if (reservation.UserId != userId)
+        // Staff and Admin can view all reservations, regular users can only view their own
+        if (!isStaffOrAdmin && reservation.UserId != userId)
             throw new UnauthorizedAccessException("Bạn không có quyền xem lịch đặt này");
 
         return reservation;
