@@ -148,3 +148,45 @@ public class SwapRatingRequest
     public string? Feedback { get; set; }                      // Phản hồi chi tiết
     public List<string>? Issues { get; set; }                  // Các vấn đề gặp phải (nếu có)
 }
+
+/// <summary>
+/// Request để lọc danh sách giao dịch đổi pin cho Admin/Staff
+/// </summary>
+public class AdminSwapTransactionFilterRequest
+{
+    public Guid? StationId { get; set; }                       // Lọc theo trạm
+    public string? Status { get; set; }                        // Lọc theo trạng thái
+    public DateTime? FromDate { get; set; }                    // Từ ngày
+    public DateTime? ToDate { get; set; }                      // Đến ngày
+    public string? SearchText { get; set; }                    // Tìm kiếm theo mã giao dịch, email, biển số xe
+    public int Page { get; set; } = 1;                        // Số trang
+    public int PageSize { get; set; } = 10;                   // Số item mỗi trang
+}
+
+/// <summary>
+/// Response chi tiết giao dịch đổi pin cho Admin/Staff (có thêm thông tin staff)
+/// </summary>
+public class AdminSwapTransactionResponse : SwapTransactionResponse
+{
+    public Guid UserId { get; set; }                           // ID người dùng
+    public string? CheckedInByStaffName { get; set; }          // Tên staff check-in
+    public string? CompletedByStaffName { get; set; }          // Tên staff hoàn thành
+    public Guid StationId { get; set; }                        // ID trạm
+    public Guid VehicleId { get; set; }                        // ID xe
+    public Guid? PaymentId { get; set; }                       // ID thanh toán
+    public string? PaymentStatus { get; set; }                 // Trạng thái thanh toán
+    public DateTime? CancelledAt { get; set; }                 // Thời gian hủy
+    public string? CancellationReason { get; set; }            // Lý do hủy
+}
+
+/// <summary>
+/// Response danh sách giao dịch đổi pin cho Admin/Staff với phân trang
+/// </summary>
+public class AdminSwapHistoryResponse
+{
+    public List<AdminSwapTransactionResponse> Transactions { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}
