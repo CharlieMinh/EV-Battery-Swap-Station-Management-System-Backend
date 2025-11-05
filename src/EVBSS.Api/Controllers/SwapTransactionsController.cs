@@ -45,7 +45,8 @@ public class SwapTransactionsController : ControllerBase
             {
                 Success = true,
                 SwapTransactionId = transaction.Id,
-                Message = "Giao dịch đổi pin đã hoàn tất thành công."
+                Message = "Giao dịch đổi pin đã hoàn tất thành công.",
+                Notes = transaction.Notes
             };
 
             _logger.LogInformation("Swap transaction {TransactionId} finalized from reservation {ReservationId} by staff {StaffId}", 

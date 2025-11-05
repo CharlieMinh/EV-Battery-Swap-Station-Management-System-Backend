@@ -357,7 +357,7 @@ public class UsersController : ControllerBase
     /// Get user by ID (Admin only)
     /// </summary>
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<IActionResult> GetUserById(Guid id)
     {
         var user = await _db.Users
