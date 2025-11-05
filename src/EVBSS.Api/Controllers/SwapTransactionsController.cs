@@ -325,6 +325,88 @@ public class SwapTransactionsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Lấy danh sách tất cả giao dịch đổi pin (dành cho Staff) - không có bộ lọc
+    /// </summary>
+    [HttpGet("all/staff")]
+    [Authorize(Roles = "Staff,Admin")]
+    [ProducesResponseType(typeof(AdminSwapHistoryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<AdminSwapHistoryResponse>> GetAllSwapTransactionsForStaff(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10)
+    {
+        try
+        {
+            // Validate pagination parameters
+            if (page < 1) page = 1;
+            if (pageSize < 1 || pageSize > 100) pageSize = 10;
+
+            var filter = new AdminSwapTransactionFilterRequest
+            {
+                Page = page,
+                PageSize = pageSize
+            };
+
+            var result = await _swapService.GetAllSwapTransactionsAsync(filter);
+
+            _logger.LogInformation("Staff retrieved all swap transactions: {Count} total", result.TotalCount);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving all swap transactions for staff");
+            return StatusCode(500, new { error = "An error occurred while retrieving swap transactions" });
+        }
+    }
+
+    /// <summary>
+    /// Lấy danh sách tất cả giao dịch đổi pin với bộ lọc (dành cho Admin)
+    /// </summary>
+    [HttpGet("all/admin")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(AdminSwapHistoryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<AdminSwapHistoryResponse>> GetAllSwapTransactionsForAdmin(
+        [FromQuery] Guid? stationId,
+        [FromQuery] string? status,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate,
+        [FromQuery] string? searchText,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10)
+    {
+        try
+        {
+            // Validate pagination parameters
+            if (page < 1) page = 1;
+            if (pageSize < 1 || pageSize > 100) pageSize = 10;
+
+            var filter = new AdminSwapTransactionFilterRequest
+            {
+                StationId = stationId,
+                Status = status,
+                FromDate = fromDate,
+                ToDate = toDate,
+                SearchText = searchText,
+                Page = page,
+                PageSize = pageSize
+            };
+
+            var result = await _swapService.GetAllSwapTransactionsAsync(filter);
+
+            _logger.LogInformation("Admin retrieved filtered swap transactions: {Count} total", result.TotalCount);
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving filtered swap transactions for admin");
+            return StatusCode(500, new { error = "An error occurred while retrieving swap transactions" });
+        }
+    }
+
     private Guid GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

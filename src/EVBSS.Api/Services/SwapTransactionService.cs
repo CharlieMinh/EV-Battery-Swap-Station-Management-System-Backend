@@ -755,4 +755,119 @@ public class SwapTransactionService
 
         return $"{prefix}{nextNumber:D4}";
     }
+
+    /// <summary>
+    /// Lấy danh sách tất cả giao dịch đổi pin cho Admin/Staff với các bộ lọc
+    /// </summary>
+    public async Task<AdminSwapHistoryResponse> GetAllSwapTransactionsAsync(AdminSwapTransactionFilterRequest filter)
+    {
+        var query = _context.SwapTransactions
+            .Include(s => s.Station)
+            .Include(s => s.Vehicle)
+            .Include(s => s.User)
+            .Include(s => s.Payment)
+            .Include(s => s.CheckedInByStaff)
+            .Include(s => s.CompletedByStaff)
+            .AsQueryable();
+
+        // Lọc theo trạm
+        if (filter.StationId.HasValue)
+        {
+            query = query.Where(s => s.StationId == filter.StationId.Value);
+        }
+
+        // Lọc theo trạng thái
+        if (!string.IsNullOrEmpty(filter.Status))
+        {
+            if (Enum.TryParse<SwapTransactionStatus>(filter.Status, true, out var status))
+            {
+                query = query.Where(s => s.Status == status);
+            }
+        }
+
+        // Lọc theo ngày bắt đầu
+        if (filter.FromDate.HasValue)
+        {
+            var fromDate = filter.FromDate.Value.Date;
+            query = query.Where(s => s.StartedAt >= fromDate);
+        }
+
+        // Lọc theo ngày kết thúc
+        if (filter.ToDate.HasValue)
+        {
+            var toDate = filter.ToDate.Value.Date.AddDays(1); // Bao gồm cả ngày ToDate
+            query = query.Where(s => s.StartedAt < toDate);
+        }
+
+        // Tìm kiếm theo text (mã giao dịch, email, biển số xe)
+        if (!string.IsNullOrEmpty(filter.SearchText))
+        {
+            var searchLower = filter.SearchText.ToLower();
+            query = query.Where(s => 
+                s.TransactionNumber.ToLower().Contains(searchLower) ||
+                s.User.Email.ToLower().Contains(searchLower) ||
+                s.Vehicle.Plate.ToLower().Contains(searchLower));
+        }
+
+        // Đếm tổng số record
+        var totalCount = await query.CountAsync();
+
+        // Sắp xếp mới nhất trước
+        query = query.OrderByDescending(s => s.StartedAt);
+
+        // Phân trang
+        var totalPages = (int)Math.Ceiling((double)totalCount / filter.PageSize);
+        var transactions = await query
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .Select(s => new AdminSwapTransactionResponse
+            {
+                Id = s.Id,
+                TransactionNumber = s.TransactionNumber,
+                Status = s.Status.ToString(),
+                UserId = s.UserId,
+                UserEmail = s.User.Email,
+                StationId = s.StationId,
+                StationName = s.Station.Name,
+                StationAddress = s.Station.Address,
+                VehicleId = s.VehicleId,
+                VehicleLicensePlate = s.Vehicle.Plate,
+                VehicleModel = s.Vehicle.VIN,
+                IssuedBatterySerial = s.IssuedBatterySerial,
+                ReturnedBatterySerial = s.ReturnedBatterySerial,
+                BatteryHealthIssued = s.BatteryHealthIssued,
+                BatteryHealthReturned = s.BatteryHealthReturned,
+                PaymentId = s.PaymentId,
+                PaymentType = (s.PaymentId != null ? PaymentType.PayPerSwap.ToString() : PaymentType.Subscription.ToString()),
+                PaymentStatus = s.Payment != null ? s.Payment.Status.ToString() : null,
+                SwapFee = s.Payment != null ? s.Payment.Amount : 0,
+                TotalAmount = s.Payment != null ? s.Payment.Amount : 0,
+                IsPaid = s.PaymentId != null ? (s.Payment != null && s.Payment.Status == PaymentStatus.Completed) : true,
+                StartedAt = s.StartedAt,
+                CheckedInAt = s.CheckedInAt,
+                BatteryIssuedAt = s.BatteryIssuedAt,
+                BatteryReturnedAt = s.BatteryReturnedAt,
+                CompletedAt = s.CompletedAt,
+                CancelledAt = s.CancelledAt,
+                CancellationReason = s.CancellationReason,
+                Notes = s.Notes,
+                ReservationId = s.ReservationId,
+                UserSubscriptionId = s.UserSubscriptionId,
+                Rating = s.Rating,
+                Feedback = s.Feedback,
+                RatedAt = s.RatedAt,
+                CheckedInByStaffName = s.CheckedInByStaff != null ? s.CheckedInByStaff.Email : null,
+                CompletedByStaffName = s.CompletedByStaff != null ? s.CompletedByStaff.Email : null
+            })
+            .ToListAsync();
+
+        return new AdminSwapHistoryResponse
+        {
+            Transactions = transactions,
+            TotalCount = totalCount,
+            Page = filter.Page,
+            PageSize = filter.PageSize,
+            TotalPages = totalPages
+        };
+    }
 }
