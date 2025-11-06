@@ -548,6 +548,8 @@ public class SlotReservationService
         bool isStaff = false)
     {
         var reservation = await _db.Reservations
+            .Include(r => r.User)
+            .Include(r => r.Payment)
             .FirstOrDefaultAsync(r => r.Id == reservationId);
 
         if (reservation == null)
@@ -565,15 +567,38 @@ public class SlotReservationService
             throw new InvalidOperationException($"Không thể hủy reservation có status {reservation.Status}.");
         }
 
+        // ====== TIME-BASED PENALTY LOGIC ======
+        var now = DateTime.UtcNow;
+        var slotDateTime = reservation.SlotDate.ToDateTime(TimeOnly.MinValue).Add(reservation.SlotStartTime);
+        var timeUntilSlot = slotDateTime - now;
+        bool isLateCancellation = timeUntilSlot <= TimeSpan.FromHours(1);
+
+        // Update reservation status
         reservation.Status = ReservationStatus.Cancelled;
         reservation.CancelReason = reason;
         reservation.CancelNote = note;
-        reservation.CancelledAt = DateTime.UtcNow;
+        reservation.CancelledAt = now;
+
+        // ====== HANDLE PAYMENT CANCELLATION (if cash payment) ======
+        if (reservation.Payment != null)
+        {
+            reservation.Payment.Status = PaymentStatus.Cancelled;
+            _logger.LogInformation("Cancelled payment {PaymentId} for reservation {ReservationId}",
+                reservation.Payment.Id, reservationId);
+        }
+
+        // ====== PENALTY LOGIC (only for USER late cancellation) ======
+        if (!isStaff && isLateCancellation)
+        {
+            reservation.User.NoShowCount++;
+            _logger.LogWarning("User {UserId} late-cancelled reservation {ReservationId}. NoShowCount incremented to {NoShowCount}",
+                userId, reservationId, reservation.User.NoShowCount);
+        }
 
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("Cancelled reservation {ReservationId}, reason: {Reason}",
-            reservationId, reason);
+        _logger.LogInformation("Cancelled reservation {ReservationId} by {CancelledBy}, reason: {Reason}, isLateCancellation: {IsLate}",
+            reservationId, isStaff ? "Staff" : "User", reason, isLateCancellation);
     }
 
     /// <summary>
