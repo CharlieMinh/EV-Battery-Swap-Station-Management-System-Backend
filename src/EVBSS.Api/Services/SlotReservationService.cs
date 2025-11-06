@@ -231,6 +231,20 @@ public class SlotReservationService
                 throw new NoActiveSubscriptionException("Bạn không có gói subscription hoạt động phù hợp với xe này. Vui lòng chọn phương thức thanh toán (Cash/VNPay) để đặt lịch theo lượt.");
             }
 
+            // ⭐ CHECK NOSHOWCOUNT: Nếu thanh toán bằng Cash và user vi phạm >= 3 lần → Chặn
+            if (paymentMethod == PaymentMethod.Cash)
+            {
+                var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+                if (user != null && user.NoShowCount >= 3)
+                {
+                    _logger.LogWarning("User {UserId} is BLOCKED from cash payment due to NoShowCount={NoShowCount} >= 3",
+                        userId, user.NoShowCount);
+                    throw new InvalidOperationException(
+                        $"Bạn đã bị chặn thanh toán bằng tiền mặt do vi phạm {user.NoShowCount} lần (hủy muộn/no-show). " +
+                        "Vui lòng thanh toán bằng VNPay hoặc liên hệ trạm để được hỗ trợ.");
+                }
+            }
+
             _logger.LogInformation("User {UserId} booking pay-per-swap with payment method {PaymentMethod} (BatteryModel {BatteryModelId})",
                 userId, paymentMethod, batteryModelId);
 
