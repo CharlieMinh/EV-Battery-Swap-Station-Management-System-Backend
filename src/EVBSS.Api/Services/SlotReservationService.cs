@@ -610,7 +610,10 @@ public class SlotReservationService
         var today = DateOnly.FromDateTime(now);
         var currentTime = now.TimeOfDay;
 
+        // ====== QUERY WITH RELATIONSHIPS ======
         var allPendingReservations = await _db.Reservations
+            .Include(r => r.User)        // Need to update NoShowCount
+            .Include(r => r.Payment)     // Need to cancel payment if cash
             .Where(r => r.Status == ReservationStatus.Pending)
             .ToListAsync();
 
@@ -623,15 +626,30 @@ public class SlotReservationService
 
         foreach (var reservation in overdueReservations)
         {
+            // ====== UPDATE RESERVATION STATUS ======
             reservation.Status = ReservationStatus.Expired;
             reservation.CancelReason = Models.CancelReason.NoShow;
             reservation.CancelledAt = now;
+
+            // ====== CANCEL PAYMENT (if cash payment exists) ======
+            if (reservation.Payment != null)
+            {
+                reservation.Payment.Status = PaymentStatus.Cancelled;
+                _logger.LogInformation("No-show: Cancelled payment {PaymentId} for reservation {ReservationId}",
+                    reservation.Payment.Id, reservation.Id);
+            }
+
+            // ====== PENALTY LOGIC: Increment NoShowCount ======
+            // Both subscription and cash payment users get penalized for no-show
+            reservation.User.NoShowCount++;
+            _logger.LogWarning("No-show: User {UserId} did not show up for reservation {ReservationId}. NoShowCount incremented to {NoShowCount}",
+                reservation.UserId, reservation.Id, reservation.User.NoShowCount);
         }
 
         if (overdueReservations.Any())
         {
             await _db.SaveChangesAsync();
-            _logger.LogInformation("Expired {Count} overdue reservations", overdueReservations.Count);
+            _logger.LogInformation("Expired {Count} overdue reservations (no-show penalty applied)", overdueReservations.Count);
         }
 
         return overdueReservations.Count;
