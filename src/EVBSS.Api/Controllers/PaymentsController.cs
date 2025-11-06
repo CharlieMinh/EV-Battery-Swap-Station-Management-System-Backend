@@ -328,6 +328,109 @@ public class PaymentsController : ControllerBase
    // Trong file: Controllers/PaymentsController.cs
 
 /// <summary>
+/// ⭐ NEW: Lấy danh sách các thanh toán tiền mặt đang chờ xác nhận
+/// Staff xem danh sách này trước khi xác nhận thanh toán
+/// </summary>
+[HttpGet("pending-cash")]
+[Authorize(Roles = "Staff,Admin")]
+[ProducesResponseType(typeof(List<CompleteCashPaymentResponse>), StatusCodes.Status200OK)]
+public async Task<ActionResult<List<CompleteCashPaymentResponse>>> GetPendingCashPayments()
+{
+    try
+    {
+        // Query tất cả payment có Status = Pending VÀ Method = Cash
+        var pendingPayments = await _db.Payments
+            .Where(p => p.Status == PaymentStatus.Pending && p.Method == PaymentMethod.Cash)
+            .Include(p => p.User)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.SubscriptionPlan)
+                    .ThenInclude(sp => sp.BatteryModel)
+            .Include(p => p.UserSubscription)
+                .ThenInclude(us => us!.Vehicle)
+                    .ThenInclude(v => v!.VehicleModel)
+            .Include(p => p.Reservation)
+            .Include(p => p.Station)
+            .OrderByDescending(p => p.CreatedAt) // Mới nhất lên đầu
+            .ToListAsync();
+
+        // Map sang response DTO
+        var response = pendingPayments.Select(payment => new CompleteCashPaymentResponse
+        {
+            Success = true,
+            PaymentId = payment.Id,
+            Status = payment.Status.ToString(),
+            Message = "Thanh toán đang chờ xác nhận",
+            PaymentDetail = new PaymentDetailInfo
+            {
+                Amount = payment.Amount,
+                Method = payment.Method.ToString(),
+                Type = payment.Type.ToString(),
+                CreatedAt = payment.CreatedAt,
+                CompletedAt = payment.CompletedAt,
+                Description = payment.Description,
+                
+                // Thông tin người thanh toán
+                User = new UserInfo
+                {
+                    Id = payment.User.Id,
+                    Name = payment.User.Name ?? "N/A",
+                    Email = payment.User.Email,
+                    PhoneNumber = payment.User.Phone
+                },
+                
+                // Thông tin gói dịch vụ (nếu là Subscription)
+                SubscriptionPlan = payment.UserSubscription?.SubscriptionPlan != null ? new SubscriptionPlanInfo
+                {
+                    Id = payment.UserSubscription.SubscriptionPlan.Id,
+                    Name = payment.UserSubscription.SubscriptionPlan.Name,
+                    MonthlyPrice = payment.UserSubscription.SubscriptionPlan.MonthlyPrice,
+                    MaxSwapsPerMonth = payment.UserSubscription.SubscriptionPlan.MaxSwapsPerMonth ?? 0,
+                    BatteryModelName = payment.UserSubscription.SubscriptionPlan.BatteryModel?.Name ?? "N/A"
+                } : null,
+                
+                // Thông tin xe
+                Vehicle = payment.UserSubscription?.Vehicle != null ? new VehicleInfo
+                {
+                    Id = payment.UserSubscription.Vehicle.Id,
+                    Plate = payment.UserSubscription.Vehicle.Plate,
+                    VIN = payment.UserSubscription.Vehicle.VIN,
+                    VehicleModelName = payment.UserSubscription.Vehicle.VehicleModel?.Name
+                } : null,
+                
+                // Thông tin đặt lịch (nếu là Pay-per-Swap)
+                Reservation = payment.Reservation != null ? new ReservationInfo
+                {
+                    Id = payment.Reservation.Id,
+                    SlotDate = payment.Reservation.SlotDate,
+                    SlotStartTime = payment.Reservation.SlotStartTime,
+                    SlotEndTime = payment.Reservation.SlotEndTime,
+                    Status = payment.Reservation.Status.ToString()
+                } : null,
+                
+                // ProcessedByStaff = null (chưa xử lý)
+                ProcessedByStaff = null,
+                
+                // Thông tin trạm
+                Station = payment.Station != null ? new StationInfo
+                {
+                    Id = payment.Station.Id,
+                    Name = payment.Station.Name,
+                    Address = payment.Station.Address
+                } : null
+            }
+        }).ToList();
+
+        _logger.LogInformation("Retrieved {Count} pending cash payments", response.Count);
+        return Ok(response);
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error retrieving pending cash payments");
+        return StatusCode(500, new List<CompleteCashPaymentResponse>());
+    }
+}
+
+/// <summary>
 /// ⭐ LUỒNG 4A: Staff xác nhận đã nhận tiền mặt cho một thanh toán đang chờ.
 /// Response bao gồm đầy đủ thông tin: người thanh toán, gói dịch vụ, xe, staff xử lý
 /// </summary>
