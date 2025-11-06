@@ -105,7 +105,8 @@ public class SwapTransactionService
             }
 
             // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
-            if (reservation.Payment == null) // This indicates a subscription-based swap
+            // ⭐ FIX: KHÔNG kiểm tra giới hạn nếu đây là Re-swap (có RelatedComplaintId)
+            if (reservation.Payment == null && !reservation.RelatedComplaintId.HasValue)
             {
                 var activeSubscription = await _context.UserSubscriptions
                     .Include(s => s.SubscriptionPlan)
@@ -167,7 +168,8 @@ public class SwapTransactionService
 
 
             // 6. Update subscription swap count if applicable
-            if (reservation.Payment == null)
+            // ⭐ FIX: KHÔNG trừ lượt khi đây là Re-swap (có RelatedComplaintId)
+            if (reservation.Payment == null && !swapTransaction.RelatedComplaintId.HasValue)
             {
                 if (reservation.UserSubscriptionId.HasValue)
                 {
@@ -205,6 +207,11 @@ public class SwapTransactionService
                             reservation.UserId, reservation.Id);
                     }
                 }
+            }
+            else if (swapTransaction.RelatedComplaintId.HasValue)
+            {
+                _logger.LogInformation("Re-swap detected (RelatedComplaintId: {ComplaintId}). Skipping swap count increment for user {UserId}.",
+                    swapTransaction.RelatedComplaintId.Value, reservation.UserId);
             }
 
             // 7. Save all changes (transaction is managed by the caller when needed)
@@ -376,7 +383,8 @@ public class SwapTransactionService
                 throw new InvalidOperationException($"Swap status is {swap.Status}, cannot complete");
 
             // 2. Check subscription swap limit BEFORE completing (if user has subscription)
-            if (swap.UserSubscriptionId.HasValue)
+            // ⭐ FIX: KHÔNG kiểm tra giới hạn nếu đây là Re-swap (có RelatedComplaintId)
+            if (swap.UserSubscriptionId.HasValue && !swap.RelatedComplaintId.HasValue)
             {
                 var subscription = await _context.UserSubscriptions
                     .Include(us => us.SubscriptionPlan)
@@ -414,7 +422,8 @@ public class SwapTransactionService
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
             // 4. Increment swap counter for subscription users
-            if (swap.UserSubscriptionId.HasValue)
+            // ⭐ FIX: KHÔNG trừ lượt khi đây là Re-swap (có RelatedComplaintId)
+            if (swap.UserSubscriptionId.HasValue && !swap.RelatedComplaintId.HasValue)
             {
                 var subscription = await _context.UserSubscriptions
                     .Include(us => us.SubscriptionPlan)
@@ -431,6 +440,11 @@ public class SwapTransactionService
                         subscription.CurrentMonthSwapCount,
                         subscription.SubscriptionPlan.MaxSwapsPerMonth?.ToString() ?? "Unlimited");
                 }
+            }
+            else if (swap.RelatedComplaintId.HasValue)
+            {
+                _logger.LogInformation("Re-swap detected (RelatedComplaintId: {ComplaintId}). Skipping swap count increment for user {UserId}.",
+                    swap.RelatedComplaintId.Value, userId);
             }
 
             // 5. Update battery statuses
