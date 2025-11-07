@@ -13,24 +13,24 @@ namespace EVBSS.Api.Services;
 public interface IPaymentService
 {
     Task<SelectCashMethodResponse> SelectCashMethodAsync(Guid userId, Guid paymentId);
-    
+
     Task<Payment> CompleteCashPaymentAsync(Guid paymentId, Guid staffId);
 
     Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(Guid userId, CreatePayPerSwapReservationRequest request, string ipAddress);
-    
+
     /// <summary>
     /// Lấy danh sách payments (cho Staff/Admin dashboard hoặc Driver xem payment của mình)
     /// </summary>
     Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
-        int page, 
-        int pageSize, 
-        PaymentStatus? status = null, 
+        int page,
+        int pageSize,
+        PaymentStatus? status = null,
         PaymentMethod? method = null,
         PaymentType? type = null,
         DateTime? fromDate = null,
         DateTime? toDate = null,
         Guid? userId = null);
-    
+
     /// <summary>
     /// Lấy chi tiết 1 payment
     /// </summary>
@@ -45,7 +45,7 @@ public class PaymentService : IPaymentService
     private readonly VnPayConfig _vnPayConfig;
 
     public PaymentService(
-        AppDbContext context, 
+        AppDbContext context,
         ILogger<PaymentService> logger,
         SlotReservationService slotReservationService,
         IOptions<VnPayConfig> vnPayConfig)
@@ -139,8 +139,8 @@ public class PaymentService : IPaymentService
             userSubscription.UpdatedAt = now;
 
             _logger.LogInformation(
-                "Subscription {UserSubscriptionId} ACTIVATED for user {UserId} upon cash payment. Valid from {Start} to {End}", 
-                userSubscription.Id, 
+                "Subscription {UserSubscriptionId} ACTIVATED for user {UserId} upon cash payment. Valid from {Start} to {End}",
+                userSubscription.Id,
                 userSubscription.UserId,
                 now.ToString("yyyy-MM-dd HH:mm:ss"),
                 now.AddDays(30).ToString("yyyy-MM-dd HH:mm:ss")
@@ -193,9 +193,15 @@ public class PaymentService : IPaymentService
             }
             catch (SlotNotAvailableException ex)
             {
-                 _logger.LogWarning(ex, "Slot not available for user {UserId}.", userId);
-                 // Không cần rollback tường minh, 'using' sẽ xử lý.
-                 return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
+                _logger.LogWarning(ex, "Slot not available for user {UserId}.", userId);
+                // Không cần rollback tường minh, 'using' sẽ xử lý.
+                return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Invalid operation for user {UserId}: {Message}", userId, ex.Message);
+                // Không cần rollback tường minh, 'using' sẽ xử lý.
+                return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
             }
 
             // Tạo Payment
@@ -238,20 +244,20 @@ public class PaymentService : IPaymentService
             }
             else // Cash
             {
-                 await transaction.CommitAsync(); // Commit tường minh CHỈ trên đường dẫn thành công
-                 // Kiểm tra lại format thời gian trong Instructions nếu cần
-                 string instructions = $"Vui lòng đến trạm đúng giờ hẹn ({reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh\\:mm}-{reservation.SlotEndTime:hh\\:mm}) và xuất trình mã QR này để check-in. Thanh toán {payment.Amount:N0} VNĐ bằng tiền mặt tại quầy.";
-                 return new CreatePayPerSwapReservationResponse
-                 {
-                     Success = true,
-                     Message = "Đã tạo lịch hẹn thành công. Vui lòng thanh toán tiền mặt tại trạm khi check-in.",
-                     ReservationId = reservation.Id,
-                     PaymentId = payment.Id,
-                     QRCode = reservation.QRCode, // Đảm bảo QRCode được gán đúng
-                     Status = "Pending",
-                     Amount = payment.Amount,
-                     Instructions = instructions
-                 };
+                await transaction.CommitAsync(); // Commit tường minh CHỈ trên đường dẫn thành công
+                                                 // Kiểm tra lại format thời gian trong Instructions nếu cần
+                string instructions = $"Vui lòng đến trạm đúng giờ hẹn ({reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh\\:mm}-{reservation.SlotEndTime:hh\\:mm}) và xuất trình mã QR này để check-in. Thanh toán {payment.Amount:N0} VNĐ bằng tiền mặt tại quầy.";
+                return new CreatePayPerSwapReservationResponse
+                {
+                    Success = true,
+                    Message = "Đã tạo lịch hẹn thành công. Vui lòng thanh toán tiền mặt tại trạm khi check-in.",
+                    ReservationId = reservation.Id,
+                    PaymentId = payment.Id,
+                    QRCode = reservation.QRCode, // Đảm bảo QRCode được gán đúng
+                    Status = "Pending",
+                    Amount = payment.Amount,
+                    Instructions = instructions
+                };
             }
         }
         catch (Exception ex) // Bắt TẤT CẢ exception từ khối try chính
@@ -281,7 +287,7 @@ public class PaymentService : IPaymentService
     private string GenerateVnPayUrlForReservation(Payment payment, Reservation reservation, string ipAddress)
     {
         var orderInfo = $"Thanh toán đặt lịch đổi pin - {reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh:mm}";
-        
+
         var vnpParams = new Dictionary<string, string>
         {
             {"vnp_Version", "2.1.0"},
@@ -302,9 +308,9 @@ public class PaymentService : IPaymentService
         var sortedParams = vnpParams.OrderBy(x => x.Key).ToList();
         var hashData = string.Join("&", sortedParams.Select(p => $"{p.Key}={p.Value}"));
         var vnpSecureHash = ComputeHmacSha512(_vnPayConfig.HashSecret, hashData);
-        
+
         var queryString = string.Join("&", sortedParams.Select(p => $"{p.Key}={HttpUtility.UrlEncode(p.Value)}"));
-        
+
         return $"{_vnPayConfig.BaseUrl}?{queryString}&vnp_SecureHash={vnpSecureHash}";
     }
 
@@ -312,10 +318,10 @@ public class PaymentService : IPaymentService
     {
         var keyBytes = Encoding.UTF8.GetBytes(key);
         var dataBytes = Encoding.UTF8.GetBytes(data);
-        
+
         using var hmac = new HMACSHA512(keyBytes);
         var hashBytes = hmac.ComputeHash(dataBytes);
-        
+
         return Convert.ToHexString(hashBytes).ToLower();
     }
 
@@ -323,9 +329,9 @@ public class PaymentService : IPaymentService
     /// Lấy danh sách payments với filtering và pagination (cho Staff/Admin)
     /// </summary>
     public async Task<(List<PaymentListResponse> Payments, int TotalCount)> GetPaymentsAsync(
-        int page, 
-        int pageSize, 
-        PaymentStatus? status = null, 
+        int page,
+        int pageSize,
+        PaymentStatus? status = null,
         PaymentMethod? method = null,
         PaymentType? type = null,
         DateTime? fromDate = null,
@@ -389,7 +395,7 @@ public class PaymentService : IPaymentService
                 CreatedAt = p.CreatedAt,
                 CompletedAt = p.CompletedAt,
                 ProcessedByStaffId = p.ProcessedByStaffId,
-                ProcessedByStaffName = p.ProcessedByStaffId.HasValue 
+                ProcessedByStaffName = p.ProcessedByStaffId.HasValue
                     ? _context.Users.Where(u => u.Id == p.ProcessedByStaffId).Select(u => u.Name).FirstOrDefault()
                     : null
             })
@@ -436,10 +442,10 @@ public class PaymentService : IPaymentService
             CreatedAt = payment.CreatedAt,
             CompletedAt = payment.CompletedAt,
             ProcessedByStaffId = payment.ProcessedByStaffId,
-            ProcessedByStaffName = payment.ProcessedByStaffId.HasValue 
+            ProcessedByStaffName = payment.ProcessedByStaffId.HasValue
                 ? await _context.Users.Where(u => u.Id == payment.ProcessedByStaffId).Select(u => u.Name).FirstOrDefaultAsync()
                 : null,
-            
+
             // User info
             User = new PaymentUserInfo
             {
@@ -448,7 +454,7 @@ public class PaymentService : IPaymentService
                 Email = payment.User.Email,
                 PhoneNumber = payment.User.Phone
             },
-            
+
             // Subscription info (if applicable)
             Subscription = payment.UserSubscription != null ? new PaymentSubscriptionInfo
             {
@@ -459,7 +465,7 @@ public class PaymentService : IPaymentService
                 StartDate = payment.UserSubscription.StartDate,
                 EndDate = payment.UserSubscription.EndDate
             } : null,
-            
+
             // Reservation info (if applicable)
             Reservation = payment.Reservation != null ? new PaymentReservationInfo
             {
