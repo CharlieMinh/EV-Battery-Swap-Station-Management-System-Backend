@@ -90,6 +90,16 @@ public class PaymentListResponse
     /// Tên staff xử lý
     /// </summary>
     public string? ProcessedByStaffName { get; set; }
+    
+    /// <summary>
+    /// ID của trạm xử lý thanh toán
+    /// </summary>
+    public Guid? StationId { get; set; }
+    
+    /// <summary>
+    /// Tên trạm xử lý thanh toán
+    /// </summary>
+    public string? StationName { get; set; }
 }
 
 /// <summary>
