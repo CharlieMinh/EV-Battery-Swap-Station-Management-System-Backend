@@ -127,6 +127,78 @@ public class TestController : ControllerBase
             });
         }
     }
+
+    /// <summary>
+    /// DEBUG: Kiểm tra swap transactions theo stationId
+    /// </summary>
+    [HttpGet("debug-swaps-by-station/{stationId}")]
+    public async Task<IActionResult> DebugSwapsByStation(Guid stationId)
+    {
+        try
+        {
+            // Đếm tất cả swap transactions
+            var totalSwaps = await _context.SwapTransactions.CountAsync();
+            
+            // Đếm swaps theo stationId (RAW - không Include)
+            var swapsAtStationRaw = await _context.SwapTransactions
+                .Where(s => s.StationId == stationId)
+                .CountAsync();
+
+            // Đếm swaps theo stationId (WITH Include - như trong service)
+            var swapsAtStationWithInclude = await _context.SwapTransactions
+                .Include(s => s.Station)
+                .Include(s => s.Vehicle)
+                .Include(s => s.User)
+                .Include(s => s.Payment)
+                .Include(s => s.CheckedInByStaff)
+                .Include(s => s.CompletedByStaff)
+                .Where(s => s.StationId == stationId)
+                .CountAsync();
+
+            // Kiểm tra null navigation properties
+            var swapsWithNullNavigation = await _context.SwapTransactions
+                .Where(s => s.StationId == stationId)
+                .Select(s => new
+                {
+                    id = s.Id,
+                    transactionNumber = s.TransactionNumber,
+                    stationId = s.StationId,
+                    hasStation = s.Station != null,
+                    hasVehicle = s.Vehicle != null,
+                    hasUser = s.User != null,
+                    status = s.Status.ToString()
+                })
+                .ToListAsync();
+
+            var nullStationCount = swapsWithNullNavigation.Count(s => !s.hasStation);
+            var nullVehicleCount = swapsWithNullNavigation.Count(s => !s.hasVehicle);
+            var nullUserCount = swapsWithNullNavigation.Count(s => !s.hasUser);
+
+            // Lấy thông tin station
+            var station = await _context.Stations.FindAsync(stationId);
+
+            return Ok(new
+            {
+                stationId = stationId,
+                stationName = station?.Name ?? "Unknown",
+                totalSwapsInDB = totalSwaps,
+                swapsAtThisStationRaw = swapsAtStationRaw,
+                swapsAtThisStationWithInclude = swapsAtStationWithInclude,
+                nullNavigationCounts = new
+                {
+                    nullStation = nullStationCount,
+                    nullVehicle = nullVehicleCount,
+                    nullUser = nullUserCount
+                },
+                sampleSwaps = swapsWithNullNavigation.Take(5)
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error debugging swaps for station {StationId}", stationId);
+            return StatusCode(500, new { error = ex.Message, stackTrace = ex.StackTrace });
+        }
+    }
 }
 
 /// <summary>

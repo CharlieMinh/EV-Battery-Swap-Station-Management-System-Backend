@@ -104,9 +104,20 @@ public class SwapTransactionService
                 returnedBatterySerial = auto.Serial;
             }
 
-            // ⭐ REMOVED: Redundant quota check
-            // Quota is already decremented when reservation is created (in SlotReservationService.CreateReservationAsync)
-            // No need to check again here as the user already has a valid reservation
+            // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
+            if (reservation.Payment == null) // This indicates a subscription-based swap
+            {
+                var activeSubscription = await _context.UserSubscriptions
+                    .Include(s => s.SubscriptionPlan)
+                    .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
+
+                if (activeSubscription?.SubscriptionPlan.MaxSwapsPerMonth != null &&
+                    activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
+                {
+                    throw new InvalidOperationException(
+                        $"Người dùng đã đạt giới hạn {activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value} lần đổi pin trong tháng này.");
+                }
+            }
 
             // 3. Create the SwapTransaction
             var transactionNumber = await GenerateTransactionNumberAsync(); // Generate the number
@@ -368,7 +379,8 @@ public class SwapTransactionService
                 throw new InvalidOperationException($"Swap status is {swap.Status}, cannot complete");
 
             // 2. Check subscription swap limit BEFORE completing (if user has subscription)
-            if (swap.UserSubscriptionId.HasValue)
+            // ⭐ FIX: KHÔNG kiểm tra giới hạn nếu đây là Re-swap (có RelatedComplaintId)
+            if (swap.UserSubscriptionId.HasValue && !swap.RelatedComplaintId.HasValue)
             {
                 var subscription = await _context.UserSubscriptions
                     .Include(us => us.SubscriptionPlan)
@@ -405,11 +417,27 @@ public class SwapTransactionService
             swap.CompletedAt = DateTime.UtcNow;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
-            // ⭐ REMOVED: Swap count increment logic
-            // Quota is already decremented when reservation is created (in SlotReservationService.CreateReservationAsync)
-            // System only allows swaps via reservations, so no need to increment here
+            // 4. Increment swap counter for subscription users
+            if (swap.UserSubscriptionId.HasValue)
+            {
+                var subscription = await _context.UserSubscriptions
+                    .Include(us => us.SubscriptionPlan)
+                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
 
-            // 4. Update battery statuses
+                if (subscription != null)
+                {
+                    subscription.CurrentMonthSwapCount++;
+
+                    _logger.LogInformation(
+                        "Incremented swap count for user {UserId}, subscription {SubscriptionId}: {CurrentCount}/{MaxCount}",
+                        userId,
+                        subscription.Id,
+                        subscription.CurrentMonthSwapCount,
+                        subscription.SubscriptionPlan.MaxSwapsPerMonth?.ToString() ?? "Unlimited");
+                }
+            }
+
+            // 5. Update battery statuses
             // Issued battery goes to charging/maintenance
             if (swap.IssuedBattery != null)
             {
@@ -803,13 +831,13 @@ public class SwapTransactionService
                 TransactionNumber = s.TransactionNumber,
                 Status = s.Status.ToString(),
                 UserId = s.UserId,
-                UserEmail = s.User.Email,
+                UserEmail = s.User != null ? s.User.Email : "Unknown",
                 StationId = s.StationId,
-                StationName = s.Station.Name,
-                StationAddress = s.Station.Address,
+                StationName = s.Station != null ? s.Station.Name : "Unknown",
+                StationAddress = s.Station != null ? s.Station.Address : "Unknown",
                 VehicleId = s.VehicleId,
-                VehicleLicensePlate = s.Vehicle.Plate,
-                VehicleModel = s.Vehicle.VIN,
+                VehicleLicensePlate = s.Vehicle != null ? s.Vehicle.Plate : "Unknown",
+                VehicleModel = s.Vehicle != null ? s.Vehicle.VIN : "Unknown",
                 IssuedBatterySerial = s.IssuedBatterySerial,
                 ReturnedBatterySerial = s.ReturnedBatterySerial,
                 BatteryHealthIssued = s.BatteryHealthIssued,
