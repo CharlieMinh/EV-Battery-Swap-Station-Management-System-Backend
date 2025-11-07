@@ -473,8 +473,14 @@ public class SubscriptionService : ISubscriptionService
             return null;
 
         // Get swap transactions for this subscription
+        // ⭐ CHỈ đếm swap từ subscription (có Reservation.UserSubscriptionId == subscription.Id)
+        // ⭐ KHÔNG đếm pay-per-swap (có Reservation.Payment != null)
         var swapTransactions = await _context.SwapTransactions
-            .Where(st => st.UserSubscriptionId == subscription.Id)
+            .Include(st => st.Reservation)
+            .Where(st =>
+                st.UserSubscriptionId == subscription.Id &&
+                st.Reservation != null &&
+                st.Reservation.Payment == null)  // ← CHỈ swap từ subscription, không phải pay-per-swap
             .OrderBy(st => st.StartedAt)
             .ToListAsync();
 
@@ -483,12 +489,19 @@ public class SubscriptionService : ISubscriptionService
             .Where(p => p.UserSubscriptionId == subscription.Id && p.Status == Models.PaymentStatus.Completed)
             .SumAsync(p => p.Amount);
 
+        // ⭐ ĐẾM LẠI swap count từ transactions thực tế trong billing period hiện tại
+        // Thay vì dùng CurrentMonthSwapCount từ DB (có thể sai do bug cũ)
+        var actualCurrentMonthSwapCount = swapTransactions
+            .Count(st =>
+                st.StartedAt >= subscription.CurrentBillingPeriodStart &&
+                st.StartedAt <= subscription.CurrentBillingPeriodEnd);
+
         // ✅ FIXED PRICE - No tier calculation needed
         var currentMonthFee = subscription.SubscriptionPlan.MonthlyPrice;
         var plan = subscription.SubscriptionPlan;
         var usageTier = plan.MaxSwapsPerMonth.HasValue
-            ? $"{subscription.CurrentMonthSwapCount}/{plan.MaxSwapsPerMonth} lần"
-            : $"{subscription.CurrentMonthSwapCount} lần (không giới hạn)";
+            ? $"{actualCurrentMonthSwapCount}/{plan.MaxSwapsPerMonth} lần"
+            : $"{actualCurrentMonthSwapCount} lần (không giới hạn)";
 
         // Calculate monthly breakdown for last 6 months
         var monthlyUsage = await CalculateMonthlyUsageAsync(subscription.Id, swapTransactions);
@@ -501,8 +514,8 @@ public class SubscriptionService : ISubscriptionService
             CurrentBillingPeriodStart = subscription.CurrentBillingPeriodStart,
             CurrentBillingPeriodEnd = subscription.CurrentBillingPeriodEnd,
 
-            // ✅ SIMPLIFIED: Swap count instead of km
-            CurrentMonthSwapCount = subscription.CurrentMonthSwapCount,
+            // ✅ SIMPLIFIED: Swap count instead of km - Dùng giá trị đếm lại từ transactions
+            CurrentMonthSwapCount = actualCurrentMonthSwapCount,
             MaxSwapsPerMonth = plan.MaxSwapsPerMonth,
 
             CurrentMonthFee = currentMonthFee,

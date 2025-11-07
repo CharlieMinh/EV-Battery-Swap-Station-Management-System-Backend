@@ -161,6 +161,7 @@
 | **Payments** | `GET` | `/api/v1/payments` | Xem danh sách payments (Admin/Staff dashboard) | Admin, Staff |
 | **Payments** | `GET` | `/api/v1/payments/my-payments` | Driver xem lịch sử thanh toán của mình | Driver |
 | **Payments** | `GET` | `/api/v1/payments/{paymentId}` | Xem chi tiết một payment | Admin, Staff |
+| **Payments** | `GET` | `/api/v1/payments/pending-cash` |  Staff xem danh sách thanh toán tiền mặt đang chờ xác nhận (Status=Pending, Method=Cash). Response bao gồm đầy đủ thông tin: người thanh toán, gói dịch vụ, xe, lịch hẹn, trạm | Staff, Admin |
 | **Payments** | `POST` | `/api/v1/payments/{paymentId}/complete-cash` | Staff xác nhận đã nhận tiền mặt. Response bao gồm đầy đủ thông tin: người thanh toán, gói dịch vụ, xe, staff xử lý, trạm | Staff, Admin |
 
 ### 6.2. Subscriptions
@@ -212,12 +213,19 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **SlotReservations** | `GET` | `/api/v1/slot-reservations/available-slots` | Xem các slot còn trống trong ngày tại trạm | Authorize |
 | **SlotReservations** | `GET` | `/api/v1/slot-reservations/inspection-slots` | Xem slot để đặt lịch kiểm tra pin (cho complaint) | Driver |
-| **SlotReservations** | `GET` | `/api/v1/slot-reservations` | Xem tất cả reservations (Admin/Staff) | Admin, Staff |
+| **SlotReservations** | `GET` | `/api/v1/slot-reservations` | ⭐ **CẬP NHẬT**: Xem tất cả reservations (bao gồm thông tin xe: VehicleId, VehicleName, LicensePlate) | Admin, Staff |
 | **SlotReservations** | `POST` | `/api/v1/slot-reservations` | Tạo reservation (với/không payment) | Authorize |
-| **SlotReservations** | `GET` | `/api/v1/slot-reservations/mine` | Xem reservations của mình | Authorize |
-| **SlotReservations** | `GET` | `/api/v1/slot-reservations/{id}` | Xem chi tiết reservation | Authorize |
+| **SlotReservations** | `GET` | `/api/v1/slot-reservations/mine` | ⭐ **CẬP NHẬT**: Xem reservations của mình (bao gồm thông tin xe) | Authorize |
+| **SlotReservations** | `GET` | `/api/v1/slot-reservations/{id}` | ⭐ **CẬP NHẬT**: Xem chi tiết reservation (bao gồm thông tin xe) | Authorize |
 | **SlotReservations** | `DELETE` | `/api/v1/slot-reservations/{id}` | Hủy reservation | Authorize |
 | **SlotReservations** | `POST` | `/api/v1/slot-reservations/{id}/check-in` | Staff check-in Driver bằng QR Code | Staff, Admin |
+
+**⭐ CẬP NHẬT MỚI (2025-11-07):**
+- SlotReservationResponse đã thêm các trường:
+  - `VehicleId` (Guid?): ID của xe
+  - `VehicleName` (string?): Tên loại xe (VF3, VF5, VF8, VF9, v.v.)
+  - `LicensePlate` (string?): Biển số xe
+- Các trường mới này hiển thị trong response của: GET `/api/v1/slot-reservations`, GET `/api/v1/slot-reservations/mine`, GET `/api/v1/slot-reservations/{id}`
 
 ### 8.2. Reservations (Legacy)
 
@@ -267,10 +275,18 @@
 | **Users** | `GET` | `/api/v1/Users/staff` | Lấy danh sách nhân viên (Staff) | Admin |
 | **Users** | `GET` | `/api/v1/Users/staff/{id}` | Xem chi tiết Staff với thống kê công việc | Admin |
 | **Users** | `GET` | `/api/v1/Users/{id}` | Xem chi tiết user | Admin |
-| **Users** | `PUT` | `/api/v1/Users/{id}` | Cập nhật thông tin user (hỗ trợ upload ảnh đại diện) | Admin, Staff, Driver |
+| **Users** | `PUT` | `/api/v1/Users/{id}` | ⭐ **CẬP NHẬT**: Cập nhật thông tin user (hỗ trợ upload ảnh đại diện). **Staff có thể cập nhật hồ sơ của chính mình** (Name/Phone/Avatar) nhưng không thể thay đổi Role/Status/StationId | Admin, Staff, Driver |
 | **Users** | `DELETE` | `/api/v1/Users/{id}` | Xóa user | Admin |
 | **Users** | `GET` | `/api/v1/Users/statistics` | Thống kê users (tổng số, active users, new users) | Admin |
 | **Users** | `POST` | `/api/v1/Users/change-password` | User đổi mật khẩu của mình | Authorize |
+
+**⭐ CẬP NHẬT MỚI (2025-11-07) - PUT `/api/v1/Users/{id}` Authorization Logic:**
+
+| Người dùng | Được phép cập nhật | Trường hợp đặc biệt |
+| :--- | :--- | :--- |
+| **Admin** | Tất cả users (không giới hạn trường) | Full access |
+| **Staff** | (1) Chính mình: Name, Phone, Avatar **KHÔNG** được đổi Role/Status/StationId<br/>(2) Driver: Name, Phone, Avatar **KHÔNG** được đổi Role/Status<br/>(3) Staff/Admin khác: **KHÔNG** được phép | Nếu Staff cố đổi Role/Status/StationId của mình → 400 Bad Request<br/>Nếu Staff cố cập nhật Staff/Admin khác → 403 Forbidden |
+| **Driver** | Chỉ chính mình: Name, Phone, Avatar **KHÔNG** được đổi Role/Status | Nếu Driver cố đổi Role/Status → 400 Bad Request |
 
 ---
 

@@ -104,21 +104,9 @@ public class SwapTransactionService
                 returnedBatterySerial = auto.Serial;
             }
 
-            // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
-            // ⭐ FIX: KHÔNG kiểm tra giới hạn nếu đây là Re-swap (có RelatedComplaintId)
-            if (reservation.Payment == null && !reservation.RelatedComplaintId.HasValue)
-            {
-                var activeSubscription = await _context.UserSubscriptions
-                    .Include(s => s.SubscriptionPlan)
-                    .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
-
-                if (activeSubscription?.SubscriptionPlan.MaxSwapsPerMonth != null &&
-                    activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
-                {
-                    throw new InvalidOperationException(
-                        $"Người dùng đã đạt giới hạn {activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value} lần đổi pin trong tháng này.");
-                }
-            }
+            // ⭐ REMOVED: Redundant quota check
+            // Quota is already decremented when reservation is created (Immediate Deduction model)
+            // No need to check quota limit again during swap finalization
 
             // 3. Create the SwapTransaction
             var transactionNumber = await GenerateTransactionNumberAsync(); // Generate the number
@@ -167,51 +155,48 @@ public class SwapTransactionService
             // Per new policy: do not create/update BatteryUnit or inventory for customer's returned battery here.
 
 
-            // 6. Update subscription swap count if applicable
-            // ⭐ FIX: KHÔNG trừ lượt khi đây là Re-swap (có RelatedComplaintId)
-            if (reservation.Payment == null && !swapTransaction.RelatedComplaintId.HasValue)
+            // 6. Link subscription to swap transaction (NO quota update - already deducted at booking)
+            // ⭐ CHỈ link subscription khi reservation thực sự dùng subscription (Payment == null AND UserSubscriptionId có giá trị)
+            // ⭐ KHÔNG link subscription cho pay-per-swap (Payment != null)
+            if (reservation.Payment == null && reservation.UserSubscriptionId.HasValue)
             {
-                if (reservation.UserSubscriptionId.HasValue)
-                {
-                    var subscription = await _context.UserSubscriptions
-                        .FirstOrDefaultAsync(s => s.Id == reservation.UserSubscriptionId.Value);
+                var subscription = await _context.UserSubscriptions
+                    .Include(s => s.SubscriptionPlan)
+                    .FirstOrDefaultAsync(s => s.Id == reservation.UserSubscriptionId.Value);
 
-                    if (subscription != null && subscription.IsActive)
-                    {
-                        subscription.CurrentMonthSwapCount++;
-                        swapTransaction.UserSubscriptionId = subscription.Id;
-                        _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}",
-                            subscription.Id, subscription.CurrentMonthSwapCount);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Reservation {ReservationId} has UserSubscriptionId but subscription not found or inactive.", reservation.Id);
-                    }
+                if (subscription != null && subscription.IsActive)
+                {
+                    // ⭐ CHỈ LINK subscription, KHÔNG trừ quota (đã trừ lúc đặt lịch)
+                    swapTransaction.UserSubscriptionId = subscription.Id;
+
+                    _logger.LogInformation(
+                        "Linked swap transaction to subscription {SubscriptionId} ({PlanName}). " +
+                        "Quota already deducted at booking time. Current: {CurrentCount}/{MaxCount}",
+                        subscription.Id,
+                        subscription.SubscriptionPlan.Name,
+                        subscription.CurrentMonthSwapCount,
+                        subscription.SubscriptionPlan.MaxSwapsPerMonth ?? 999);
                 }
                 else
                 {
-                    // Fallback legacy behavior: find any active subscription for user
-                    var activeSubscription = await _context.UserSubscriptions
-                        .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
-
-                    if (activeSubscription != null)
-                    {
-                        activeSubscription.CurrentMonthSwapCount++;
-                        swapTransaction.UserSubscriptionId = activeSubscription.Id;
-                        _logger.LogInformation("Incremented swap count for subscription {SubscriptionId} to {SwapCount}",
-                            activeSubscription.Id, activeSubscription.CurrentMonthSwapCount);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Could not find active subscription for user {UserId} to increment swap count on a non-payment reservation {ReservationId}.",
-                            reservation.UserId, reservation.Id);
-                    }
+                    _logger.LogWarning("Reservation {ReservationId} has UserSubscriptionId but subscription not found or inactive.", reservation.Id);
                 }
             }
-            else if (swapTransaction.RelatedComplaintId.HasValue)
+            else if (reservation.Payment != null)
             {
-                _logger.LogInformation("Re-swap detected (RelatedComplaintId: {ComplaintId}). Skipping swap count increment for user {UserId}.",
-                    swapTransaction.RelatedComplaintId.Value, reservation.UserId);
+                // ⭐ Pay-per-swap: KHÔNG link subscription vào swap transaction
+                _logger.LogInformation(
+                    "Pay-per-swap reservation {ReservationId} with PaymentId {PaymentId}. " +
+                    "NOT linking subscription. This swap does NOT affect subscription quota.",
+                    reservation.Id, reservation.Payment.Id);
+            }
+            else
+            {
+                // Edge case: reservation không có Payment và cũng không có UserSubscriptionId
+                _logger.LogWarning(
+                    "Reservation {ReservationId} has no Payment and no UserSubscriptionId. " +
+                    "This is unusual. Swap will be created without subscription link.",
+                    reservation.Id);
             }
 
             // 7. Save all changes (transaction is managed by the caller when needed)
@@ -382,26 +367,9 @@ public class SwapTransactionService
             if (swap.Status != SwapTransactionStatus.CheckedIn && swap.Status != SwapTransactionStatus.BatteryReturned)
                 throw new InvalidOperationException($"Swap status is {swap.Status}, cannot complete");
 
-            // 2. Check subscription swap limit BEFORE completing (if user has subscription)
-            // ⭐ FIX: KHÔNG kiểm tra giới hạn nếu đây là Re-swap (có RelatedComplaintId)
-            if (swap.UserSubscriptionId.HasValue && !swap.RelatedComplaintId.HasValue)
-            {
-                var subscription = await _context.UserSubscriptions
-                    .Include(us => us.SubscriptionPlan)
-                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
-
-                if (subscription != null && subscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
-                {
-                    // Kiểm tra ĐÃ ĐẠT giới hạn chưa (TRƯỚC khi tăng counter)
-                    if (subscription.CurrentMonthSwapCount >= subscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
-                    {
-                        throw new InvalidOperationException(
-                            $"Đã đạt giới hạn {subscription.SubscriptionPlan.MaxSwapsPerMonth} lần đổi pin trong tháng này. " +
-                            $"Hiện tại: {subscription.CurrentMonthSwapCount}/{subscription.SubscriptionPlan.MaxSwapsPerMonth} lần. " +
-                            $"Vui lòng nâng cấp gói hoặc chờ đến chu kỳ thanh toán tiếp theo.");
-                    }
-                }
-            }
+            // ⭐ REMOVED: Subscription limit check
+            // Quota is already decremented when reservation is created (Immediate Deduction model)
+            // This validation is redundant and would block valid swaps
 
             // Pin trả về là pin cũ của khách hàng (không có trong database trạm)
             // Chỉ cần lưu thông tin serial và sức khỏe pin
@@ -421,31 +389,10 @@ public class SwapTransactionService
             swap.CompletedAt = DateTime.UtcNow;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
-            // 4. Increment swap counter for subscription users
-            // ⭐ FIX: KHÔNG trừ lượt khi đây là Re-swap (có RelatedComplaintId)
-            if (swap.UserSubscriptionId.HasValue && !swap.RelatedComplaintId.HasValue)
-            {
-                var subscription = await _context.UserSubscriptions
-                    .Include(us => us.SubscriptionPlan)
-                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
-
-                if (subscription != null)
-                {
-                    subscription.CurrentMonthSwapCount++;
-
-                    _logger.LogInformation(
-                        "Incremented swap count for user {UserId}, subscription {SubscriptionId}: {CurrentCount}/{MaxCount}",
-                        userId,
-                        subscription.Id,
-                        subscription.CurrentMonthSwapCount,
-                        subscription.SubscriptionPlan.MaxSwapsPerMonth?.ToString() ?? "Unlimited");
-                }
-            }
-            else if (swap.RelatedComplaintId.HasValue)
-            {
-                _logger.LogInformation("Re-swap detected (RelatedComplaintId: {ComplaintId}). Skipping swap count increment for user {UserId}.",
-                    swap.RelatedComplaintId.Value, userId);
-            }
+            // ⭐ REMOVED: Swap count increment logic
+            // Quota is already decremented when reservation is created (Immediate Deduction model)
+            // This method (CompleteSwapAsync) is legacy and should not be used in reservation-only system
+            // All swaps must go through FinalizeFromReservationAsync (staff-initiated)
 
             // 5. Update battery statuses
             // Issued battery goes to charging/maintenance
@@ -818,7 +765,7 @@ public class SwapTransactionService
         if (!string.IsNullOrEmpty(filter.SearchText))
         {
             var searchLower = filter.SearchText.ToLower();
-            query = query.Where(s => 
+            query = query.Where(s =>
                 s.TransactionNumber.ToLower().Contains(searchLower) ||
                 s.User.Email.ToLower().Contains(searchLower) ||
                 s.Vehicle.Plate.ToLower().Contains(searchLower));

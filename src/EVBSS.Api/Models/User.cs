@@ -23,6 +23,9 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow; 
     public DateTime? LastLogin { get; set; }
     
+    // Penalty tracking: Số lần vi phạm (hủy muộn + no-show)
+    public int NoShowCount { get; set; } = 0;
+    
     // Authentication fields
     public AuthMethod AuthMethod { get; set; } = AuthMethod.Local;
     public string? GoogleId { get; set; }
