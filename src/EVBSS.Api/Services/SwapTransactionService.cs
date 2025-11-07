@@ -104,20 +104,9 @@ public class SwapTransactionService
                 returnedBatterySerial = auto.Serial;
             }
 
-            // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
-            if (reservation.Payment == null) // This indicates a subscription-based swap
-            {
-                var activeSubscription = await _context.UserSubscriptions
-                    .Include(s => s.SubscriptionPlan)
-                    .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
-
-                if (activeSubscription?.SubscriptionPlan.MaxSwapsPerMonth != null &&
-                    activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
-                {
-                    throw new InvalidOperationException(
-                        $"Người dùng đã đạt giới hạn {activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value} lần đổi pin trong tháng này.");
-                }
-            }
+            // ⭐ REMOVED: Redundant quota check
+            // Quota is already decremented when reservation is created (Immediate Deduction model)
+            // No need to check quota limit again during swap finalization
 
             // 3. Create the SwapTransaction
             var transactionNumber = await GenerateTransactionNumberAsync(); // Generate the number
@@ -378,26 +367,9 @@ public class SwapTransactionService
             if (swap.Status != SwapTransactionStatus.CheckedIn && swap.Status != SwapTransactionStatus.BatteryReturned)
                 throw new InvalidOperationException($"Swap status is {swap.Status}, cannot complete");
 
-            // 2. Check subscription swap limit BEFORE completing (if user has subscription)
-            // ⭐ FIX: KHÔNG kiểm tra giới hạn nếu đây là Re-swap (có RelatedComplaintId)
-            if (swap.UserSubscriptionId.HasValue && !swap.RelatedComplaintId.HasValue)
-            {
-                var subscription = await _context.UserSubscriptions
-                    .Include(us => us.SubscriptionPlan)
-                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
-
-                if (subscription != null && subscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue)
-                {
-                    // Kiểm tra ĐÃ ĐẠT giới hạn chưa (TRƯỚC khi tăng counter)
-                    if (subscription.CurrentMonthSwapCount >= subscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
-                    {
-                        throw new InvalidOperationException(
-                            $"Đã đạt giới hạn {subscription.SubscriptionPlan.MaxSwapsPerMonth} lần đổi pin trong tháng này. " +
-                            $"Hiện tại: {subscription.CurrentMonthSwapCount}/{subscription.SubscriptionPlan.MaxSwapsPerMonth} lần. " +
-                            $"Vui lòng nâng cấp gói hoặc chờ đến chu kỳ thanh toán tiếp theo.");
-                    }
-                }
-            }
+            // ⭐ REMOVED: Subscription limit check
+            // Quota is already decremented when reservation is created (Immediate Deduction model)
+            // This validation is redundant and would block valid swaps
 
             // Pin trả về là pin cũ của khách hàng (không có trong database trạm)
             // Chỉ cần lưu thông tin serial và sức khỏe pin
@@ -417,25 +389,10 @@ public class SwapTransactionService
             swap.CompletedAt = DateTime.UtcNow;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
-            // 4. Increment swap counter for subscription users
-            if (swap.UserSubscriptionId.HasValue)
-            {
-                var subscription = await _context.UserSubscriptions
-                    .Include(us => us.SubscriptionPlan)
-                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
-
-                if (subscription != null)
-                {
-                    subscription.CurrentMonthSwapCount++;
-
-                    _logger.LogInformation(
-                        "Incremented swap count for user {UserId}, subscription {SubscriptionId}: {CurrentCount}/{MaxCount}",
-                        userId,
-                        subscription.Id,
-                        subscription.CurrentMonthSwapCount,
-                        subscription.SubscriptionPlan.MaxSwapsPerMonth?.ToString() ?? "Unlimited");
-                }
-            }
+            // ⭐ REMOVED: Swap count increment logic
+            // Quota is already decremented when reservation is created (Immediate Deduction model)
+            // This method (CompleteSwapAsync) is legacy and should not be used in reservation-only system
+            // All swaps must go through FinalizeFromReservationAsync (staff-initiated)
 
             // 5. Update battery statuses
             // Issued battery goes to charging/maintenance
