@@ -213,28 +213,36 @@ public class PaymentService : IPaymentService
                 return new CreatePayPerSwapReservationResponse { Success = false, Message = ex.Message };
             }
 
-            // Tạo Payment
-            var payment = new Payment
+            // ⭐ FIX: Lấy Payment đã được tạo từ CreateReservationAsync thay vì tạo mới
+            // CreateReservationAsync đã tạo payment nếu là pay-per-swap
+            var payment = await _context.Payments
+                .FirstOrDefaultAsync(p => p.ReservationId == reservation.Id && p.UserId == userId);
+
+            if (payment == null)
             {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                ReservationId = reservation.Id, // Đảm bảo reservation không null ở đây
-                UserSubscriptionId = null,
-                StationId = request.StationId, // ⭐ LƯU STATION ID
-                Method = request.PaymentMethod,
-                Type = PaymentType.PayPerSwap,
-                Amount = request.Amount,
-                Status = PaymentStatus.Pending,
-                Description = $"Thanh toán đặt lịch đổi pin - {request.SlotDate:dd/MM/yyyy} {request.SlotStartTime:hh\\:mm}-{request.SlotEndTime:hh\\:mm}", // Giữ lại format đúng
-                VnpTxnRef = GenerateTransactionReference(),
-                PaymentReference = GenerateTransactionReference(),
-                CreatedAt = DateTime.UtcNow
-            };
+                // Fallback: Nếu không tìm thấy payment (không nên xảy ra), tạo mới
+                _logger.LogWarning("Payment not found for reservation {ReservationId}. Creating new payment.", reservation.Id);
+                payment = new Payment
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    ReservationId = reservation.Id,
+                    UserSubscriptionId = null,
+                    Method = request.PaymentMethod,
+                    Type = PaymentType.PayPerSwap,
+                    Amount = request.Amount,
+                    Status = PaymentStatus.Pending,
+                    Description = $"Thanh toán đặt lịch đổi pin - {request.SlotDate:dd/MM/yyyy} {request.SlotStartTime:hh\\:mm}-{request.SlotEndTime:hh\\:mm}",
+                    VnpTxnRef = GenerateTransactionReference(),
+                    PaymentReference = GenerateTransactionReference(),
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Payments.Add(payment);
+                await _context.SaveChangesAsync();
+            }
 
-            _context.Payments.Add(payment);
-
-            // Lưu các thay đổi (Reservation và Payment) trong transaction
-            await _context.SaveChangesAsync(); // Có thể ném ra DbUpdateException,...
+            // Payment đã tồn tại, không cần tạo mới, chỉ cần lưu nếu có thay đổi
+            await _context.SaveChangesAsync(); // Lưu các thay đổi khác nếu có
 
             // Commit transaction dựa trên phương thức thanh toán *CHỈ KHI* mọi thứ thành công đến đây
             if (request.PaymentMethod == PaymentMethod.VNPay)
