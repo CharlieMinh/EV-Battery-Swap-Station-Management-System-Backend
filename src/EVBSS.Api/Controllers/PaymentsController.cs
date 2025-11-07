@@ -358,6 +358,8 @@ public class PaymentsController : ControllerBase
                     .ThenInclude(us => us!.Vehicle)
                         .ThenInclude(v => v!.VehicleModel)
                 .Include(p => p.Reservation)
+                    .ThenInclude(r => r!.Vehicle)  // ⭐ FIX: Include Vehicle từ Reservation cho PayPerSwap
+                        .ThenInclude(v => v!.VehicleModel)
                 .Include(p => p.Station)
                 .OrderByDescending(p => p.CreatedAt) // Mới nhất lên đầu
                 .ToListAsync();
@@ -404,6 +406,12 @@ public class PaymentsController : ControllerBase
                         Plate = payment.UserSubscription.Vehicle.Plate,
                         VIN = payment.UserSubscription.Vehicle.VIN,
                         VehicleModelName = payment.UserSubscription.Vehicle.VehicleModel?.Name
+                    } : payment.Reservation?.Vehicle != null ? new VehicleInfo  // ⭐ FIX: Lấy Vehicle từ Reservation nếu không có UserSubscription
+                    {
+                        Id = payment.Reservation.Vehicle.Id,
+                        Plate = payment.Reservation.Vehicle.Plate,
+                        VIN = payment.Reservation.Vehicle.VIN,
+                        VehicleModelName = payment.Reservation.Vehicle.VehicleModel?.Name
                     } : null,
 
                     // Thông tin đặt lịch (nếu là Pay-per-Swap)

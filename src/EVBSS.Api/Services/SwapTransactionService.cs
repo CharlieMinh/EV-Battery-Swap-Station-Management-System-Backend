@@ -32,6 +32,7 @@ public class SwapTransactionService
             // 1. Find and validate the reservation
             var reservation = await _context.Reservations
                 .Include(r => r.User).ThenInclude(u => u.Vehicles)
+                .Include(r => r.Vehicle)
                 .Include(r => r.Station)
                 .Include(r => r.Payment)
                 .Include(r => r.BatteryUnit) // Include the assigned battery unit
@@ -57,9 +58,14 @@ public class SwapTransactionService
             BatteryUnit? returnedBattery = null;
             string? returnedBatterySerial = null;
 
-            var vehicle = reservation.User.Vehicles.FirstOrDefault();
+            // ✅ Lấy đúng xe đã được chọn trong reservation (không lấy xe đầu tiên của user)
+            var vehicle = reservation.Vehicle;
+            if (vehicle == null && reservation.VehicleId.HasValue)
+            {
+                vehicle = await _context.Vehicles.FirstOrDefaultAsync(v => v.Id == reservation.VehicleId.Value);
+            }
             if (vehicle == null)
-                throw new InvalidOperationException("Không tìm thấy thông tin xe của người dùng.");
+                throw new InvalidOperationException("Không tìm thấy xe được gán cho lịch hẹn này.");
 
             if (reservation.RelatedComplaintId.HasValue)
             {
