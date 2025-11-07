@@ -122,6 +122,15 @@ public class PaymentService : IPaymentService
             throw new InvalidOperationException($"Thanh toán đã ở trạng thái {payment.Status}, không thể xác nhận.");
         }
 
+        // ⭐ LẤY STATION ID TỪ STAFF
+        var staff = await _context.Users.FindAsync(staffId);
+        if (staff != null && staff.StationId.HasValue)
+        {
+            payment.StationId = staff.StationId.Value;
+            _logger.LogInformation("Payment {PaymentId} assigned to station {StationId} from staff {StaffId}", 
+                paymentId, staff.StationId.Value, staffId);
+        }
+
         // --- Start of new logic ---
         // Check if this payment is for a subscription and activate it
         if (payment.Type == PaymentType.Subscription && payment.UserSubscriptionId.HasValue && payment.UserSubscription != null)
@@ -205,6 +214,7 @@ public class PaymentService : IPaymentService
                 UserId = userId,
                 ReservationId = reservation.Id, // Đảm bảo reservation không null ở đây
                 UserSubscriptionId = null,
+                StationId = request.StationId, // ⭐ LƯU STATION ID
                 Method = request.PaymentMethod,
                 Type = PaymentType.PayPerSwap,
                 Amount = request.Amount,
@@ -391,6 +401,11 @@ public class PaymentService : IPaymentService
                 ProcessedByStaffId = p.ProcessedByStaffId,
                 ProcessedByStaffName = p.ProcessedByStaffId.HasValue 
                     ? _context.Users.Where(u => u.Id == p.ProcessedByStaffId).Select(u => u.Name).FirstOrDefault()
+                    : null,
+                // ⭐ THÊM STATION INFO
+                StationId = p.StationId,
+                StationName = p.StationId.HasValue
+                    ? _context.Stations.Where(s => s.Id == p.StationId).Select(s => s.Name).FirstOrDefault()
                     : null
             })
             .ToListAsync();
@@ -409,6 +424,7 @@ public class PaymentService : IPaymentService
                 .ThenInclude(us => us!.SubscriptionPlan)
             .Include(p => p.Reservation)
                 .ThenInclude(r => r!.Station)
+            .Include(p => p.Station) // ⭐ INCLUDE STATION
             .FirstOrDefaultAsync(p => p.Id == paymentId);
 
         if (payment == null)
@@ -439,6 +455,9 @@ public class PaymentService : IPaymentService
             ProcessedByStaffName = payment.ProcessedByStaffId.HasValue 
                 ? await _context.Users.Where(u => u.Id == payment.ProcessedByStaffId).Select(u => u.Name).FirstOrDefaultAsync()
                 : null,
+            // ⭐ THÊM STATION INFO
+            StationId = payment.StationId,
+            StationName = payment.Station?.Name,
             
             // User info
             User = new PaymentUserInfo
