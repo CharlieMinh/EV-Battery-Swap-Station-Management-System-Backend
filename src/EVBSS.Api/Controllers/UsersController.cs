@@ -438,21 +438,52 @@ public class UsersController : ControllerBase
         }
         else if (currentUserRole == Role.Staff)
         {
-            // Staff can only update Driver profiles
-            if (user.Role != Role.Driver)
+            // ===== STAFF AUTHORIZATION LOGIC =====
+            
+            // Case 1: Staff updating their own profile
+            if (currentUserId == id)
             {
+                // ✅ Staff CAN update their own Name, Phone, ProfilePicture
+                // ❌ Staff CANNOT change their own Role, Status, or StationId
+                if (req.Role.HasValue)
+                {
+                    return BadRequest(new { error = "Staff members are not allowed to change their own role" });
+                }
+
+                if (req.Status.HasValue)
+                {
+                    return BadRequest(new { error = "Staff members are not allowed to change their own status" });
+                }
+
+                if (req.StationId.HasValue)
+                {
+                    return BadRequest(new { error = "Staff members are not allowed to change their own station assignment" });
+                }
+                
+                // Continue to update Name/Phone/ProfilePicture below
+            }
+            // Case 2: Staff updating a Driver profile
+            else if (user.Role == Role.Driver)
+            {
+                // ✅ Staff CAN update Driver's Name, Phone, ProfilePicture
+                // ❌ Staff CANNOT change Driver's Role or Status
+                if (req.Role.HasValue)
+                {
+                    return BadRequest(new { error = "Staff members are not allowed to change user roles" });
+                }
+
+                if (req.Status.HasValue)
+                {
+                    return BadRequest(new { error = "Staff members are not allowed to change user status" });
+                }
+                
+                // Continue to update Name/Phone/ProfilePicture below
+            }
+            // Case 3: Staff trying to update another Staff or Admin
+            else
+            {
+                // ❌ Staff CANNOT update other Staff or Admin accounts
                 return Forbid();
-            }
-
-            // Staff cannot change roles or status
-            if (req.Role.HasValue)
-            {
-                return BadRequest(new { error = "Staff members are not allowed to change user roles" });
-            }
-
-            if (req.Status.HasValue)
-            {
-                return BadRequest(new { error = "Staff members are not allowed to change user status" });
             }
         }
         // Admin has full access - no additional checks needed

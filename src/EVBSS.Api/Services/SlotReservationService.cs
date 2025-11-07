@@ -390,6 +390,8 @@ public class SlotReservationService
             .Include(r => r.BatteryUnit)
             .Include(r => r.User)
             .Include(r => r.VerifiedByStaff)
+            .Include(r => r.Vehicle)                    // ⭐ NEW: Include vehicle info
+                .ThenInclude(v => v.VehicleModel)       // ⭐ NEW: Include vehicle model for name
             .FirstOrDefaultAsync(r => r.Id == reservationId);
 
         if (reservation == null)
@@ -417,6 +419,8 @@ public class SlotReservationService
             .Include(r => r.BatteryModel)
             .Include(r => r.BatteryUnit)
             .Include(r => r.VerifiedByStaff)
+            .Include(r => r.Vehicle)                    // ⭐ NEW: Include vehicle info
+                .ThenInclude(v => v!.VehicleModel)      // ⭐ NEW: Include vehicle model for name
             .AsQueryable();
 
         if (date.HasValue)
