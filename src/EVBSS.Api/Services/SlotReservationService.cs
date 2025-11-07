@@ -192,14 +192,35 @@ public class SlotReservationService
             goto SkipPaymentCheck;
         }
 
-        // ⭐ New rule: Match subscription by vehicle's battery model
-        var activeSubscription = await _db.UserSubscriptions
-            .Include(s => s.SubscriptionPlan)
-            .FirstOrDefaultAsync(s =>
-                s.UserId == userId &&
-                s.IsActive &&
-                s.CurrentBillingPeriodEnd >= DateTime.UtcNow &&
-                s.SubscriptionPlan.BatteryModelId == batteryModelId);
+        // ⭐ CHỈ kiểm tra subscription khi user MUỐN dùng subscription (paymentMethod == null)
+        // ⭐ Nếu user chọn Cash/VNPay thì KHÔNG dùng subscription (ngay cả khi có)
+        UserSubscription? activeSubscription = null;
+
+        _logger.LogInformation(
+            "CreateReservation: UserId={UserId}, VehicleId={VehicleId}, BatteryModelId={BatteryModelId}, PaymentMethod={PaymentMethod}",
+            userId, vehicleId, batteryModelId, paymentMethod?.ToString() ?? "NULL (use subscription)");
+
+        if (paymentMethod == null)
+        {
+            // User muốn dùng subscription → Kiểm tra xem có subscription phù hợp không
+            activeSubscription = await _db.UserSubscriptions
+                .Include(s => s.SubscriptionPlan)
+                .FirstOrDefaultAsync(s =>
+                    s.UserId == userId &&
+                    s.IsActive &&
+                    s.CurrentBillingPeriodEnd >= DateTime.UtcNow &&
+                    s.SubscriptionPlan.BatteryModelId == batteryModelId);
+
+            _logger.LogInformation(
+                "User requested subscription booking. Found subscription: {Found}",
+                activeSubscription != null ? $"Yes (ID: {activeSubscription.Id})" : "No");
+        }
+        else
+        {
+            _logger.LogInformation(
+                "User requested pay-per-swap booking with {PaymentMethod}. Skipping subscription lookup.",
+                paymentMethod);
+        }
 
         if (activeSubscription != null)
         {
@@ -216,9 +237,20 @@ public class SlotReservationService
                 ? activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value - activeSubscription.CurrentMonthSwapCount
                 : int.MaxValue;
 
-            _logger.LogInformation("User {UserId} has active subscription {SubscriptionId} ({PlanName}) for BatteryModel {BatteryModelId} with {SwapsRemaining} swaps remaining",
+            // ⭐ TRỪ QUOTA NGAY KHI ĐẶT LỊCH (Logic mới: "Immediate Deduction")
+            activeSubscription.CurrentMonthSwapCount++;
+
+            var newSwapsRemaining = activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.HasValue
+                ? activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value - activeSubscription.CurrentMonthSwapCount
+                : int.MaxValue;
+
+            _logger.LogInformation(
+                "User {UserId} booked with subscription {SubscriptionId} ({PlanName}) for BatteryModel {BatteryModelId}. " +
+                "Quota deducted immediately: {CurrentCount}/{MaxCount}. Remaining swaps: {Remaining}",
                 userId, activeSubscription.Id, activeSubscription.SubscriptionPlan.Name, batteryModelId,
-                swapsRemaining == int.MaxValue ? "unlimited" : swapsRemaining);
+                activeSubscription.CurrentMonthSwapCount,
+                activeSubscription.SubscriptionPlan.MaxSwapsPerMonth ?? 999,
+                newSwapsRemaining == int.MaxValue ? "unlimited" : newSwapsRemaining);
 
             paymentRequired = false;
             userSubscriptionId = activeSubscription.Id;
@@ -240,8 +272,8 @@ public class SlotReservationService
                     _logger.LogWarning("User {UserId} is BLOCKED from cash payment due to NoShowCount={NoShowCount} >= 3",
                         userId, user.NoShowCount);
                     throw new InvalidOperationException(
-                        $"Bạn đã bị chặn thanh toán bằng tiền mặt do vi phạm {user.NoShowCount} lần (hủy muộn/no-show). " +
-                        "Vui lòng thanh toán bằng VNPay hoặc liên hệ trạm để được hỗ trợ.");
+                        "Bạn đã bị chặn thanh toán bằng tiền mặt do vi phạm 3 lần hủy muộn hoặc không tới. " +
+                        "Vui lòng liên hệ quản trị viên để được mở khóa.");
                 }
             }
 
@@ -568,10 +600,31 @@ public class SlotReservationService
         }
 
         // ====== TIME-BASED PENALTY LOGIC ======
+        // ⭐ FIX: Assume SlotDate/SlotStartTime are in Vietnam time (UTC+7), convert to UTC for comparison
+        var vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); // UTC+7
+        var slotDateTimeLocal = reservation.SlotDate.ToDateTime(TimeOnly.MinValue).Add(reservation.SlotStartTime);
+        var slotDateTimeUtc = TimeZoneInfo.ConvertTimeToUtc(slotDateTimeLocal, vietnamTimeZone);
+
         var now = DateTime.UtcNow;
-        var slotDateTime = reservation.SlotDate.ToDateTime(TimeOnly.MinValue).Add(reservation.SlotStartTime);
-        var timeUntilSlot = slotDateTime - now;
+        var timeUntilSlot = slotDateTimeUtc - now;
         bool isLateCancellation = timeUntilSlot <= TimeSpan.FromHours(1);
+
+        // ⭐ DEBUG LOG - Xem chi tiết thời gian
+        _logger.LogWarning(
+            "🔍 CANCEL DEBUG: ReservationId={ReservationId}, " +
+            "NowUTC={NowUTC}, NowVN={NowVN}, " +
+            "SlotDateTimeVN={SlotVN}, SlotDateTimeUTC={SlotUTC}, " +
+            "TimeUntilSlot={TimeUntilSlotHours}h ({TimeUntilSlotMinutes}min), " +
+            "IsLateCancellation={IsLate}, IsStaff={IsStaff}",
+            reservationId,
+            now.ToString("yyyy-MM-dd HH:mm:ss"),
+            TimeZoneInfo.ConvertTimeFromUtc(now, vietnamTimeZone).ToString("yyyy-MM-dd HH:mm:ss"),
+            slotDateTimeLocal.ToString("yyyy-MM-dd HH:mm:ss"),
+            slotDateTimeUtc.ToString("yyyy-MM-dd HH:mm:ss"),
+            timeUntilSlot.TotalHours,
+            timeUntilSlot.TotalMinutes,
+            isLateCancellation,
+            isStaff);
 
         // Update reservation status
         reservation.Status = ReservationStatus.Cancelled;
@@ -585,6 +638,43 @@ public class SlotReservationService
             reservation.Payment.Status = PaymentStatus.Cancelled;
             _logger.LogInformation("Cancelled payment {PaymentId} for reservation {ReservationId}",
                 reservation.Payment.Id, reservationId);
+        }
+
+        // ====== QUOTA REFUND LOGIC FOR SUBSCRIPTION (Logic mới: "Balanced Refund") ======
+        if (reservation.UserSubscriptionId.HasValue)
+        {
+            var subscription = await _db.UserSubscriptions
+                .Include(s => s.SubscriptionPlan)
+                .FirstOrDefaultAsync(s => s.Id == reservation.UserSubscriptionId.Value);
+
+            if (subscription != null)
+            {
+                // Staff hủy HOẶC User hủy sớm → HOÀN quota
+                if (isStaff || !isLateCancellation)
+                {
+                    subscription.CurrentMonthSwapCount--;
+
+                    _logger.LogInformation(
+                        "Refunded quota for subscription {SubscriptionId} ({PlanName}). " +
+                        "Reason: {Reason}. New count: {CurrentCount}/{MaxCount}",
+                        subscription.Id,
+                        subscription.SubscriptionPlan.Name,
+                        isStaff ? "Staff cancelled (always refund)" : "Early cancellation (>1h before slot)",
+                        subscription.CurrentMonthSwapCount,
+                        subscription.SubscriptionPlan.MaxSwapsPerMonth ?? 999);
+                }
+                else
+                {
+                    // User hủy muộn → KHÔNG hoàn quota (user mất 1 lượt)
+                    _logger.LogWarning(
+                        "User {UserId} late-cancelled subscription reservation {ReservationId}. " +
+                        "Quota NOT refunded (user lost 1 swap). Current count: {CurrentCount}/{MaxCount}",
+                        userId,
+                        reservationId,
+                        subscription.CurrentMonthSwapCount,
+                        subscription.SubscriptionPlan.MaxSwapsPerMonth ?? 999);
+                }
+            }
         }
 
         // ====== PENALTY LOGIC (only for USER late cancellation) ======
@@ -637,6 +727,20 @@ public class SlotReservationService
                 reservation.Payment.Status = PaymentStatus.Cancelled;
                 _logger.LogInformation("No-show: Cancelled payment {PaymentId} for reservation {ReservationId}",
                     reservation.Payment.Id, reservation.Id);
+            }
+
+            // ====== QUOTA LOSS LOGIC FOR SUBSCRIPTION (Logic mới: No refund for no-show) ======
+            if (reservation.UserSubscriptionId.HasValue)
+            {
+                // KHÔNG hoàn quota vì đã bị trừ lúc đặt lịch
+                // User đã mất 1 lượt do không đến
+                _logger.LogWarning(
+                    "No-show: User {UserId} lost quota for subscription reservation {ReservationId}. " +
+                    "Quota was deducted at booking time and will NOT be refunded. " +
+                    "Subscription: {SubscriptionId}",
+                    reservation.UserId,
+                    reservation.Id,
+                    reservation.UserSubscriptionId.Value);
             }
 
             // ====== PENALTY LOGIC: Increment NoShowCount ======
