@@ -264,6 +264,10 @@ public class SlotReservationsController : ControllerBase
             ReservationSlotConfig.CheckInBuffer
         );
 
+        // ⭐ NEW: Extract vehicle information
+        var vehicleName = reservation.Vehicle?.VehicleModel?.Name ?? "Unknown";
+        var licensePlate = reservation.Vehicle?.Plate ?? "Unknown";
+
         return new SlotReservationResponse
         {
             Id = reservation.Id,
@@ -283,7 +287,12 @@ public class SlotReservationsController : ControllerBase
                 LatestTime = latest
             },
             UserId = reservation.UserId,
-            RelatedComplaintId = reservation.RelatedComplaintId
+            RelatedComplaintId = reservation.RelatedComplaintId,
+            
+            // ⭐ NEW: Vehicle information
+            VehicleId = reservation.VehicleId,
+            VehicleName = vehicleName,
+            LicensePlate = licensePlate
         };
     }
 }
@@ -315,6 +324,11 @@ public record SlotReservationResponse
     public CheckInWindowDto CheckInWindow { get; set; } = null!;
     public Guid UserId { get; set; }
     public Guid? RelatedComplaintId { get; set; }  // Complaint that triggered this reservation
+    
+    // ⭐ NEW 2025-11-07: Vehicle information for Staff to display
+    public Guid? VehicleId { get; set; }
+    public string? VehicleName { get; set; }        // Vehicle model name (e.g., "VinFast VF8")
+    public string? LicensePlate { get; set; }       // License plate number (e.g., "30A-12345")
 }
 
 public record CheckInWindowDto
