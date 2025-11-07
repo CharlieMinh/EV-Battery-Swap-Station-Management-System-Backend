@@ -104,20 +104,9 @@ public class SwapTransactionService
                 returnedBatterySerial = auto.Serial;
             }
 
-            // ⭐ IMPROVEMENT 2: Check subscription limit BEFORE finalizing the transaction
-            if (reservation.Payment == null) // This indicates a subscription-based swap
-            {
-                var activeSubscription = await _context.UserSubscriptions
-                    .Include(s => s.SubscriptionPlan)
-                    .FirstOrDefaultAsync(s => s.UserId == reservation.UserId && s.IsActive);
-
-                if (activeSubscription?.SubscriptionPlan.MaxSwapsPerMonth != null &&
-                    activeSubscription.CurrentMonthSwapCount >= activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value)
-                {
-                    throw new InvalidOperationException(
-                        $"Người dùng đã đạt giới hạn {activeSubscription.SubscriptionPlan.MaxSwapsPerMonth.Value} lần đổi pin trong tháng này.");
-                }
-            }
+            // ⭐ REMOVED: Redundant quota check
+            // Quota is already decremented when reservation is created (in SlotReservationService.CreateReservationAsync)
+            // No need to check again here as the user already has a valid reservation
 
             // 3. Create the SwapTransaction
             var transactionNumber = await GenerateTransactionNumberAsync(); // Generate the number
@@ -416,27 +405,11 @@ public class SwapTransactionService
             swap.CompletedAt = DateTime.UtcNow;
             swap.Notes = string.IsNullOrEmpty(swap.Notes) ? request.Notes : $"{swap.Notes}; {request.Notes}";
 
-            // 4. Increment swap counter for subscription users
-            if (swap.UserSubscriptionId.HasValue)
-            {
-                var subscription = await _context.UserSubscriptions
-                    .Include(us => us.SubscriptionPlan)
-                    .FirstOrDefaultAsync(us => us.Id == swap.UserSubscriptionId);
+            // ⭐ REMOVED: Swap count increment logic
+            // Quota is already decremented when reservation is created (in SlotReservationService.CreateReservationAsync)
+            // System only allows swaps via reservations, so no need to increment here
 
-                if (subscription != null)
-                {
-                    subscription.CurrentMonthSwapCount++;
-
-                    _logger.LogInformation(
-                        "Incremented swap count for user {UserId}, subscription {SubscriptionId}: {CurrentCount}/{MaxCount}",
-                        userId,
-                        subscription.Id,
-                        subscription.CurrentMonthSwapCount,
-                        subscription.SubscriptionPlan.MaxSwapsPerMonth?.ToString() ?? "Unlimited");
-                }
-            }
-
-            // 5. Update battery statuses
+            // 4. Update battery statuses
             // Issued battery goes to charging/maintenance
             if (swap.IssuedBattery != null)
             {
