@@ -616,7 +616,8 @@ public class SubscriptionService : ISubscriptionService
             OrderType = "billpayment", // subscription payment
             Amount = (double)payment.Amount,
             OrderDescription = $"Thanh toan {plan.Name}",
-            Name = vehicle?.Plate ?? plan.BatteryModel.Name
+            Name = vehicle?.Plate ?? plan.BatteryModel.Name,
+            TxnRef = payment.VnpTxnRef  // ⭐ FIX: Pass VnpTxnRef from Payment
         };
 
         // Create fake HttpContext with IP address
@@ -625,7 +626,8 @@ public class SubscriptionService : ISubscriptionService
 
         var paymentUrl = _vnPayServiceV2.CreatePaymentUrl(paymentModel, httpContext);
 
-        _logger.LogInformation("Generated VNPay URL for payment {PaymentId}: {Url}", payment.Id, paymentUrl);
+        _logger.LogInformation("Generated VNPay URL for payment {PaymentId} with TxnRef {TxnRef}",
+            payment.Id, payment.VnpTxnRef);
 
         return paymentUrl;
     }

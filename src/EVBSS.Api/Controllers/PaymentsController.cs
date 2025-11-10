@@ -92,31 +92,47 @@ public class PaymentsController : ControllerBase
 
     /// <summary>
     /// Xử lý return từ VNPay (user redirect back)
+    /// ⭐ UPDATED: Xử lý cả payment ở đây để support localhost (không cần ngrok)
     /// </summary>
     [HttpGet("vnpay/return")]
     [AllowAnonymous]
-    public IActionResult VnPayReturn([FromQuery] VnPayCallbackRequest returnData)
+    public async Task<IActionResult> VnPayReturn([FromQuery] VnPayCallbackRequest returnData)
     {
         try
         {
-            _logger.LogInformation("Received VNPay return for TxnRef: {TxnRef}", returnData.vnp_TxnRef);
+            _logger.LogInformation("Received VNPay return for TxnRef: {TxnRef}, ResponseCode: {ResponseCode}, TransactionStatus: {TransactionStatus}",
+                returnData.vnp_TxnRef, returnData.vnp_ResponseCode, returnData.vnp_TransactionStatus);
+
+            // ⭐ Process callback to update database (same as IPN callback)
+            // This ensures payment is processed even if IPN callback fails (e.g., localhost without ngrok)
+            await _vnPayService.ProcessCallbackAsync(returnData);
+
+            // ⭐ Get payment info to determine type (subscription or reservation)
+            var payment = await _db.Payments
+                .FirstOrDefaultAsync(p => p.VnpTxnRef == returnData.vnp_TxnRef);
+
+            var paymentType = payment?.Type.ToString().ToLower() ?? "unknown";
 
             // Validate the return data
             var isValid = _vnPayService.ValidateCallback(returnData);
             var isSuccess = returnData.vnp_ResponseCode == "00" && returnData.vnp_TransactionStatus == "00";
+
+            _logger.LogInformation("VNPay validation result: isValid={IsValid}, isSuccess={IsSuccess}, paymentType={PaymentType}",
+                isValid, isSuccess, paymentType);
 
             // Redirect về FE theo cấu hình PaymentBackReturnUrl
             var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             var backUrl = config["Vnpay:PaymentBackReturnUrl"];
             if (string.IsNullOrWhiteSpace(backUrl)) backUrl = "/payment-result";
 
-            if (isValid && isSuccess)
+            // ⭐ FIX: Thêm type parameter để FE hiển thị message phù hợp
+            if (isSuccess)
             {
-                return Redirect($"{backUrl}?status=success&ref={returnData.vnp_TxnRef}&amount={returnData.vnp_Amount}");
+                return Redirect($"{backUrl}?status=success&type={paymentType}&ref={returnData.vnp_TxnRef}&amount={returnData.vnp_Amount}");
             }
             else
             {
-                return Redirect($"{backUrl}?status=failure&ref={returnData.vnp_TxnRef}&code={returnData.vnp_ResponseCode}");
+                return Redirect($"{backUrl}?status=failure&type={paymentType}&ref={returnData.vnp_TxnRef}&code={returnData.vnp_ResponseCode}");
             }
         }
         catch (Exception ex)
@@ -228,6 +244,40 @@ public class PaymentsController : ControllerBase
             {
                 Success = false,
                 Message = "Có lỗi xảy ra khi chọn phương thức thanh toán."
+            });
+        }
+    }
+
+    /// <summary>
+    /// ⭐ NEW: Regenerate VNPay payment URL cho Payment đang pending
+    /// Cho phép user thử thanh toán lại VNPay khi đã thoát/hủy trước đó
+    /// </summary>
+    [HttpPost("{paymentId:guid}/regenerate-vnpay-url")]
+    public async Task<ActionResult<object>> RegenerateVnPayUrl(Guid paymentId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            var result = await _paymentService.RegenerateVnPayUrlAsync(userId, paymentId, GetClientIpAddress());
+
+            if (result.Success)
+            {
+                _logger.LogInformation("Regenerated VNPay URL for user {UserId}, payment {PaymentId}", userId, paymentId);
+                return Ok(result);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to regenerate VNPay URL for payment {PaymentId}: {Message}", paymentId, result.Message);
+                return BadRequest(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error regenerating VNPay URL for payment {PaymentId}", paymentId);
+            return StatusCode(500, new
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi tạo link thanh toán VNPay."
             });
         }
     }
