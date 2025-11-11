@@ -220,13 +220,31 @@ public class VnPayService : IVnPayService
             }
             else
             {
-                // ❌ Payment failed - reason stored in VnpResponseCode
-                // 24 = User cancelled, 51 = Insufficient balance, etc.
-                payment.Status = PaymentStatus.Failed;
-                payment.CompletedAt = DateTime.UtcNow; // Mark when it failed
+                // ⚠️ Payment not successful
+                // ⭐ FIX BUG #2: Distinguish between user cancellation and actual failure
+                
+                if (callback.vnp_ResponseCode == "24")
+                {
+                    // User cancelled payment - Keep status as Pending to allow retry
+                    _logger.LogInformation(
+                        "Payment {PaymentId} cancelled by user (ResponseCode: 24). Keeping Pending status to allow retry via RegenerateVnPayUrl.",
+                        payment.Id
+                    );
+                    // Don't update payment.Status - keep it as Pending
+                    // Don't set payment.CompletedAt
+                }
+                else
+                {
+                    // ❌ Actual payment failure (insufficient balance, over limit, etc.)
+                    payment.Status = PaymentStatus.Failed;
+                    payment.CompletedAt = DateTime.UtcNow;
 
-                _logger.LogWarning("Payment {PaymentId} failed with VNPay response code {ResponseCode}",
-                    payment.Id, callback.vnp_ResponseCode);
+                    _logger.LogWarning(
+                        "Payment {PaymentId} FAILED with VNPay response code {ResponseCode}. " +
+                        "Common codes: 51=Insufficient balance, 65=Over limit, 75=Bank maintenance",
+                        payment.Id, callback.vnp_ResponseCode
+                    );
+                }
             }
 
             await _context.SaveChangesAsync();
