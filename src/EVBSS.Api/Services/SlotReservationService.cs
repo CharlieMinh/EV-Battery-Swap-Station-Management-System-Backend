@@ -362,6 +362,10 @@ public class SlotReservationService
             _db.Payments.Add(payment);
             await _db.SaveChangesAsync();
 
+            // ⭐ FIX BUG #1: Update Reservation.PaymentId to create two-way relationship
+            reservation.PaymentId = payment.Id;
+            await _db.SaveChangesAsync();
+
             _logger.LogInformation("✅ Created pay-per-swap reservation {ReservationId} with Payment {PaymentId} ({Method}, {Amount} VND) for {BatteryModel}",
                 reservation.Id, payment.Id, paymentMethod.Value, payment.Amount, batteryModelForPayment.Name);
         }
