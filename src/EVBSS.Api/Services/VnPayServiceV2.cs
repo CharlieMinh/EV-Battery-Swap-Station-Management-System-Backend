@@ -26,11 +26,15 @@ public class VnPayServiceV2 : IVnPayServiceV2
     {
         var timeZoneById = TimeZoneInfo.FindSystemTimeZoneById(_configuration["TimeZoneId"] ?? "SE Asia Standard Time");
         var timeNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZoneById);
-        var tick = DateTime.Now.Ticks.ToString();
+
+        // ⭐ FIX: Use TxnRef from Payment model if provided, otherwise generate new one
+        var tick = model.TxnRef ?? DateTime.Now.Ticks.ToString();
+
         var pay = new VnPayLibrary();
-        
-        // ReturnUrl từ appsettings
-        var urlCallBack = _configuration["Vnpay:PaymentBackReturnUrl"];
+
+        // ⭐ FIX: Use ReturnUrl (backend endpoint) instead of PaymentBackReturnUrl (frontend)
+        // VNPay will redirect to backend first, then backend redirects to frontend
+        var urlCallBack = _configuration["Vnpay:ReturnUrl"];
 
         pay.AddRequestData("vnp_Version", _configuration["Vnpay:Version"]);
         pay.AddRequestData("vnp_Command", _configuration["Vnpay:Command"]);

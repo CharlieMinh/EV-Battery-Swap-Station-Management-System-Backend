@@ -2,6 +2,7 @@ using EVBSS.Api.Configuration;
 using EVBSS.Api.Data;
 using EVBSS.Api.Dtos.Payments;
 using EVBSS.Api.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
@@ -17,6 +18,11 @@ public interface IPaymentService
     Task<Payment> CompleteCashPaymentAsync(Guid paymentId, Guid staffId);
 
     Task<CreatePayPerSwapReservationResponse> CreatePayPerSwapReservationAsync(Guid userId, CreatePayPerSwapReservationRequest request, string ipAddress);
+
+    /// <summary>
+    /// ⭐ NEW: Regenerate VNPay URL cho payment đang pending
+    /// </summary>
+    Task<RegenerateVnPayUrlResponse> RegenerateVnPayUrlAsync(Guid userId, Guid paymentId, string ipAddress);
 
     /// <summary>
     /// Lấy danh sách payments (cho Staff/Admin dashboard hoặc Driver xem payment của mình)
@@ -43,17 +49,20 @@ public class PaymentService : IPaymentService
     private readonly ILogger<PaymentService> _logger;
     private readonly SlotReservationService _slotReservationService;
     private readonly VnPayConfig _vnPayConfig;
+    private readonly IVnPayServiceV2 _vnPayServiceV2;
 
     public PaymentService(
         AppDbContext context,
         ILogger<PaymentService> logger,
         SlotReservationService slotReservationService,
-        IOptions<VnPayConfig> vnPayConfig)
+        IOptions<VnPayConfig> vnPayConfig,
+        IVnPayServiceV2 vnPayServiceV2)
     {
         _context = context;
         _logger = logger;
         _slotReservationService = slotReservationService;
         _vnPayConfig = vnPayConfig.Value;
+        _vnPayServiceV2 = vnPayServiceV2;
     }
 
     public async Task<SelectCashMethodResponse> SelectCashMethodAsync(Guid userId, Guid paymentId)
@@ -101,6 +110,111 @@ public class PaymentService : IPaymentService
         }
     }
 
+    public async Task<RegenerateVnPayUrlResponse> RegenerateVnPayUrlAsync(Guid userId, Guid paymentId, string ipAddress)
+    {
+        try
+        {
+            // 1. Tìm payment
+            var payment = await _context.Payments
+                .Include(p => p.UserSubscription)
+                    .ThenInclude(us => us!.SubscriptionPlan)
+                        .ThenInclude(sp => sp.BatteryModel)
+                .FirstOrDefaultAsync(p => p.Id == paymentId);
+
+            if (payment == null)
+            {
+                return new RegenerateVnPayUrlResponse { Success = false, Message = "Không tìm thấy payment." };
+            }
+
+            // 2. Kiểm tra quyền sở hữu
+            if (payment.UserId != userId)
+            {
+                return new RegenerateVnPayUrlResponse { Success = false, Message = "Payment này không thuộc về bạn." };
+            }
+
+            // 3. Kiểm tra status - chỉ cho phép regenerate nếu đang Pending
+            if (payment.Status != PaymentStatus.Pending)
+            {
+                return new RegenerateVnPayUrlResponse
+                {
+                    Success = false,
+                    Message = $"Payment đã được xử lý ({payment.Status}). Không thể tạo link thanh toán mới."
+                };
+            }
+
+            // 4. Kiểm tra method - chỉ cho phép VNPay
+            if (payment.Method != PaymentMethod.VNPay)
+            {
+                return new RegenerateVnPayUrlResponse
+                {
+                    Success = false,
+                    Message = $"Payment đang dùng phương thức {payment.Method}. Vui lòng đổi về VNPay trước."
+                };
+            }
+
+            // 5. Generate VNPay URL mới using VnPayServiceV2 (giống như lúc tạo payment)
+            string paymentUrl;
+
+            if (payment.Type == PaymentType.Subscription && payment.UserSubscription != null)
+            {
+                // ⭐ Generate NEW TxnRef với suffix timestamp để tránh duplicate
+                // VNPay không cho phép thanh toán 2 lần với cùng TxnRef
+                var newTxnRef = $"{payment.VnpTxnRef}_{DateTime.Now:HHmmss}";
+
+                // Subscription payment - use VnPayServiceV2
+                var paymentModel = new PaymentInformationModel
+                {
+                    OrderType = "billpayment",
+                    Amount = (double)payment.Amount,
+                    OrderDescription = $"Thanh toan {payment.UserSubscription.SubscriptionPlan.Name}",
+                    Name = payment.UserSubscription.SubscriptionPlan.BatteryModel.Name,
+                    TxnRef = newTxnRef  // ⭐ Sử dụng TxnRef MỚI (có suffix)
+                };
+
+                // Create fake HttpContext with IP address
+                var httpContext = new DefaultHttpContext();
+                httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(ipAddress);
+
+                paymentUrl = _vnPayServiceV2.CreatePaymentUrl(paymentModel, httpContext);
+
+                // ⭐ QUAN TRỌNG: Update VnpTxnRef trong database để callback có thể tìm thấy
+                payment.VnpTxnRef = newTxnRef;
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Updated payment {PaymentId} with new TxnRef: {TxnRef}", paymentId, newTxnRef);
+            }
+            else
+            {
+                // PayPerSwap or other types
+                return new RegenerateVnPayUrlResponse
+                {
+                    Success = false,
+                    Message = "Không hỗ trợ regenerate URL cho loại payment này."
+                };
+            }
+
+            _logger.LogInformation("Regenerated VNPay URL for payment {PaymentId}, user {UserId}", paymentId, userId);
+
+            return new RegenerateVnPayUrlResponse
+            {
+                Success = true,
+                Message = "Đã tạo link thanh toán VNPay mới.",
+                PaymentId = payment.Id,
+                PaymentUrl = paymentUrl,
+                Amount = payment.Amount
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error regenerating VNPay URL for payment {PaymentId}", paymentId);
+            return new RegenerateVnPayUrlResponse
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi tạo link thanh toán VNPay."
+            };
+        }
+    }
+
     public async Task<Payment> CompleteCashPaymentAsync(Guid paymentId, Guid staffId)
     {
         var payment = await _context.Payments
@@ -127,7 +241,7 @@ public class PaymentService : IPaymentService
         if (staff != null && staff.StationId.HasValue)
         {
             payment.StationId = staff.StationId.Value;
-            _logger.LogInformation("Payment {PaymentId} assigned to station {StationId} from staff {StaffId}", 
+            _logger.LogInformation("Payment {PaymentId} assigned to station {StationId} from staff {StaffId}",
                 paymentId, staff.StationId.Value, staffId);
         }
 
@@ -304,43 +418,21 @@ public class PaymentService : IPaymentService
 
     private string GenerateVnPayUrlForReservation(Payment payment, Reservation reservation, string ipAddress)
     {
-        var orderInfo = $"Thanh toán đặt lịch đổi pin - {reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh:mm}";
+        var orderInfo = $"Thanh toán đặt lịch đổi pin - {reservation.SlotDate:dd/MM/yyyy} {reservation.SlotStartTime:hh\\:mm}";
 
-        var vnpParams = new Dictionary<string, string>
+        // Sử dụng VnPayServiceV2 để tạo URL đúng cách
+        var paymentInfo = new PaymentInformationModel
         {
-            {"vnp_Version", "2.1.0"},
-            {"vnp_Command", "pay"},
-            {"vnp_TmnCode", _vnPayConfig.TmnCode},
-            {"vnp_Amount", ((long)(payment.Amount * 100)).ToString()},
-            {"vnp_CurrCode", "VND"},
-            {"vnp_TxnRef", payment.VnpTxnRef!},
-            {"vnp_OrderInfo", orderInfo},
-            {"vnp_OrderType", "other"},
-            {"vnp_Locale", "vn"},
-            {"vnp_ReturnUrl", _vnPayConfig.ReturnUrl},
-            {"vnp_IpnUrl", _vnPayConfig.IpnUrl},
-            {"vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss")},
-            {"vnp_IpAddr", ipAddress}
+            Amount = (double)payment.Amount,
+            OrderDescription = orderInfo,
+            TxnRef = payment.VnpTxnRef!,
+            OrderType = "other"
         };
 
-        var sortedParams = vnpParams.OrderBy(x => x.Key).ToList();
-        var hashData = string.Join("&", sortedParams.Select(p => $"{p.Key}={p.Value}"));
-        var vnpSecureHash = ComputeHmacSha512(_vnPayConfig.HashSecret, hashData);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(ipAddress);
 
-        var queryString = string.Join("&", sortedParams.Select(p => $"{p.Key}={HttpUtility.UrlEncode(p.Value)}"));
-
-        return $"{_vnPayConfig.BaseUrl}?{queryString}&vnp_SecureHash={vnpSecureHash}";
-    }
-
-    private string ComputeHmacSha512(string key, string data)
-    {
-        var keyBytes = Encoding.UTF8.GetBytes(key);
-        var dataBytes = Encoding.UTF8.GetBytes(data);
-
-        using var hmac = new HMACSHA512(keyBytes);
-        var hashBytes = hmac.ComputeHash(dataBytes);
-
-        return Convert.ToHexString(hashBytes).ToLower();
+        return _vnPayServiceV2.CreatePaymentUrl(paymentInfo, httpContext);
     }
 
     /// <summary>
@@ -473,7 +565,7 @@ public class PaymentService : IPaymentService
             // ⭐ THÊM STATION INFO
             StationId = payment.StationId,
             StationName = payment.Station?.Name,
-            
+
 
 
 
