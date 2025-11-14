@@ -23,11 +23,12 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Create a new user (Admin only)
+    /// Create a new user (Admin and Staff)
     /// Admin can create accounts for Staff and Driver roles
+    /// Staff can only create accounts for Driver role
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Staff")]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest req)
     {
         if (!ModelState.IsValid)
@@ -40,6 +41,20 @@ public class UsersController : ControllerBase
         if (await _db.Users.AnyAsync(u => u.Email == email))
         {
             return Conflict(new { error = "Email already exists" });
+        }
+
+        // Get current user role
+        var currentUserRoleClaim = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        if (currentUserRoleClaim == null)
+        {
+            return Unauthorized(new { error = "Invalid user claims" });
+        }
+        var currentUserRole = Enum.Parse<Role>(currentUserRoleClaim);
+
+        // Staff can only create Driver accounts
+        if (currentUserRole == Role.Staff && req.Role != Role.Driver)
+        {
+            return BadRequest(new { error = "Staff members can only create Driver accounts." });
         }
 
         // Prevent creating another Admin (optional security measure)
