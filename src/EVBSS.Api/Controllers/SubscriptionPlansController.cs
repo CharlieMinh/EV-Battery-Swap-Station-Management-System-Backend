@@ -20,7 +20,7 @@ public class SubscriptionPlansController : ControllerBase
     // =========================================================================
 
     /// <summary>
-    /// Lấy tất cả các gói đăng ký đang hoạt động
+    /// Lấy tất cả các gói đăng ký (bao gồm cả inactive)
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -29,7 +29,6 @@ public class SubscriptionPlansController : ControllerBase
         var plans = await _db.SubscriptionPlans
             .AsNoTracking()
             .Include(sp => sp.BatteryModel)
-            .Where(sp => sp.IsActive)
             .OrderBy(sp => sp.BatteryModel.Name).ThenBy(sp => sp.MonthlyPrice) // Sắp xếp theo loại pin, rồi đến giá
             .Select(sp => new
             {
@@ -40,6 +39,7 @@ public class SubscriptionPlansController : ControllerBase
                 sp.MaxSwapsPerMonth,
                 sp.Benefits,
                 sp.RefundPolicy,
+                sp.IsActive, 
                 BatteryModel = new
                 {
                     sp.BatteryModel.Id,
@@ -56,7 +56,7 @@ public class SubscriptionPlansController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy thông tin một gói đăng ký theo ID
+    /// Lấy thông tin một gói đăng ký theo ID (bao gồm cả inactive)
     /// </summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -66,7 +66,7 @@ public class SubscriptionPlansController : ControllerBase
         var plan = await _db.SubscriptionPlans
             .AsNoTracking()
             .Include(sp => sp.BatteryModel)
-            .Where(sp => sp.Id == id && sp.IsActive)
+            .Where(sp => sp.Id == id) 
             .Select(sp => new
             {
                 sp.Id,
@@ -76,6 +76,7 @@ public class SubscriptionPlansController : ControllerBase
                 sp.MaxSwapsPerMonth,
                 sp.Benefits,
                 sp.RefundPolicy,
+                sp.IsActive, 
                 BatteryModel = new
                 {
                     sp.BatteryModel.Id,
