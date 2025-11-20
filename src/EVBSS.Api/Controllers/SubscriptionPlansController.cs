@@ -29,7 +29,6 @@ public class SubscriptionPlansController : ControllerBase
         var plans = await _db.SubscriptionPlans
             .AsNoTracking()
             .Include(sp => sp.BatteryModel)
-            .Where(sp => sp.IsActive)
             .OrderBy(sp => sp.BatteryModel.Name).ThenBy(sp => sp.MonthlyPrice) // Sắp xếp theo loại pin, rồi đến giá
             .Select(sp => new
             {
@@ -148,7 +147,7 @@ public class SubscriptionPlansController : ControllerBase
         // Cho phép null (unlimited) hoặc >= 1
         if (updateDto.MaxSwapsPerMonth.HasValue && updateDto.MaxSwapsPerMonth.Value < 1)
         {
-            ModelState.AddModelError(nameof(updateDto.MaxSwapsPerMonth), 
+            ModelState.AddModelError(nameof(updateDto.MaxSwapsPerMonth),
                 "Số lần đổi phải lớn hơn 0 hoặc để trống (null) cho gói không giới hạn.");
             return BadRequest(ModelState);
         }
@@ -169,7 +168,7 @@ public class SubscriptionPlansController : ControllerBase
                 return BadRequest(ModelState);
             }
         }
-        
+
         // Cập nhật các trường
         planToUpdate.Name = updateDto.Name;
         planToUpdate.Description = updateDto.Description;
@@ -205,12 +204,12 @@ public class SubscriptionPlansController : ControllerBase
         {
             return NoContent(); // Đã bị vô hiệu hóa rồi, không cần làm gì thêm
         }
-        
+
         planToDelete.IsActive = false; // Soft delete
         planToDelete.UpdatedAt = DateTime.UtcNow;
-        
+
         await _db.SaveChangesAsync();
-        
+
         return NoContent();
     }
 }
@@ -228,7 +227,7 @@ public class CreateSubscriptionPlanDto
     [Required(ErrorMessage = "Tên gói không được để trống")]
     [MaxLength(100)]
     public string Name { get; set; } = string.Empty;
-    
+
     [Required(ErrorMessage = "Mô tả không được để trống")]
     [MaxLength(500)]
     public string Description { get; set; } = string.Empty;
@@ -259,7 +258,7 @@ public class UpdateSubscriptionPlanDto
     [Required(ErrorMessage = "Tên gói không được để trống")]
     [MaxLength(100)]
     public string Name { get; set; } = string.Empty;
-    
+
     [Required(ErrorMessage = "Mô tả không được để trống")]
     [MaxLength(500)]
     public string Description { get; set; } = string.Empty;
@@ -280,7 +279,7 @@ public class UpdateSubscriptionPlanDto
 
     [Required(ErrorMessage = "ID loại pin không được để trống")]
     public Guid BatteryModelId { get; set; }
-    
+
     [Required]
     public bool IsActive { get; set; }
 }
