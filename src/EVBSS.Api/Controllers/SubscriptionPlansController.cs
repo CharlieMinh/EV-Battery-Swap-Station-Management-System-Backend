@@ -145,6 +145,14 @@ public class SubscriptionPlansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdatePlan(Guid id, [FromBody] UpdateSubscriptionPlanDto updateDto)
     {
+        // Cho phép null (unlimited) hoặc >= 1
+        if (updateDto.MaxSwapsPerMonth.HasValue && updateDto.MaxSwapsPerMonth.Value < 1)
+        {
+            ModelState.AddModelError(nameof(updateDto.MaxSwapsPerMonth), 
+                "Số lần đổi phải lớn hơn 0 hoặc để trống (null) cho gói không giới hạn.");
+            return BadRequest(ModelState);
+        }
+
         var planToUpdate = await _db.SubscriptionPlans.FindAsync(id);
         if (planToUpdate == null)
         {
@@ -229,8 +237,9 @@ public class CreateSubscriptionPlanDto
     [Range(0.01, double.MaxValue, ErrorMessage = "Giá tháng phải lớn hơn 0")]
     public decimal MonthlyPrice { get; set; }
 
-    [Range(1, int.MaxValue, ErrorMessage = "Số lần đổi phải lớn hơn 0")]
-    public int? MaxSwapsPerMonth { get; set; } // Nullable cho gói không giới hạn
+    // ⭐ FIX: Removed [Range] to allow null (unlimited plans)
+    // Validation moved to controller methods
+    public int? MaxSwapsPerMonth { get; set; } // null = unlimited, or >= 1
 
     [Required(ErrorMessage = "Quyền lợi không được để trống")]
     public string Benefits { get; set; } = string.Empty;
@@ -259,8 +268,9 @@ public class UpdateSubscriptionPlanDto
     [Range(0.01, double.MaxValue, ErrorMessage = "Giá tháng phải lớn hơn 0")]
     public decimal MonthlyPrice { get; set; }
 
-    [Range(1, int.MaxValue, ErrorMessage = "Số lần đổi phải lớn hơn 0")]
-    public int? MaxSwapsPerMonth { get; set; }
+    // ⭐ FIX: Removed [Range] to allow null (unlimited plans)
+    // Validation moved to controller methods
+    public int? MaxSwapsPerMonth { get; set; } // null = unlimited, or >= 1
 
     [Required(ErrorMessage = "Quyền lợi không được để trống")]
     public string Benefits { get; set; } = string.Empty;
