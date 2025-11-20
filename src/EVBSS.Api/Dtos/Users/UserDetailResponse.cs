@@ -1,5 +1,8 @@
 namespace EVBSS.Api.Dtos.Users;
 
+using EVBSS.Api.Dtos.Vehicles;
+using EVBSS.Api.Dtos.Subscriptions;
+
 /// <summary>
 /// Detailed user response with full statistics
 /// </summary>
@@ -19,4 +22,10 @@ public class UserDetailResponse
     public int CompletedReservations { get; set; }
     public int CancelledReservations { get; set; }
     public int TotalVehicles { get; set; }
+    
+    // ⭐ NEW: Detailed vehicles list (nullable - only populated if requested)
+    public List<VehicleDto>? Vehicles { get; set; }
+    
+    // ⭐ NEW: Subscriptions history (nullable - only populated if requested)
+    public List<UserSubscriptionDto>? Subscriptions { get; set; }
 }

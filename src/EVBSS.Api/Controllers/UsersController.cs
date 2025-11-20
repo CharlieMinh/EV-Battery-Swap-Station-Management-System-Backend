@@ -1,6 +1,7 @@
 using EVBSS.Api.Data;
 using EVBSS.Api.Dtos.Users;
 using EVBSS.Api.Dtos.Vehicles;
+using EVBSS.Api.Dtos.Subscriptions;
 using EVBSS.Api.Models;
 using EVBSS.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -369,11 +370,17 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Get user by ID (Admin only)
+    /// Get user by ID (Admin/Staff only)
     /// </summary>
+    /// <param name="id">User ID</param>
+    /// <param name="includeVehicles">Include user's vehicles list</param>
+    /// <param name="includeSubscriptions">Include user's subscription history</param>
     [HttpGet("{id:guid}")]
     [Authorize(Roles = "Admin,Staff")]
-    public async Task<IActionResult> GetUserById(Guid id)
+    public async Task<IActionResult> GetUserById(
+        Guid id,
+        [FromQuery] bool includeVehicles = false,
+        [FromQuery] bool includeSubscriptions = false)
     {
         var user = await _db.Users
             .AsNoTracking()
@@ -382,6 +389,92 @@ public class UsersController : ControllerBase
         if (user == null)
         {
             return NotFound(new { error = "User not found" });
+        }
+
+        // ⭐ NEW: Query vehicles if requested
+        List<VehicleDto>? vehicles = null;
+        if (includeVehicles)
+        {
+            vehicles = await _db.Vehicles
+                .AsNoTracking()
+                .Include(v => v.VehicleModel)
+                .Include(v => v.CompatibleModel)
+                .Where(v => v.UserId == id)
+                .OrderByDescending(v => v.CreatedAt)
+                .Select(v => new VehicleDto(
+                    v.Id,
+                    v.VIN,
+                    v.Plate,
+                    v.VehicleModelId,
+                    v.VehicleModel != null ? v.VehicleModel.Name : null,
+                    v.VehicleModel != null ? v.VehicleModel.FullName : null,
+                    v.VehicleModel != null ? v.VehicleModel.Brand : null,
+                    v.CompatibleBatteryModelId,
+                    v.CompatibleModel.Name,
+                    v.PhotoUrl,
+                    v.RegistrationPhotoUrl,
+                    v.CreatedAt,
+                    v.UpdatedAt
+                ))
+                .ToListAsync();
+        }
+
+        // ⭐ NEW: Query subscriptions if requested
+        List<UserSubscriptionDto>? subscriptions = null;
+        if (includeSubscriptions)
+        {
+            var subs = await _db.UserSubscriptions
+                .AsNoTracking()
+                .Include(s => s.SubscriptionPlan)
+                    .ThenInclude(p => p.BatteryModel)
+                .Include(s => s.Vehicle)
+                    .ThenInclude(v => v!.VehicleModel)
+                .Where(s => s.UserId == id)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync();
+
+            subscriptions = subs.Select(s => new UserSubscriptionDto
+            {
+                Id = s.Id,
+                UserId = s.UserId,
+                SubscriptionPlanId = s.SubscriptionPlanId,
+                VehicleId = s.VehicleId ?? Guid.Empty, // Default to Empty if null
+                
+                // Dates & Status
+                StartDate = s.StartDate,
+                EndDate = s.EndDate,
+                IsActive = s.IsActive,
+                CurrentBillingPeriodStart = s.CurrentBillingPeriodStart,
+                CurrentBillingPeriodEnd = s.CurrentBillingPeriodEnd,
+                
+                // Usage
+                CurrentMonthSwapCount = s.CurrentMonthSwapCount,
+                LastPaymentDate = s.LastPaymentDate,
+                CreatedAt = s.CreatedAt,
+                
+                // Related data
+                SubscriptionPlan = new SubscriptionPlanDto
+                {
+                    Id = s.SubscriptionPlan.Id,
+                    Name = s.SubscriptionPlan.Name,
+                    Description = s.SubscriptionPlan.Description,
+                    MonthlyPrice = s.SubscriptionPlan.MonthlyPrice,
+                    MaxSwapsPerMonth = s.SubscriptionPlan.MaxSwapsPerMonth,
+                    Benefits = s.SubscriptionPlan.Benefits,
+                    RefundPolicy = s.SubscriptionPlan.RefundPolicy,
+                    BatteryModelId = s.SubscriptionPlan.BatteryModelId,
+                    BatteryModelName = s.SubscriptionPlan.BatteryModel.Name,
+                    IsActive = s.SubscriptionPlan.IsActive
+                },
+                
+                Vehicle = s.Vehicle != null ? new SubscriptionVehicleDto
+                {
+                    Id = s.Vehicle.Id,
+                    Brand = s.Vehicle.VehicleModel?.Brand ?? "Unknown",
+                    Model = s.Vehicle.VehicleModel?.Name ?? "Unknown",
+                    Plate = s.Vehicle.Plate
+                } : null
+            }).ToList();
         }
 
         return Ok(new UserDetailResponse
@@ -398,7 +491,10 @@ public class UsersController : ControllerBase
             TotalReservations = await _db.Reservations.CountAsync(r => r.UserId == user.Id),
             CompletedReservations = await _db.Reservations.CountAsync(r => r.UserId == user.Id && r.Status == ReservationStatus.Completed),
             CancelledReservations = await _db.Reservations.CountAsync(r => r.UserId == user.Id && r.Status == ReservationStatus.Cancelled),
-            TotalVehicles = await _db.Vehicles.CountAsync(v => v.UserId == user.Id)
+            TotalVehicles = await _db.Vehicles.CountAsync(v => v.UserId == user.Id),
+            // ⭐ NEW: Include detailed lists if requested
+            Vehicles = vehicles,
+            Subscriptions = subscriptions
         });
     }
 
