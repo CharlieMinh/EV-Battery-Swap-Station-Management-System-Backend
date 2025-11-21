@@ -104,10 +104,51 @@ public class SwapTransactionService
             }
             else
             {
-                // No complaint -> auto-create a placeholder returned battery unit in inventory
-                var auto = await _inventoryService.AutoCreateNewBatteryUnitAsync(reservation.BatteryModelId, reservation.StationId, staffId);
-                returnedBattery = auto;
-                returnedBatterySerial = auto.Serial;
+                // ⭐ FIX START: Logic cho Swap thông thường (Không có Complaint)
+                // 1. Tìm pin được cấp cuối cùng cho user này đang ở trạng thái 'InUse'
+                var lastIssuedBatteryId = await _context.SwapTransactions
+                    .Where(s => s.UserId == reservation.UserId && s.IssuedBatteryId != null)
+                    .OrderByDescending(s => s.CompletedAt ?? s.StartedAt)
+                    .Select(s => s.IssuedBatteryId)
+                    .FirstOrDefaultAsync();
+
+                BatteryUnit? actualReturnedBattery = null;
+                if (lastIssuedBatteryId != null && lastIssuedBatteryId != Guid.Empty)
+                {
+                    // 2. Check nếu pin đó vẫn là pin đang dùng (InUse)
+                    actualReturnedBattery = await _context.BatteryUnits
+                        .FirstOrDefaultAsync(b => b.Id == lastIssuedBatteryId && b.Status == BatteryStatus.InUse);
+                }
+
+                if (actualReturnedBattery != null)
+                {
+                    // 3. ✅ Pin ĐÃ được ghi nhận (VF3-XXX) -> CẬP NHẬT trạng thái thay vì tạo mới
+                    returnedBattery = actualReturnedBattery;
+                    returnedBatterySerial = actualReturnedBattery.Serial;
+                    
+                    var oldStatus = returnedBattery.Status;
+                    returnedBattery.Status = BatteryStatus.Depleted; // Pin trả về cần sạc
+                    returnedBattery.StationId = reservation.StationId;
+                    returnedBattery.UpdatedAt = DateTime.UtcNow;
+
+                    // Sync inventory: InUse -> Depleted tại trạm hiện tại
+                    await _inventoryService.UpdateInventoryCountAsync(
+                        returnedBattery.BatteryModelId,
+                        reservation.StationId,
+                        oldStatus,
+                        BatteryStatus.Depleted,
+                        1);
+
+                    _logger.LogInformation("Recognized known returned battery {Serial}. Updated status from {OldStatus} to Depleted.", returnedBatterySerial, oldStatus);
+                }
+                else
+                {
+                    // 4. ❌ Không tìm thấy pin InUse hoặc pin lạ -> Tạo placeholder mới
+                    _logger.LogWarning("Could not identify known InUse battery for user {UserId}. Creating new placeholder unit.", reservation.UserId);
+                    var auto = await _inventoryService.AutoCreateNewBatteryUnitAsync(reservation.BatteryModelId, reservation.StationId, staffId);
+                    returnedBattery = auto;
+                    returnedBatterySerial = auto.Serial;
+                }
             }
 
             // ⭐ REMOVED: Redundant quota check

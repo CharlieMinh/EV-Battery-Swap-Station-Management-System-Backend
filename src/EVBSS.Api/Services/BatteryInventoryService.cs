@@ -454,26 +454,48 @@ public class BatteryInventoryService : IBatteryInventoryService
     }
 
     /// <summary>
-    /// Tự động tạo pin mới với Serial VF3-XXX (XXX là 3 số tự tăng)
+    /// Tự động tạo pin mới với Serial VFx-XXX (XXX là 3 số tự tăng)
     /// Pin này được tạo như một đại diện cho pin trả về nếu khách hàng không có pin đang đăng ký trong hệ thống.
-    /// Trạng thái mặc định: Faulty, SOH = 50%
+    /// Trạng thái mặc định: Faulty
     /// </summary>
     public async Task<BatteryUnit> AutoCreateNewBatteryUnitAsync(Guid batteryModelId, Guid stationId, Guid staffId)
     {
-        // 1. TÌM SERIAL LỚN NHẤT theo định dạng VF3-XXX
+        // 1. LẤY BATTERY MODEL VÀ XÁC ĐỊNH PREFIX (VFx)
+        var batteryModel = await _context.BatteryModels.FindAsync(batteryModelId);
+        if (batteryModel == null)
+        {
+            throw new InvalidOperationException($"BatteryModel with ID {batteryModelId} not found.");
+        }
+        
+        // Cố gắng suy ra prefix (VF3, VF5, VF8, VF9) từ tên pin
+        var modelName = batteryModel.Name.ToUpper();
+        string prefix = "VF"; // Default Fallback
+        if (modelName.Contains("VF3")) prefix = "VF3";
+        else if (modelName.Contains("VF5")) prefix = "VF5";
+        else if (modelName.Contains("VF8")) prefix = "VF8";
+        else if (modelName.Contains("VF9")) prefix = "VF9";
+        else prefix = new string(batteryModel.Name.Take(3).ToArray()).ToUpper(); // Fallback to first 3 letters
+
+        // 2. TÌM SERIAL LỚN NHẤT theo định dạng VFx-XXX
+        var searchPrefix = $"{prefix}-";
         var maxSerial = await _context.BatteryUnits
-            .Where(b => b.Serial.StartsWith("VF3-"))
+            .Where(b => b.Serial.StartsWith(searchPrefix))
             .Select(b => b.Serial)
             .OrderByDescending(s => s)
             .FirstOrDefaultAsync();
 
         int nextIndex = 1;
-        if (maxSerial != null && maxSerial.Length >= 7 && int.TryParse(maxSerial.Substring(4), out int currentMax))
+        if (maxSerial != null && maxSerial.Length > searchPrefix.Length)
         {
-            nextIndex = currentMax + 1;
+            // Trích xuất phần số từ serial lớn nhất (vd: "VF3-005" -> 005)
+            var numberPart = maxSerial.Substring(searchPrefix.Length);
+            if (int.TryParse(numberPart, out int currentMax))
+            {
+                nextIndex = currentMax + 1;
+            }
         }
 
-        var newSerial = $"VF3-{nextIndex:D3}";
+        var newSerial = $"{prefix}-{nextIndex:D3}";
 
         var newBattery = new BatteryUnit
         {
