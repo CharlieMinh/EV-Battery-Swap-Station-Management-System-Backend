@@ -180,6 +180,39 @@ public class SlotReservationService
 
         var batteryModelId = vehicle.CompatibleBatteryModelId;
 
+        // ⭐ NEW/MODIFIED LOGIC: RESERVATION BATTERY START
+        // 1. Tìm pin tốt nhất (Full) để đặt trước
+        var battery = await _db.BatteryUnits
+            .Where(b =>
+                b.StationId == stationId &&
+                b.BatteryModelId == batteryModelId &&
+                b.Status == BatteryStatus.Full)
+            .OrderBy(b => b.UpdatedAt)
+            .FirstOrDefaultAsync();
+
+        if (battery == null)
+        {
+            throw new NoBatteryException("Không có pin phù hợp hoặc pin đã được sạc đầy tại trạm để đặt trước (Reserved).");
+        }
+
+        // 2. Cập nhật trạng thái pin thành Reserved và đồng bộ Inventory
+        var _inventoryService = _serviceProvider?.GetService<IBatteryInventoryService>()
+            ?? throw new InvalidOperationException("IBatteryInventoryService not available.");
+
+        var oldStatus = battery.Status; // BatteryStatus.Full
+        battery.Status = BatteryStatus.Reserved; // New status: Reserved
+        battery.UpdatedAt = DateTime.UtcNow;
+
+        // Sync inventory counts: Full -> Reserved at this station
+        await _inventoryService.UpdateInventoryCountAsync(
+            battery.BatteryModelId,
+            battery.StationId,
+            oldStatus, // From 'Full'
+            battery.Status, // To 'Reserved'
+            1);
+
+        // ⭐ NEW/MODIFIED LOGIC: RESERVATION BATTERY END
+
         // ⭐ BỔ SUNG LOGIC: Nếu có RelatedComplaintId, đây là lịch kiểm tra MIỄN PHÍ, bỏ qua kiểm tra thanh toán
         bool paymentRequired = false;
         Guid? userSubscriptionId = null;
@@ -322,7 +355,7 @@ public class SlotReservationService
             StationId = stationId,
             BatteryModelId = batteryModelId,
             VehicleId = vehicleId,
-            BatteryUnitId = null,
+            BatteryUnitId = battery.Id,  // ⭐ MODIFIED: Đã gán pin ở trên (Reserved)
             UserSubscriptionId = userSubscriptionId,  // ⭐ Set subscription ID (null if pay-per-swap)
             // ⭐ SỬA: Đã thêm RelatedComplaintId vào Model Reservation trước đó
             RelatedComplaintId = relatedComplaintId,
@@ -464,6 +497,7 @@ public class SlotReservationService
         var reservation = await _db.Reservations
             .Include(r => r.BatteryModel)
             .Include(r => r.Payment) // Eager load the associated payment
+            .Include(r => r.BatteryUnit) // ⭐ MODIFIED: Pin đã được assigned trước đó
             .FirstOrDefaultAsync(r => r.Id == reservationId);
 
         if (reservation == null)
@@ -474,6 +508,20 @@ public class SlotReservationService
         if (reservation.Status != ReservationStatus.Pending)
         {
             throw new InvalidOperationException($"Reservation đã ở trạng thái {reservation.Status}. Không thể check-in.");
+        }
+
+        // ⭐ NEW LOGIC: Use the already reserved battery
+        var battery = reservation.BatteryUnit;
+        if (battery == null || reservation.BatteryUnitId == null)
+        {
+            // Pin đã được reserved trong CreateReservationAsync, nếu pin bị mất thì báo lỗi
+            throw new NoBatteryException("Không tìm thấy pin đã được đặt trước cho lịch hẹn này. Có thể pin đã bị mất hoặc chuyển đi.");
+        }
+        
+        // ⭐ VALIDATE: Pin phải ở trạng thái Reserved
+        if (battery.Status != BatteryStatus.Reserved)
+        {
+            throw new InvalidOperationException($"Pin {battery.Serial} được gán cho lịch hẹn này hiện đang ở trạng thái {battery.Status}. Pin phải ở trạng thái {BatteryStatus.Reserved} (đã đặt trước) để check-in.");
         }
 
         var now = DateTime.UtcNow;
@@ -524,31 +572,15 @@ public class SlotReservationService
                 $"Check-in chỉ được phép từ {earliest:HH:mm} đến {latest:HH:mm}. Hiện tại: {now:HH:mm}");
         }
 
-        // Find the best available battery (longest time in 'Full' status)
-        var battery = await _db.BatteryUnits
-            .Where(b =>
-                b.StationId == reservation.StationId &&
-                b.BatteryModelId == reservation.BatteryModelId &&
-                b.Status == BatteryStatus.Full) // We only care if the battery is 'Full'
-            .OrderBy(b => b.UpdatedAt)
-            .FirstOrDefaultAsync();
-
-        if (battery == null)
-        {
-            throw new NoBatteryException("Không có pin phù hợp hoặc pin đã được sạc đầy tại trạm.");
-        }
-
-        // Atomically update reservation and battery status and optionally transition complaint
+        // Atomically update reservation and optionally transition complaint
         using var tx = await _db.Database.BeginTransactionAsync();
 
         reservation.Status = ReservationStatus.CheckedIn;
         reservation.CheckedInAt = now;
         reservation.VerifiedByStaffId = staffId;
-        reservation.BatteryUnitId = battery.Id;
+        // ⭐ REMOVED: Battery assignment is done in CreateReservationAsync
 
-        // Set battery status to 'Reserved' to prevent other transactions from picking it.
-        battery.Status = BatteryStatus.Reserved;
-        battery.UpdatedAt = now;
+        // ⭐ NO CHANGE on battery status: Battery remains 'Reserved' until FinalizeSwap
 
         // If this reservation is linked to a complaint, try to transition the complaint to CheckedIn
         if (reservation.RelatedComplaintId.HasValue && _serviceProvider != null)
