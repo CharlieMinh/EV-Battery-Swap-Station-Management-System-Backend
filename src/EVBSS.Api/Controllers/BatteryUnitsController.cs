@@ -30,7 +30,53 @@ public class BatteryUnitsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách tất cả pin
+    /// Lấy danh sách tất cả pin (Public - không cần đăng nhập)
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("public")]
+    public async Task<ActionResult<ApiResponse<List<BatteryUnitResponseDto>>>> GetBatteryUnitsPublic()
+    {
+        try
+        {
+            var batteryUnits = await _context.BatteryUnits
+                .Include(b => b.Model)
+                .Include(b => b.Station)
+                .Select(b => new BatteryUnitResponseDto
+                {
+                    Id = b.Id,
+                    Serial = b.Serial,
+                    BatteryModelId = b.BatteryModelId,
+                    BatteryModelName = b.Model.Name,
+                    Voltage = b.Model.Voltage,
+                    CapacityWh = b.Model.CapacityWh,
+                    Manufacturer = b.Model.Manufacturer,
+                    StationId = b.StationId,
+                    StationName = b.Station!.Name,
+                    Status = b.Status.ToString(),
+                    UpdatedAt = b.UpdatedAt
+                })
+                .ToListAsync();
+
+            return Ok(new ApiResponse<List<BatteryUnitResponseDto>>
+            {
+                Success = true,
+                Data = batteryUnits,
+                Message = "Retrieved battery units successfully"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving battery units");
+            return StatusCode(500, new ApiResponse<List<BatteryUnitResponseDto>>
+            {
+                Success = false,
+                Message = "Internal server error"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Lấy danh sách tất cả pin (Yêu cầu xác thực)
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<BatteryUnitResponseDto>>>> GetBatteryUnits()
@@ -75,7 +121,64 @@ public class BatteryUnitsController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy danh sách pin theo station ID
+    /// Lấy danh sách pin theo station ID (Public - không cần đăng nhập)
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("public/station/{stationId}")]
+    public async Task<ActionResult<ApiResponse<List<BatteryUnitResponseDto>>>> GetBatteryUnitsByStationPublic(Guid stationId)
+    {
+        try
+        {
+            var stationExists = await _context.Stations.AnyAsync(s => s.Id == stationId);
+            if (!stationExists)
+            {
+                return NotFound(new ApiResponse<List<BatteryUnitResponseDto>>
+                {
+                    Success = false,
+                    Message = "Station not found"
+                });
+            }
+
+            var batteryUnits = await _context.BatteryUnits
+                .Include(b => b.Model)
+                .Include(b => b.Station)
+                .Where(b => b.StationId == stationId)
+                .Select(b => new BatteryUnitResponseDto
+                {
+                    Id = b.Id,
+                    Serial = b.Serial,
+                    BatteryModelId = b.BatteryModelId,
+                    BatteryModelName = b.Model.Name,
+                    Voltage = b.Model.Voltage,
+                    CapacityWh = b.Model.CapacityWh,
+                    Manufacturer = b.Model.Manufacturer,
+                    StationId = b.StationId,
+                    StationName = b.Station!.Name,
+                    Status = b.Status.ToString(),
+                    UpdatedAt = b.UpdatedAt
+                })
+                .ToListAsync();
+
+            return Ok(new ApiResponse<List<BatteryUnitResponseDto>>
+            {
+                Success = true,
+                Data = batteryUnits,
+                Message = "Retrieved battery units for station successfully"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving battery units for station {StationId}", stationId);
+            return StatusCode(500, new ApiResponse<List<BatteryUnitResponseDto>>
+            {
+                Success = false,
+                Message = "Internal server error"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Lấy danh sách pin theo station ID (Yêu cầu xác thực)
     /// </summary>
     [HttpGet("station/{stationId}")]
     public async Task<ActionResult<ApiResponse<List<BatteryUnitResponseDto>>>> GetBatteryUnitsByStation(Guid stationId)
