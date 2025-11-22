@@ -217,15 +217,39 @@ namespace EVBSS.Api.Services
                 + $"\n[Decision Note - {request.NewStatus}]: " + (request.ResolutionNotes ?? string.Empty);
 
             string message;
+            
+            // ==========================================================================================
+            // ⭐ FIX: Xử lý Reservation khi Complaint thay đổi trạng thái
+            // ==========================================================================================
+            
+            // Tìm lịch hẹn kiểm tra (Inspection Reservation) đang active liên quan đến khiếu nại này
+            var inspectionReservation = await _context.Reservations
+                .FirstOrDefaultAsync(r => r.RelatedComplaintId == complaintId 
+                                       && (r.Status == ReservationStatus.Pending || r.Status == ReservationStatus.CheckedIn));
+
             if (request.NewStatus == ComplaintStatus.Confirmed)
             {
-                // Message only notifies that the complaint is confirmed; staff must finalize later.
                 message = $"Khiếu nại pin lỗi đã được XÁC NHẬN (Confirmed). Staff sẽ tiến hành đổi pin thay thế cho bạn.";
+                // Lưu ý: Nếu Confirmed, Reservation vẫn giữ nguyên (thường là CheckedIn) 
+                // để Staff tiếp tục dùng nó cho việc Finalize Reswap.
             }
             else // Rejected
             {
                 message = $"Khiếu nại pin lỗi đã bị TỪ CHỐI. Pin không phát hiện lỗi hệ thống. Chi tiết: {request.ResolutionNotes}";
+
+                // ⭐ FIX: Nếu từ chối, ta phải "thả" Reservation ra để User không bị kẹt
+                // Chuyển trạng thái Reservation sang Completed (vì quy trình kiểm tra đã xong)
+                if (inspectionReservation != null)
+                {
+                    inspectionReservation.Status = ReservationStatus.Completed;
+                    // Ghi chú thêm vào lý do hủy/hoàn thành nếu cần
+                    inspectionReservation.CancelNote = "Inspection completed: Complaint Rejected.";
+                    
+                    _logger.LogInformation("Auto-completed inspection reservation {ReservationId} because complaint {ComplaintId} was rejected.", 
+                        inspectionReservation.Id, complaintId);
+                }
             }
+            // ==========================================================================================
 
             _context.Notifications.Add(new Notification
             {
